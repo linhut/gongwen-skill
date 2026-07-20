@@ -18,7 +18,7 @@ gongwen-skill/
 ├── LICENSE                 # MIT
 ├── requirements.txt        # python-docx / pydantic / pyyaml
 ├── prompts/
-│   └── style-prompts.md    # 通用底座 + 5 套公文语言风格提示词
+│   └── style-prompts.md    # 通用底座 + 6 套公文语言风格提示词
 ├── rules/official/         # 23 份规则 YAML（_common + 22 类型）
 └── engine/                 # 自包含引擎（从原项目抽取）
     ├── config.py           # 独立路径解析（无数据库/桌面端耦合）

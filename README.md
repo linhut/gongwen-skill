@@ -26,7 +26,7 @@ Licensed under the MIT License. See the LICENSE file for details.
 | 🔧 优化 | `optimize` | 检查 + 自动修复 + 生成合规文档 |
 | 📄 生成 | `generate` | 从 JSON 模型生成 `.docx` |
 | ⚙️ 规则化 | `rule-export` / `rule-list` | 导出/列出规则，支持三层定制 |
-| ✍️ 语言风格 | `prompts/style-prompts.md` | 通用底座 + 5 套公文语言风格改写提示词 |
+| ✍️ 语言风格 | `prompts/style-prompts.md` | 通用底座 + 6 套公文语言风格改写提示词 |
 
 ## 🚀 快速开始
 
@@ -75,7 +75,7 @@ python gongwen.py rule-export notice -o notice_rules.yaml
 
 ## ✍️ 公文语言风格改写
 
-`prompts/style-prompts.md` 提供「通用底座 + 5 套」可直接喂给 LLM 的提示词规则：
+`prompts/style-prompts.md` 提供「通用底座 + 6 套」可直接喂给 LLM 的提示词规则：
 
 0. 通用底座（所有风格共用）
 1. 庄重严谨（通知/决定/意见/规定）
@@ -83,6 +83,7 @@ python gongwen.py rule-export notice -o notice_rules.yaml
 3. 宏观概括（报告/总结/汇报）
 4. 请示商洽（请示/呈报/商洽函）
 5. 法规条文（制度/办法/章程）
+6. 会议主持词/领导讲话（有高度、有重点、有条理、有力度）
 
 配合格式引擎，实现「语言风格 + 排版格式」双合规。
 
