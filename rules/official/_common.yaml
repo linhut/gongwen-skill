@@ -1,0 +1,583 @@
+# ============================================================
+# 公共基础规则 - 所有公文类型共享
+# ============================================================
+# 基于 GB/T 9704-2012 党政机关公文格式
+# 所有文档类型通过三层合并继承此文件
+# ============================================================
+
+template_name: "公共基础规则"
+document_type: common
+
+# --- 页面设置 (A4) ---
+page_setup:
+  paper_size: A4
+  paper_width_mm: 210
+  paper_height_mm: 297
+  margins:
+    top: 3.7cm
+    bottom: 3.5cm
+    left: 2.8cm
+    right: 2.6cm
+
+# --- 公文大标题格式 ---
+doc_title:
+  font: "方正小标宋简体"
+  font_fallback: "SimSun"
+  size: 22pt
+  align: center
+  bold: false
+  line_spacing: 33pt
+
+# --- 一级标题格式（一、二、三…）---
+heading_1:
+  font: "黑体"
+  font_fallback: "SimHei"
+  size: 16pt
+  bold: false
+  line_spacing: 33pt
+  first_line_indent: 2em
+
+# --- 二级标题格式（（一）（二）…）---
+heading_2:
+  font: "楷体_GB2312"
+  font_fallback: "KaiTi"
+  size: 16pt
+  bold: false
+  line_spacing: 33pt
+  first_line_indent: 2em
+
+# --- 三级标题格式（1. 2. 3.…）---
+heading_3:
+  font: "仿宋_GB2312"
+  font_fallback: "FangSong"
+  size: 16pt
+  bold: true
+  line_spacing: 33pt
+  first_line_indent: 2em
+
+# --- 正文默认格式 ---
+body:
+  font: "仿宋_GB2312"
+  font_fallback: "FangSong"
+  size: 16pt
+  line_spacing: 28.95pt
+  first_line_indent: 2em
+  align: justify
+
+# --- 落款区 ---
+signature:
+  font: "仿宋_GB2312"
+  font_fallback: "FangSong"
+  size: 16pt
+  align: right
+  right_indent: 4em
+
+# --- 日期 ---
+date:
+  font: "仿宋_GB2312"
+  font_fallback: "FangSong"
+  size: 16pt
+  format: "YYYY年MM月DD日"
+  align: right
+  right_indent: 4em
+
+# ============================================================
+#  通用检查规则（共29条）
+# ============================================================
+check_rules:
+  # --- 页面设置检查 (CHK-C001~C003, C011, C018) ---
+  - id: CHK-C001
+    name: "上边距检查"
+    severity: P0
+    field: page_setup.margins.top
+    expected: "3.7cm"
+    message: "上边距应为3.7cm（GB/T 9704标准）"
+
+  - id: CHK-C002
+    name: "左边距检查"
+    severity: P0
+    field: page_setup.margins.left
+    expected: "2.8cm"
+    message: "左边距应为2.8cm（GB/T 9704标准）"
+
+  - id: CHK-C003
+    name: "右边距检查"
+    severity: P0
+    field: page_setup.margins.right
+    expected: "2.6cm"
+    message: "右边距应为2.6cm（GB/T 9704标准）"
+
+  - id: CHK-C011
+    name: "下边距检查"
+    severity: P0
+    field: page_setup.margins.bottom
+    expected: "3.5cm"
+    message: "下边距应为3.5cm（GB/T 9704标准）"
+
+  - id: CHK-C018
+    name: "纸张大小检查"
+    severity: P0
+    field: page_setup.paper_width_mm
+    expected: 210
+    message: "纸张应为A4（宽210mm）"
+
+  # --- 公文大标题检查 (CHK-C007~C008, C021, C033) ---
+  - id: CHK-C007
+    name: "公文大标题字体检查"
+    severity: P0
+    field: title.font
+    expected: "方正小标宋简体"
+    message: "公文标题应使用方正小标宋简体（GB/T 9704标准）"
+
+  - id: CHK-C008
+    name: "公文大标题字号检查"
+    severity: P0
+    field: title.size
+    expected: 22pt
+    message: "公文标题应使用二号字(22pt)（GB/T 9704标准）"
+
+  - id: CHK-C021
+    name: "公文大标题居中检查"
+    severity: P0
+    field: title.align
+    expected: "center"
+    message: "公文标题应居中排列"
+
+  - id: CHK-C033
+    name: "公文大标题行距检查"
+    severity: P1
+    field: title.line_spacing
+    expected: 28.95pt
+    message: "公文标题行距应为固定值28磅（GB/T 9704标准）"
+
+  # --- 一级标题检查 (CHK-C009, C014, C022, C032) ---
+  - id: CHK-C009
+    name: "一级标题字体检查"
+    severity: P0
+    field: heading_1.font
+    expected: "黑体"
+    message: "一级标题应使用黑体（GB/T 9704标准）"
+
+  - id: CHK-C014
+    name: "一级标题字号检查"
+    severity: P0
+    field: heading_1.size
+    expected: 16pt
+    message: "一级标题应使用三号字(16pt)（GB/T 9704标准）"
+
+  - id: CHK-C022
+    name: "一级标题左空二字检查"
+    severity: P1
+    field: heading_1.first_line_indent
+    expected: "2em"
+    message: "一级标题应左空二字编排（GB/T 9704标准）"
+
+  - id: CHK-C032
+    name: "一级标题行距检查"
+    severity: P1
+    field: heading_1.line_spacing
+    expected: 28.95pt
+    message: "一级标题行距应为固定值28磅（GB/T 9704标准）"
+
+  # --- 二级标题检查 (CHK-C010, C015) ---
+  - id: CHK-C010
+    name: "二级标题字体检查"
+    severity: P0
+    field: heading_2.font
+    expected: "楷体_GB2312"
+    message: "二级标题应使用楷体_GB2312（GB/T 9704标准）"
+
+  - id: CHK-C015
+    name: "二级标题字号检查"
+    severity: P0
+    field: heading_2.size
+    expected: 16pt
+    message: "二级标题应使用三号字(16pt)（GB/T 9704标准）"
+
+  - id: CHK-C035
+    name: "二级标题行距检查"
+    severity: P1
+    field: heading_2.line_spacing
+    expected: 28.95pt
+    message: "二级标题行距应为固定值28磅（GB/T 9704标准）"
+
+  - id: CHK-C036
+    name: "二级标题左空二字检查"
+    severity: P1
+    field: heading_2.first_line_indent
+    expected: "2em"
+    message: "二级标题应左空二字编排（GB/T 9704标准）"
+
+  # --- 三级标题检查 (CHK-C019, C020) ---
+  - id: CHK-C019
+    name: "三级标题字体检查"
+    severity: P0
+    field: heading_3.font
+    expected: "仿宋_GB2312"
+    message: "三级标题应使用仿宋_GB2312（GB/T 9704标准）"
+
+  - id: CHK-C020
+    name: "三级标题字号检查"
+    severity: P0
+    field: heading_3.size
+    expected: 16pt
+    message: "三级标题应使用三号字(16pt)加粗（GB/T 9704标准）"
+
+  - id: CHK-C037
+    name: "三级标题行距检查"
+    severity: P1
+    field: heading_3.line_spacing
+    expected: 28.95pt
+    message: "三级标题行距应为固定值28磅（GB/T 9704标准）"
+
+  - id: CHK-C038
+    name: "三级标题左空二字检查"
+    severity: P1
+    field: heading_3.first_line_indent
+    expected: "2em"
+    message: "三级标题应左空二字编排（GB/T 9704标准）"
+
+  # --- 正文格式检查 (CHK-C004~C006, C012~C013) ---
+  - id: CHK-C004
+    name: "正文字体检查"
+    severity: P0
+    field: body.font
+    expected: "仿宋_GB2312"
+    message: "正文应使用仿宋_GB2312字体（GB/T 9704标准）"
+
+  - id: CHK-C005
+    name: "正文字号检查"
+    severity: P0
+    field: body.size
+    expected: 16pt
+    message: "正文应使用三号字(16pt)（GB/T 9704标准）"
+
+  - id: CHK-C006
+    name: "正文行距检查"
+    severity: P1
+    field: body.line_spacing
+    expected: 28.95pt
+    message: "正文行距应为固定值28磅（GB/T 9704标准）"
+
+  - id: CHK-C012
+    name: "正文首行缩进检查"
+    severity: P1
+    field: body.first_line_indent
+    expected: "2em"
+    message: "正文首行应缩进2个字符（GB/T 9704标准）"
+
+  - id: CHK-C013
+    name: "正文对齐方式检查"
+    severity: P1
+    field: body.align
+    expected: "justify"
+    message: "正文应使用两端对齐（GB/T 9704标准）"
+
+  # --- 落款和日期检查 (CHK-C016~C017, C039~C040) ---
+  - id: CHK-C016
+    name: "落款右空四字检查"
+    severity: P1
+    field: signature.align
+    expected: "right"
+    message: "落款应右空四字对齐（GB/T 9704标准）"
+
+  - id: CHK-C017
+    name: "日期右空四字检查"
+    severity: P1
+    field: date.align
+    expected: "right"
+    message: "成文日期应右空四字编排（GB/T 9704标准）"
+
+  - id: CHK-C039
+    name: "落款字体检查"
+    severity: P1
+    field: signature.font
+    expected: "仿宋_GB2312"
+    message: "落款应使用三号仿宋_GB2312（GB/T 9704标准）"
+
+  - id: CHK-C040
+    name: "日期字体检查"
+    severity: P1
+    field: date.font
+    expected: "仿宋_GB2312"
+    message: "成文日期应使用三号仿宋_GB2312（GB/T 9704标准）"
+
+  # --- 标题加粗检查 (CHK-C025) ---
+  - id: CHK-C025
+    name: "公文标题不加粗检查"
+    severity: P1
+    field: title.bold
+    expected: false
+    message: "公文标题使用方正小标宋简体，不应额外加粗（GB/T 9704标准）"
+
+  # --- 正文加粗范围检查 (CHK-C030) ---
+  - id: CHK-C030
+    name: "正文加粗范围检查"
+    severity: P2
+    field: body.bold_range
+    expected: true
+    message: "整段加粗不符合公文规范，通常仅首句或点题词需要加粗"
+
+  # --- 主送机关格式检查 (CHK-C026) ---
+  - id: CHK-C026
+    name: "主送机关格式检查"
+    severity: P1
+    field: recipient.font
+    expected: "仿宋_GB2312"
+    message: "主送机关应使用三号仿宋_GB2312顶格编排（GB/T 9704标准）"
+
+  # --- 附件说明格式检查 (CHK-C027) ---
+  - id: CHK-C027
+    name: "附件说明格式检查"
+    severity: P2
+    field: attachment.first_line_indent
+    expected: "2em"
+    message: "附件说明应左空二字编排（GB/T 9704标准）"
+
+  # --- 抄送机关格式检查 (CHK-C028) ---
+  - id: CHK-C028
+    name: "抄送机关格式检查"
+    severity: P2
+    field: cc.font
+    expected: "仿宋_GB2312"
+    message: "抄送机关应使用四号仿宋_GB2312，左空一字（GB/T 9704标准）"
+
+  # --- 页码检查 (CHK-C023~C024) ---
+  - id: CHK-C023
+    name: "页码格式检查"
+    severity: P1
+    field: page_number.font
+    expected: "宋体"
+    message: "页码应使用4号(14pt)半角宋体阿拉伯数字（GB/T 9704标准）"
+
+  - id: CHK-C024
+    name: "页码位置检查"
+    severity: P1
+    field: page_number.alignment
+    expected: "center"
+    message: "页码应居中标注，格式为— X —（全角短横线）（GB/T 9704标准）"
+
+  - id: CHK-C029
+    name: "页码字号检查"
+    severity: P1
+    field: page_number.size
+    expected: "14pt"
+    message: "页码应使用四号字(14pt)（GB/T 9704标准）"
+
+# ============================================================
+#  通用修复规则（共23条）
+# ============================================================
+fix_rules:
+  # --- Markdown 格式识别与转换（优先执行，在格式修复之前） ---
+  - id: FIX-C030
+    action: convert_markdown
+    target: all
+
+  - id: FIX-C004
+    action: remove_extra_spaces
+    target: all
+
+  # --- 正文修复 ---
+  - id: FIX-C001
+    ref_check: CHK-C004
+    action: set_font
+    target: body
+    value: "仿宋_GB2312"
+
+  - id: FIX-C002
+    ref_check: CHK-C005
+    action: set_size
+    target: body
+    value: 16pt
+
+  - id: FIX-C009
+    ref_check: CHK-C012
+    action: set_first_line_indent
+    target: body
+    value: 2em
+
+  - id: FIX-C010
+    ref_check: CHK-C013
+    action: set_alignment
+    target: body
+    value: "justify"
+
+  - id: FIX-C015
+    ref_check: CHK-C006
+    action: set_line_spacing
+    target: body
+    value: 28.95pt
+
+  # --- 页面设置修复 ---
+  - id: FIX-C003
+    action: set_page_margins
+    target: page_setup
+    value:
+      top: 3.7cm
+      bottom: 3.5cm
+      left: 2.8cm
+      right: 2.6cm
+
+  # --- 大标题修复 ---
+  - id: FIX-C016
+    ref_check: CHK-C007
+    action: set_font
+    target: doc_title
+    value: "方正小标宋简体"
+
+  - id: FIX-C017
+    ref_check: CHK-C008
+    action: set_size
+    target: doc_title
+    value: 22pt
+
+  - id: FIX-C018
+    ref_check: CHK-C021
+    action: set_alignment
+    target: doc_title
+    value: "center"
+
+  - id: FIX-C037
+    ref_check: CHK-C033
+    action: set_line_spacing
+    target: doc_title
+    value: 28.95pt
+
+  # --- 一级标题修复 ---
+  - id: FIX-C006
+    ref_check: CHK-C009
+    action: set_font
+    target: heading_1
+    value: "黑体"
+
+  - id: FIX-C011
+    ref_check: CHK-C014
+    action: set_size
+    target: heading_1
+    value: 16pt
+
+  - id: FIX-C021
+    ref_check: CHK-C022
+    action: set_first_line_indent
+    target: heading_1
+    value: "2em"
+
+  - id: FIX-C032
+    ref_check: CHK-C032
+    action: set_line_spacing
+    target: heading_1
+    value: 28.95pt
+
+  # --- 二级标题修复 ---
+  - id: FIX-C007
+    ref_check: CHK-C010
+    action: set_font
+    target: heading_2
+    value: "楷体_GB2312"
+
+  - id: FIX-C012
+    ref_check: CHK-C015
+    action: set_size
+    target: heading_2
+    value: 16pt
+
+  - id: FIX-C033
+    ref_check: CHK-C035
+    action: set_line_spacing
+    target: heading_2
+    value: 28.95pt
+
+  - id: FIX-C034
+    ref_check: CHK-C036
+    action: set_first_line_indent
+    target: heading_2
+    value: "2em"
+
+  # --- 三级标题修复 ---
+  - id: FIX-C008
+    ref_check: CHK-C019
+    action: set_font
+    target: heading_3
+    value: "仿宋_GB2312"
+
+  - id: FIX-C022
+    ref_check: CHK-C020
+    action: set_size
+    target: heading_3
+    value: 16pt
+
+  - id: FIX-C023
+    action: set_bold
+    target: heading_3
+    value: true
+
+  - id: FIX-C035
+    ref_check: CHK-C037
+    action: set_line_spacing
+    target: heading_3
+    value: 28.95pt
+
+  - id: FIX-C036
+    ref_check: CHK-C038
+    action: set_first_line_indent
+    target: heading_3
+    value: "2em"
+
+  # --- 正文加粗范围修复（在 set_bold 之后执行，覆盖整段加粗） ---
+  - id: FIX-C031
+    action: fix_bold_range
+    target: body
+    value: true
+
+  # --- 落款和日期修复 ---
+  - id: FIX-C013
+    ref_check: CHK-C016
+    action: set_alignment
+    target: signature
+    value: "right"
+
+  - id: FIX-C038
+    ref_check: CHK-C039
+    action: set_font
+    target: signature
+    value: "仿宋_GB2312"
+
+  - id: FIX-C039
+    ref_check: CHK-C040
+    action: set_font
+    target: date
+    value: "仿宋_GB2312"
+
+  - id: FIX-C024
+    ref_check: CHK-C025
+    action: set_bold
+    target: doc_title
+    value: false
+
+  # --- 文本清理 ---
+  - id: FIX-C004
+    action: remove_extra_spaces
+    target: all
+
+  - id: FIX-C005
+    action: remove_extra_blank_lines
+    target: all
+
+  - id: FIX-C019
+    action: normalize_punctuation
+    target: all
+
+  - id: FIX-C020
+    action: normalize_headings
+    target: all
+
+  # --- 页码修复 ---
+  - id: FIX-C025
+    ref_check: CHK-C023
+    action: set_page_number
+    target: page_footer
+    value:
+      font: "宋体"
+      size: 14pt
+      alignment: "center"
+      format: "— {PAGE} —"

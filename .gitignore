@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# 运行时可写数据（用户/自定义规则、日志）
+.gongwen-skill/
+
+# 测试与临时产物
+*_optimized.docx
+*_formatted.docx
+*_template.docx
+/tmp/
+*.tmp
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

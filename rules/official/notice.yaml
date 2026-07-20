@@ -1,0 +1,12 @@
+template_name: 通知
+document_type: notice
+
+check_rules:
+  - id: CHK-N001
+    name: 通知结语检查
+    severity: P2
+    field: ending.check
+    expected: 包含规范结语
+    message: 通知应以"特此通知"等规范结语结尾
+    category: content
+fix_rules: []

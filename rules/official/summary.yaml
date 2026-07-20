@@ -1,0 +1,20 @@
+template_name: 总结
+document_type: summary
+
+check_rules:
+  - id: CHK-SUM001
+    name: 总结结构检查
+    severity: P1
+    field: content.structure
+    expected: 结构完整
+    message: 总结应包含工作回顾、成绩、不足和改进方向
+    category: content
+
+  - id: CHK-SUM002
+    name: 总结数据检查
+    severity: P2
+    field: content.data
+    expected: 有具体数据支撑
+    message: 总结应有具体数据和实例支撑
+    category: content
+fix_rules: []
