@@ -41,8 +41,10 @@ python gongwen.py parse    input.docx -o model.json    # 解析为结构化 JSON
 python gongwen.py check    input.docx -t notice --json # 只读检查（分级 P0/P1/P2）
 python gongwen.py optimize input.docx -o out.docx -t report  # 检查+修复+生成
 python gongwen.py generate model.json -o out.docx      # 从 JSON 生成 docx
+python gongwen.py md2docx  input.md -o 公文.docx       # Markdown 转公文（支持管道输入）
 python gongwen.py rule-export notice -o notice.yaml    # 导出合并规则（用于规则化定制）
 python gongwen.py rule-list                            # 列出三层规则
+python gongwen.py rule-import my_rules -f rules.yaml   # 导入自定义规则
 ```
 
 ## 支持的公文类型（22 种）

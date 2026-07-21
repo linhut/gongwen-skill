@@ -19,6 +19,7 @@ gongwen-skill/
 ├── requirements.txt        # python-docx / pydantic / pyyaml
 ├── prompts/
 │   └── style-prompts.md    # 通用底座 + 6 套公文语言风格提示词
+│   └── gongwen.py              # 统一 CLI 入口（10 个子命令）
 ├── rules/official/         # 23 份规则 YAML（_common + 22 类型）
 └── engine/                 # 自包含引擎（从原项目抽取）
     ├── config.py           # 独立路径解析（无数据库/桌面端耦合）

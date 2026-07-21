@@ -4,7 +4,7 @@
 # 公文文档格式化 Skill —— 独立命令行入口
 #
 # (c) 2026 Jose AI (https://www.linhut.cn)
-# 项目出处：AI 公文智能优化助手 (https://github.com/linhut / https://www.linhut.cn)
+# 项目出处：AI 公文智能优化助手 (https://www.linhut.cn)
 # Licensed under the MIT License. See the LICENSE file for details.
 #
 # 本文件为独立发行版的统一入口，任何人克隆仓库后即可运行，
@@ -19,14 +19,18 @@
   check     <in.docx>          按规则检查格式问题（只读，不改文件）
   optimize  <in.docx> -o out   检查 + 自动修复 + 生成合规文档
   generate  <model.json> -o    从 DocumentModel JSON 生成 .docx
-  rule-export <type>           导出某类型的合并规则为 YAML（用于规则化/二次定制）
+  md2docx   <input.md> -o      将 Markdown 文本转为格式化的公文 .docx
+  rule-export <type>           导出某类型的合并规则为 YAML 用于二次定制
   rule-list                    列出三层规则（official / custom / user）
+  rule-import <key> -f <file>  导入/保存自定义规则 YAML
 
 示例：
   python gongwen.py list-types
   python gongwen.py template notice -o 通知模板.docx
   python gongwen.py check input.docx -t notice --json
   python gongwen.py optimize input.docx -o output.docx -t report
+  cat input.md | python gongwen.py md2docx - -o 公文.docx    # 管道输入
+  python gongwen.py md2docx input.md -o 公文.docx            # 文件输入
 """
 import argparse
 import json
@@ -154,6 +158,164 @@ def cmd_generate(args):
     print(f"文档已生成: {out}")
 
 
+def cmd_md2docx(args):
+    """
+    将 Markdown 文本转为格式化的公文 .docx 文件。
+
+    输入可以是文件路径，也可以是 '-'（标准输入，支持管道）。
+    支持 Front Matter 元数据（--- 包裹的 YAML 块）：
+    - recipients: 主送机关（字符串或数组）
+    - signer: 落款单位
+    - date: 成文日期
+    - attachments: 附件列表（字符串数组）
+    - doc_type: 公文类型（默认 notice）
+    """
+    import io
+    from core.document.parser import _parse_paragraph_format, _parse_run
+    from core.document.generator import generate_docx
+    from core.document.models import (
+        DocumentModel, DocumentMetadata, PageSetup,
+        Paragraph, ParagraphFormat, Run, RunFormat,
+    )
+    from core.document.modifier import convert_markdown
+    from core.rules.manager import load_rules_merged
+
+    # 读取输入
+    text: str
+    source_desc: str
+    input_src = args.input
+    if input_src == "-":
+        raw = sys.stdin.buffer.read()
+        text = raw.decode("utf-8")
+        source_desc = "stdin"
+    else:
+        text = Path(input_src).read_text(encoding="utf-8")
+        source_desc = input_src
+
+    # 解析 Front Matter
+    doc_type = args.doc_type or "notice"
+    recipients = args.recipients or []
+    signer = args.signer or ""
+    doc_date = args.date or ""
+    attachments = args.attachments or []
+
+    lines = text.split("\n")
+    if lines and lines[0].strip() == "---":
+        # 尝试提取 YAML front matter
+        end_idx = None
+        front_matter = {}
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                end_idx = i
+                break
+            if ":" in lines[i]:
+                key, _, val = lines[i].partition(":")
+                k = key.strip()
+                v = val.strip().strip('"').strip("'")
+                if v:
+                    front_matter[k] = v
+        if end_idx:
+            lines = lines[end_idx + 1:]
+            text = "\n".join(lines)
+            doc_type = front_matter.get("doc_type", doc_type)
+            recipients = front_matter.get("recipients", recipients)
+            signer = front_matter.get("signer", signer)
+            doc_date = front_matter.get("date", doc_date)
+            attachments = front_matter.get("attachments", attachments)
+
+    # 加载规则获取页边距等
+    rules = load_rules_merged(doc_type)
+    margins = rules.get("page_setup", {}).get("margins", {})
+
+    def _parse_margin(v):
+        s = str(v).strip()
+        if "cm" in s: return float(s.replace("cm", "")) * 10
+        if "mm" in s: return float(s.replace("mm", ""))
+        return float(s)
+
+    # 构建 DocumentModel
+    model = DocumentModel(
+        metadata=DocumentMetadata(),
+        page_setup=PageSetup(
+            paper_width_mm=210, paper_height_mm=297,
+            margin_top_mm=_parse_margin(margins.get("top", "3.7cm")),
+            margin_bottom_mm=_parse_margin(margins.get("bottom", "3.5cm")),
+            margin_left_mm=_parse_margin(margins.get("left", "2.8cm")),
+            margin_right_mm=_parse_margin(margins.get("right", "2.6cm")),
+        ),
+    )
+
+    # 主送机关
+    rcp = recipients
+    if isinstance(rcp, str) and rcp:
+        # "各单位,各部门" → ["各单位", "各部门"]
+        parts = [p.strip() for p in rcp.replace("，", ",").split(",") if p.strip()]
+        rcp = parts
+    if isinstance(rcp, list) and rcp:
+        rcp_text = "、".join(rcp) + "："
+        model.paragraphs.append(Paragraph(
+            index=0, text=rcp_text, role="recipient",
+            runs=[Run(index=0, text=rcp_text, format=RunFormat(font_name="仿宋_GB2312", font_size_pt=16.0))],
+            format=ParagraphFormat(alignment="justify", first_line_indent_pt=0, line_spacing_pt=28.95),
+        ))
+
+    # 正文行：每行一个段落
+    para_offset = len(model.paragraphs)
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            model.paragraphs.append(Paragraph(
+                index=para_offset + i, text="", format=ParagraphFormat(), runs=[],
+            ))
+            continue
+        model.paragraphs.append(Paragraph(
+            index=para_offset + i, text=stripped, role="body",
+            runs=[Run(index=0, text=stripped, format=RunFormat())],
+            format=ParagraphFormat(alignment="justify", line_spacing_pt=28.95),
+        ))
+
+    # 执行 Markdown 转换（#标题 → 标题样式，**加粗** → bold，|表格| → Word 表格）
+    changes = convert_markdown(model)
+
+    # 落款与日期
+    if signer:
+        idx = len(model.paragraphs)
+        model.paragraphs.append(Paragraph(
+            index=idx, text=signer, role="signature",
+            runs=[Run(index=0, text=signer, format=RunFormat(font_name="仿宋_GB2312", font_size_pt=16.0))],
+            format=ParagraphFormat(alignment="right", line_spacing_pt=28.95),
+        ))
+    if doc_date:
+        idx = len(model.paragraphs)
+        model.paragraphs.append(Paragraph(
+            index=idx, text=doc_date, role="date",
+            runs=[Run(index=0, text=doc_date, format=RunFormat(font_name="仿宋_GB2312", font_size_pt=16.0))],
+            format=ParagraphFormat(alignment="right", line_spacing_pt=28.95),
+        ))
+
+    # 附件说明
+    atts = attachments
+    if isinstance(atts, str) and atts:
+        atts = [atts]
+    if isinstance(atts, list) and atts:
+        idx = len(model.paragraphs)
+        att_text = "附件：" + "、".join(f"{i+1}.{a}" for i, a in enumerate(atts))
+        model.paragraphs.append(Paragraph(
+            index=idx, text=att_text, role="attachment",
+            runs=[Run(index=0, text=att_text, format=RunFormat(font_name="仿宋_GB2312", font_size_pt=16.0))],
+            format=ParagraphFormat(alignment="justify", line_spacing_pt=28.95),
+        ))
+
+    # 生成 docx
+    out = Path(args.output) if args.output else Path("output.docx")
+    generate_docx(model, str(out))
+
+    print(f"公文已生成: {out}")
+    print(f"  类型: {doc_type}, 段落: {len(model.paragraphs)}, Markdown 转换: {changes} 处")
+    if source_desc != "stdin" and args.input != "-":
+        print(f"  来源: {source_desc}")
+
+
 def cmd_rule_export(args):
     """导出某类型的合并规则为 YAML。"""
     from core.rules.manager import load_rules_merged
@@ -177,6 +339,41 @@ def cmd_rule_list(args):
     else:
         for f in files:
             print(f"  [{f['source_type']}] {f['key']}  ({f['size']} bytes)")
+
+
+def cmd_rule_import(args):
+    """导入/保存自定义规则 YAML。"""
+    from core.rules.manager import save_rule, validate_rule
+    import yaml
+
+    key = args.key
+    if args.file:
+        content = yaml.safe_load(Path(args.file).read_text(encoding="utf-8"))
+    elif args.text:
+        content = yaml.safe_load(args.text)
+    elif not sys.stdin.isatty():
+        content = yaml.safe_load(sys.stdin.read())
+    else:
+        print("错误：请提供 --file 或 --text，或通过管道输入 YAML", file=sys.stderr)
+        sys.exit(1)
+
+    if not isinstance(content, dict):
+        print("错误：YAML 内容必须是一个字典", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        validate_rule(content)
+    except ValueError as e:
+        print(f"错误：规则校验失败 - {e}", file=sys.stderr)
+        sys.exit(1)
+
+    source = args.source or "user"
+    ok = save_rule(key, content, source)
+    if ok:
+        print(f"规则已保存: {key} ({source})")
+    else:
+        print(f"错误：保存失败", file=sys.stderr)
+        sys.exit(1)
 
 
 # ---------------------------------------------------------------------------
@@ -225,6 +422,16 @@ def main():
     p.add_argument("-o", "--output", help="输出 .docx 路径")
     p.set_defaults(func=cmd_generate)
 
+    p = sub.add_parser("md2docx", help="将 Markdown 文本转为格式化的公文 .docx")
+    p.add_argument("input", help="输入 .md 路径，或 '-' 从标准输入读取（支持管道）")
+    p.add_argument("-o", "--output", help="输出 .docx 路径（默认 output.docx）")
+    p.add_argument("-t", "--doc-type", default=None, help="公文类型（默认 notice，可被 Front Matter 覆盖）")
+    p.add_argument("--recipients", nargs="*", help="主送机关（逗号分隔）")
+    p.add_argument("--signer", default="", help="落款单位")
+    p.add_argument("--date", default="", help="成文日期")
+    p.add_argument("--attachments", nargs="*", help="附件列表")
+    p.set_defaults(func=cmd_md2docx)
+
     p = sub.add_parser("rule-export", help="导出合并后的规则为 YAML")
     p.add_argument("type", help="公文类型")
     p.add_argument("-o", "--output", help="输出 YAML 路径")
@@ -234,6 +441,13 @@ def main():
     p.add_argument("--source", default="all", choices=["all", "official", "custom", "user"])
     p.add_argument("--json", action="store_true", help="JSON 输出")
     p.set_defaults(func=cmd_rule_list)
+
+    p = sub.add_parser("rule-import", help="导入/保存自定义规则 YAML")
+    p.add_argument("key", help="规则标识符（仅字母数字下划线连字符）")
+    p.add_argument("-f", "--file", help="YAML 文件路径")
+    p.add_argument("--text", help="YAML 文本内容（内联）")
+    p.add_argument("--source", default="user", choices=["user", "custom"], help="保存层级")
+    p.set_defaults(func=cmd_rule_import)
 
     args = parser.parse_args()
     if not args.command:

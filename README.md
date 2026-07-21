@@ -25,7 +25,8 @@ Licensed under the MIT License. See the LICENSE file for details.
 | ✅ 检查 | `check` | 按 GB/T 9704 检查，分级 P0/P1/P2 |
 | 🔧 优化 | `optimize` | 检查 + 自动修复 + 生成合规文档 |
 | 📄 生成 | `generate` | 从 JSON 模型生成 `.docx` |
-| ⚙️ 规则化 | `rule-export` / `rule-list` | 导出/列出规则，支持三层定制 |
+| 📝 Markdown→公文 | `md2docx` | Markdown 文本转格式化公文（支持管道输入与 Front Matter） |
+| ⚙️ 规则化 | `rule-export/rule-import/rule-list` | 导出/导入/列出规则，支持三层定制 |
 | ✍️ 语言风格 | `prompts/style-prompts.md` | 通用底座 + 6 套公文语言风格改写提示词 |
 
 ## 🚀 快速开始
@@ -43,6 +44,12 @@ python gongwen.py check 我的通知.docx -t notice --json
 
 # 一键优化（检查 + 修复 + 生成）
 python gongwen.py optimize 我的通知.docx -o 通知_优化后.docx -t notice
+
+# Markdown 内容直接转为公文（支持管道输入和 Front Matter 元数据）
+cat 草稿.md | python gongwen.py md2docx - -o 正式公文.docx
+
+# 导入自定义规则（覆盖官方字体/字号等）
+python gongwen.py rule-import my_company -f 公司规范.yaml
 ```
 
 ## 📐 GB/T 9704 标准格式
@@ -86,6 +93,15 @@ python gongwen.py rule-export notice -o notice_rules.yaml
 6. 会议主持词/领导讲话（有高度、有重点、有条理、有力度）
 
 配合格式引擎，实现「语言风格 + 排版格式」双合规。
+
+## ⚠️ 使用红线
+
+本工具为**排版格式引擎**，不涉及内容生成。请遵守以下规则：
+
+- **不伪造、冒用或模拟真实机关正式发文** — 生成内容仅为草稿，正式发文需走完审核流程
+- **不编造政策依据、统计数据、会议结论** — 缺失信息用 `XXX` 占位，不臆造
+- **涉密、敏感材料应先脱敏** — 勿将涉密文件直接输入本工具
+- **字体版权** — 方正小标宋简体、仿宋_GB2312、楷体_GB2312 等字体可能受版权约束，缺少字体时 Word 会回退显示，不影响排版属性正确性
 
 ## 🤖 作为 AI Skill 使用
 
