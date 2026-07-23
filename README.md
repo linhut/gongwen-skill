@@ -5,6 +5,10 @@ Licensed under the MIT License. See the LICENSE file for details.
 
 # 公文文档格式化 Skill · gongwen-skill
 
+<p align="center">
+  <img src="./logo/A_professional_skill_cover_2026-07-23T02-25-30.png" alt="gongwen-skill 公文文档格式化引擎" width="560">
+</p>
+
 > 基于 **GB/T 9704《党政机关公文格式》** 国家标准的中文公文 `.docx` 处理引擎，打包为**可被 AI Agent 直接调用的 Skill**。完全自包含，克隆即用。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
@@ -16,6 +20,10 @@ Licensed under the MIT License. See the LICENSE file for details.
 ---
 
 ## ✨ 能力一览
+
+<p align="center">
+  <img src="logo/A_vertical_promotional_2026-07-23T02-25-30.png" alt="公文技能工作流：输入 .docx → 检查 → 修复 → 合规公文" width="420">
+</p>
 
 | 能力 | 命令 | 说明 |
 |------|------|------|
