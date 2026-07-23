@@ -17,9 +17,12 @@
   template  <type> -o out.docx 生成指定类型的标准公文模板
   parse     <in.docx>          解析文档为结构化 JSON（DocumentModel）
   check     <in.docx>          按规则检查格式问题（只读，不改文件）
-  optimize  <in.docx> -o out   检查 + 自动修复 + 生成合规文档
+  optimize  <in.docx> -o out   检查 + 自动修复 + 生成合规文档（支持 --layout 版式注入）
   generate  <model.json> -o    从 DocumentModel JSON 生成 .docx
   md2docx   <input.md> -o      将 Markdown 文本转为格式化的公文 .docx
+  header    <in.docx>          注入版头：发文机关标志 + 发文字号 + 签发人 + 红色反线
+  footer    <in.docx>          注入版记：抄送 + 印发机关 + 印发日期 + 分隔线
+  pagenum   <in.docx>          注入页码：Word PAGE 域动态页码（居中 / 单右双左）
   rule-export <type>           导出某类型的合并规则为 YAML 用于二次定制
   rule-list                    列出三层规则（official / custom / user）
   rule-import <key> -f <file>  导入/保存自定义规则 YAML
@@ -30,7 +33,9 @@
   python gongwen.py check input.docx -t notice --json
   python gongwen.py optimize input.docx -o output.docx -t report
   cat input.md | python gongwen.py md2docx - -o 公文.docx    # 管道输入
-  python gongwen.py md2docx input.md -o 公文.docx            # 文件输入
+  python gongwen.py header in.docx --org-name 国家民委办公厅 --doc-number "民委办发〔2026〕1号"
+  python gongwen.py footer in.docx --cc 各省民委 --printer 国家民委办公厅 --print-date 2026年7月23日
+  python gongwen.py pagenum in.docx --alignment right
 """
 import argparse
 import json
@@ -144,6 +149,20 @@ def cmd_optimize(args):
     p2 = sum(1 for i in issues if i.severity == "P2")
     print(f"优化完成: {out}")
     print(f"  修复 {len(issues)} 项 (P0:{p0}, P1:{p1}, P2:{p2})")
+
+    # 可选：版头/版记/页码一次性注入（--layout 指向 JSON 配置）
+    if getattr(args, "layout", None):
+        layout = json.loads(Path(args.layout).read_text(encoding="utf-8"))
+        from inject import inject_header, inject_footer, inject_page_number
+        if layout.get("header"):
+            inject_header(str(out), layout["header"])
+            print("  版头已注入")
+        if layout.get("footer"):
+            inject_footer(str(out), layout["footer"])
+            print("  版记已注入")
+        if layout.get("page_number"):
+            inject_page_number(str(out), layout["page_number"])
+            print("  页码已注入")
 
 
 def cmd_generate(args):
@@ -316,6 +335,68 @@ def cmd_md2docx(args):
         print(f"  来源: {source_desc}")
 
 
+def cmd_header(args):
+    """注入版头：发文机关标志 + 发文字号 + 签发人 + 红色反线。"""
+    import shutil
+    from inject import inject_header
+
+    out = Path(args.output) if args.output else Path(args.input)
+    if out != Path(args.input):
+        shutil.copy2(args.input, out)
+
+    config = {
+        "org_name": args.org_name or "",
+        "doc_number": args.doc_number or "",
+        "signer": args.signer or "",
+    }
+    if not config["org_name"]:
+        print("错误：--org-name（发文机关标志）为必填项", file=sys.stderr)
+        sys.exit(1)
+    inject_header(str(out), config)
+    print(f"版头已注入: {out}")
+
+
+def cmd_footer(args):
+    """注入版记：抄送 + 印发机关 + 印发日期 + 分隔线。"""
+    import shutil
+    from inject import inject_footer
+
+    out = Path(args.output) if args.output else Path(args.input)
+    if out != Path(args.input):
+        shutil.copy2(args.input, out)
+
+    config = {
+        "cc": args.cc or "",
+        "printer": args.printer or "",
+        "print_date": args.print_date or "",
+    }
+    if not any(config.values()):
+        print("错误：--cc / --printer / --print-date 至少提供一项", file=sys.stderr)
+        sys.exit(1)
+    inject_footer(str(out), config)
+    print(f"版记已注入: {out}")
+
+
+def cmd_pagenum(args):
+    """注入页码：Word PAGE 域动态页码。"""
+    import shutil
+    from inject import inject_page_number
+
+    out = Path(args.output) if args.output else Path(args.input)
+    if out != Path(args.input):
+        shutil.copy2(args.input, out)
+
+    config = {
+        "enabled": True,
+        "font": args.font,
+        "size": args.size,
+        "alignment": args.alignment,
+        "format": args.format,
+    }
+    inject_page_number(str(out), config)
+    print(f"页码已注入: {out} (格式: {args.format}, 对齐: {args.alignment})")
+
+
 def cmd_rule_export(args):
     """导出某类型的合并规则为 YAML。"""
     from core.rules.manager import load_rules_merged
@@ -415,12 +496,41 @@ def main():
     p.add_argument("-o", "--output", help="输出 .docx 路径")
     p.add_argument("-t", "--doc-type", default="notice", help="公文类型（默认 notice）")
     p.add_argument("--selected-rules", help="仅应用指定修复规则 ID，逗号分隔")
+    p.add_argument("--layout", help="版式注入 JSON 配置（含 header/footer/page_number）")
     p.set_defaults(func=cmd_optimize)
 
     p = sub.add_parser("generate", help="从 DocumentModel JSON 生成 .docx")
     p.add_argument("input", help="输入 model.json 路径")
     p.add_argument("-o", "--output", help="输出 .docx 路径")
     p.set_defaults(func=cmd_generate)
+
+    p = sub.add_parser("header", help="注入版头：发文机关标志 + 发文字号 + 签发人 + 红色反线")
+    p.add_argument("input", help="输入 .docx 路径")
+    p.add_argument("-o", "--output", help="输出 .docx 路径（默认原地修改）")
+    p.add_argument("--org-name", required=True, help="发文机关标志（红色大字，必填）")
+    p.add_argument("--doc-number", default="", help="发文字号，如 XX〔2026〕1号")
+    p.add_argument("--signer", default="", help="签发人姓名（上行文）")
+    p.set_defaults(func=cmd_header)
+
+    p = sub.add_parser("footer", help="注入版记：抄送 + 印发机关 + 印发日期 + 分隔线")
+    p.add_argument("input", help="输入 .docx 路径")
+    p.add_argument("-o", "--output", help="输出 .docx 路径（默认原地修改）")
+    p.add_argument("--cc", default="", help="抄送机关")
+    p.add_argument("--printer", default="", help="印发机关")
+    p.add_argument("--print-date", default="", help="印发日期")
+    p.set_defaults(func=cmd_footer)
+
+    p = sub.add_parser("pagenum", help="注入页码：Word PAGE 域动态页码")
+    p.add_argument("input", help="输入 .docx 路径")
+    p.add_argument("-o", "--output", help="输出 .docx 路径（默认原地修改）")
+    p.add_argument("--font", default="宋体", help="页码字体（默认 宋体）")
+    p.add_argument("--size", type=int, default=14, help="页码字号（默认 14）")
+    p.add_argument("--alignment", default="center",
+                   choices=["center", "left", "right"],
+                   help="对齐（center 居中 / right 单右双左奇偶排版）")
+    p.add_argument("--format", default="— {PAGE} —",
+                   help="页码格式，可用 {PAGE} / {NUMPAGES}（默认 '— {PAGE} —'）")
+    p.set_defaults(func=cmd_pagenum)
 
     p = sub.add_parser("md2docx", help="将 Markdown 文本转为格式化的公文 .docx")
     p.add_argument("input", help="输入 .md 路径，或 '-' 从标准输入读取（支持管道）")

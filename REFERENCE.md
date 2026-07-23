@@ -11,7 +11,7 @@ Licensed under the MIT License. See the LICENSE file for details.
 
 ```
 gongwen-skill/
-├── gongwen.py              # 统一 CLI 入口（7 个子命令）
+├── gongwen.py              # 统一 CLI 入口（13 个子命令）
 ├── SKILL.md                # AI Skill 声明（frontmatter + 触发场景）
 ├── README.md               # GitHub 首页
 ├── REFERENCE.md            # 本文档
@@ -19,11 +19,11 @@ gongwen-skill/
 ├── requirements.txt        # python-docx / pydantic / pyyaml
 ├── prompts/
 │   └── style-prompts.md    # 通用底座 + 6 套公文语言风格提示词
-│   └── gongwen.py              # 统一 CLI 入口（10 个子命令）
 ├── rules/official/         # 23 份规则 YAML（_common + 22 类型）
 └── engine/                 # 自包含引擎（从原项目抽取）
     ├── config.py           # 独立路径解析（无数据库/桌面端耦合）
     ├── template_builder.py # 模板生成（剥离 FastAPI）
+    ├── inject.py           # 版头 / 版记 / 页码注入（剥离 FastAPI）
     ├── core/
     │   ├── document/       # parser / generator / modifier / models / font_utils ...
     │   └── rules/          # loader / manager / checker / fixer / engine
@@ -62,6 +62,80 @@ generate_docx(fixed, "output.docx")
 
 for i in issues:
     print(i.severity, i.rule_id, i.name, i.location)
+```
+
+## 版式要素注入（版头 / 版记 / 页码）
+
+三个注入函数直接在 `.docx` 文件上原地操作，输入输出均为文件路径。剥离自原项目 `optimize.py`，无 FastAPI 依赖。
+
+### 版头注入 `inject_header`
+
+```python
+from inject import inject_header
+
+inject_header("文件.docx", {
+    "org_name": "国家民委办公厅",       # 发文机关标志（红色30pt，居中）
+    "doc_number": "民委办发〔2026〕1号",  # 发文字号（三号仿宋，居中）
+    "signer": "张三",                  # 签发人姓名（与发文号同行右对齐，上行文）
+})
+```
+
+版头顺序：发文机关标志 → 空二行 → 发文字号/签发人 → 红色反线（0.35mm 红色实线，`#E00000`）。
+
+### 版记注入 `inject_footer`
+
+```python
+from inject import inject_footer
+
+inject_footer("文件.docx", {
+    "cc": "各省、自治区、直辖市民委",      # 抄送机关
+    "printer": "国家民委办公厅",          # 印发机关
+    "print_date": "2026年7月23日",        # 印发日期
+})
+```
+
+版记顺序：上分隔线（0.35mm 黑色）→ 抄送行（左空一字，悬挂缩进）→ 细分隔线 → 印发机关+日期（左右空一字，日期制表位右对齐）→ 下分隔线。
+
+版记自动计算末页剩余空间，不足 30mm 时强制分页。
+
+### 页码注入 `inject_page_number`
+
+```python
+from inject import inject_page_number
+
+# 居中
+inject_page_number("文件.docx", {
+    "format": "— {PAGE} —",
+    "font": "宋体", "size": 14, "alignment": "center",
+})
+
+# 单右双左奇偶排版（右对齐，偶数页自动左对齐）
+inject_page_number("文件.docx", {
+    "alignment": "right",
+})
+```
+
+使用 Word PAGE 域代码实现动态页码，支持 `{PAGE}` / `{NUMPAGES}` 占位符。`alignment="right"` 启动单右双左奇偶排版（直接操作 ZIP 添加偶数页页脚）。
+
+### 一键注入（CLI）
+
+```bash
+# 单独命令
+python gongwen.py header  in.docx --org-name "国家民委办公厅" --doc-number "民委办发〔2026〕1号"
+python gongwen.py footer  in.docx --cc "各省民委" --printer "国家民委办公厅" --print-date "2026年7月23日"
+python gongwen.py pagenum in.docx --alignment center --format "— {PAGE} —"
+
+# optimize 一步到位（修复 + 注入）
+python gongwen.py optimize in.docx -o out.docx --layout layout.json
+```
+
+`layout.json` 示例：
+```json
+{
+  "header": {"org_name": "国家民委办公厅", "doc_number": "民委办发〔2026〕1号"},
+  "footer": {"cc": "各省民委", "printer": "国家民委办公厅", "print_date": "2026年7月23日"},
+  "page_number": {"format": "— {PAGE} —", "alignment": "center"}
+}
 ```
 
 ## 规则 YAML 结构

@@ -26,6 +26,9 @@ Licensed under the MIT License. See the LICENSE file for details.
 | 🔧 优化 | `optimize` | 检查 + 自动修复 + 生成合规文档 |
 | 📄 生成 | `generate` | 从 JSON 模型生成 `.docx` |
 | 📝 Markdown→公文 | `md2docx` | Markdown 文本转格式化公文（支持管道输入与 Front Matter） |
+| 🔴 版头 | `header` | 注入发文机关标志 + 发文字号 + 签发人 + 红色反线 |
+| 📑 版记 | `footer` | 注入抄送机关 + 印发机关 + 印发日期 + 分隔线 |
+| 🔢 页码 | `pagenum` | 注入 Word PAGE 域动态页码（居中 / 单右双左奇偶排版） |
 | ⚙️ 规则化 | `rule-export/rule-import/rule-list` | 导出/导入/列出规则，支持三层定制 |
 | ✍️ 语言风格 | `prompts/style-prompts.md` | 通用底座 + 6 套公文语言风格改写提示词 |
 
@@ -50,6 +53,18 @@ cat 草稿.md | python gongwen.py md2docx - -o 正式公文.docx
 
 # 导入自定义规则（覆盖官方字体/字号等）
 python gongwen.py rule-import my_company -f 公司规范.yaml
+
+# 注入版头（发文机关标志 + 发文字号 + 签发人 + 红色反线）
+python gongwen.py header 通知.docx -o 红头通知.docx --org-name 国家民委办公厅 --doc-number "民委办发〔2026〕1号"
+
+# 注入版记（抄送 + 印发机关 + 印发日期）
+python gongwen.py footer 红头通知.docx --cc 各省民委 --printer 国家民委办公厅 --print-date 2026年7月23日
+
+# 注入页码（Word PAGE 域动态页码，单右双左奇偶排版）
+python gongwen.py pagenum 红头通知.docx --alignment right
+
+# 一步到位：检查 + 修复 + 版头/版记/页码全注入（--layout 指向 JSON 配置）
+python gongwen.py optimize 我的通知.docx -o 成品.docx --layout 版式.json
 ```
 
 ## 📐 GB/T 9704 标准格式

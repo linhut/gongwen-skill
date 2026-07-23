@@ -1,6 +1,6 @@
 ---
 name: gongwen-skill
-description: 中文公文文档格式化与语言风格助手。当用户需要处理 .docx 公文（通知/请示/报告/函/会议纪要/意见/纪要等 22 类），按 GB/T 9704 国家标准做格式检查、自动修复、生成标准模板，或需要公文语言风格改写（庄重规范、简明扼要）时使用。完全自包含，克隆即用，无需数据库或后端服务。
+description: 中文公文文档格式化与语言风格助手。当用户需要处理 .docx 公文（通知/请示/报告/函/会议纪要/意见/纪要等 22 类），按 GB/T 9704 国家标准做格式检查、自动修复、生成标准模板、注入版头版记页码，或需要公文语言风格改写（庄重规范、简明扼要）时使用。完全自包含，克隆即用，无需数据库或后端服务。
 ---
 
 <!--
@@ -12,42 +12,82 @@ Licensed under the MIT License. See the LICENSE file for details.
 
 # 公文文档格式化 Skill（GB/T 9704）
 
-将 `.docx` 公文按 **GB/T 9704《党政机关公文格式》** 国家标准进行解析、检查、自动修复、模板生成，并提供公文语言风格改写提示词。
+把 `.docx` 公文按 **GB/T 9704《党政机关公文格式》** 国家标准检查、修复、生成。完全自包含，`pip install -r requirements.txt` 后 `python gongwen.py <命令>` 即可用。
 
-**完全自包含**：内置最小可运行引擎（parser / rule engine / generator + 23 份规则 YAML），克隆本仓库即可运行，不依赖任何桌面端、数据库或后端服务。
+## 第一步：先判断用户属于哪种场景
 
-## 何时使用
+| 用户想做的事 | 走这条流程 |
+|--------------|-----------|
+| **有一份 .docx，想让格式合规** | → 流程 A（检查修复） |
+| **有文字/Markdown 内容，想生成公文** | → 流程 B（内容成文） |
+| **要一份空白公文模板** | → 流程 C（一条命令） |
 
-- 用户提供 `.docx` 公文，要求检查格式是否合规
-- 用户要求自动修复公文排版（字体、字号、页边距、行距、缩进、页码）
-- 用户要求生成某类公文的标准空白模板
-- 用户询问某种公文类型的格式规范
-- 用户要求按公文语言风格改写内容（见 `prompts/style-prompts.md`）
+先确认场景，再按对应流程走。不要一次把所有命令列给用户。
 
-## 前置条件
+---
 
-```bash
-pip install -r requirements.txt      # python-docx / pydantic / pyyaml
-```
-
-## 核心命令
-
-统一入口 `gongwen.py`，所有子命令：
+## 流程 A：已有公文 → 格式合规（最常用）
 
 ```bash
-python gongwen.py list-types                          # 列出 22 种公文类型
-python gongwen.py template notice -o 通知模板.docx     # 生成标准模板
-python gongwen.py parse    input.docx -o model.json    # 解析为结构化 JSON
-python gongwen.py check    input.docx -t notice --json # 只读检查（分级 P0/P1/P2）
-python gongwen.py optimize input.docx -o out.docx -t report  # 检查+修复+生成
-python gongwen.py generate model.json -o out.docx      # 从 JSON 生成 docx
-python gongwen.py md2docx  input.md -o 公文.docx       # Markdown 转公文（支持管道输入）
-python gongwen.py rule-export notice -o notice.yaml    # 导出合并规则（用于规则化定制）
-python gongwen.py rule-list                            # 列出三层规则
-python gongwen.py rule-import my_rules -f rules.yaml   # 导入自定义规则
+# 1. 先检查，把问题清单讲给用户（P0=必须改 / P1=次要 / P2=建议）
+python gongwen.py check 用户文件.docx -t notice --json
+
+# 2. 用户确认后一键修复生成
+python gongwen.py optimize 用户文件.docx -o 成品.docx -t notice
 ```
 
-## 支持的公文类型（22 种）
+`-t` 是公文类型（见下方类型表，默认 notice）。若用户只想改部分问题，加 `--selected-rules FIX-N001,FIX-N002`。
+
+**需要红头/版记/页码时**，写一个 `版式.json` 让 optimize 一步到位：
+
+```bash
+python gongwen.py optimize 用户文件.docx -o 成品.docx --layout 版式.json
+```
+
+`版式.json` 格式（三块都可选）：
+```json
+{
+  "header": {"org_name": "国家民委办公厅", "doc_number": "民委办发〔2026〕1号", "signer": "张三"},
+  "footer": {"cc": "各省民委", "printer": "国家民委办公厅", "print_date": "2026年7月23日"},
+  "page_number": {"format": "— {PAGE} —", "alignment": "center"}
+}
+```
+
+---
+
+## 流程 B：文字内容 → 公文（先写文字，再排版）
+
+```bash
+# 把 Markdown/纯文本内容直接排成公文（# 标题、** 加粗、| 表格 自动识别）
+python gongwen.py md2docx 草稿.md -o 公文.docx -t notice --signer 某某单位 --date 2026年7月23日
+
+# 也支持管道
+cat 草稿.md | python gongwen.py md2docx - -o 公文.docx
+```
+
+若用户内容口语化、不像公文，**先用 `prompts/style-prompts.md` 里的风格提示词改写文字**，再 md2docx 成文，最后可选 optimize 走一遍格式。这样「语言」和「排版」双合规。
+
+`prompts/style-prompts.md` 含 6 套风格：庄重严谨 / 平实简洁 / 宏观概括 / 请示商洽 / 法规条文 / 会议主持词（有高度有重点）。
+
+---
+
+## 流程 C：要空白模板 → 一条命令
+
+```bash
+python gongwen.py template notice -o 通知模板.docx
+```
+
+---
+
+## 单独注入版式要素（进阶，通常用流程 A 的 --layout 即可）
+
+```bash
+python gongwen.py header  in.docx --org-name 国家民委办公厅 --doc-number "民委办发〔2026〕1号"   # 版头
+python gongwen.py footer  in.docx --cc 各省民委 --printer 国家民委办公厅 --print-date 2026年7月23日  # 版记
+python gongwen.py pagenum in.docx --alignment center                                          # 页码
+```
+
+## 22 种公文类型（`-t` 参数取值）
 
 `notice`(通知) `request`(请示) `report`(报告) `letter`(函) `meeting`(会议纪要)
 `minutes`(纪要) `decision`(决定) `announcement`(通告) `notice_public`(公告)
@@ -55,7 +95,9 @@ python gongwen.py rule-import my_rules -f rules.yaml   # 导入自定义规则
 `regulation`(制度) `communique`(公报) `opinion`(意见) `summary`(总结)
 `work_plan`(方案/计划) `table_sign`(桌签) `technical_proposal`(技术方案) `resolution`(决议)
 
-## 标准格式（GB/T 9704）
+不确定类型时先跑 `python gongwen.py list-types` 查看。
+
+## 标准格式（GB/T 9704，引擎自动套用）
 
 | 位置 | 字体 | 字号 |
 |------|------|------|
@@ -64,23 +106,16 @@ python gongwen.py rule-import my_rules -f rules.yaml   # 导入自定义规则
 | 西文/数字 | Times New Roman | — |
 | 页边距 | 上37 下35 左28 右26 (mm) | — |
 
-## 语言风格改写
+## 按单位定制格式（可选）
 
-公文语言风格提示词见 `prompts/style-prompts.md`，含通用底座 + 6 套可直接调用的风格规则（庄重严谨、平实简洁、宏观概括、请示商洽、法规条文、会议主持词/领导讲话）。其中"会议主持词/领导讲话"专门强化"有高度、有重点、有条理、有力度"。改写内容后，可再用 `optimize` 走一遍格式修复，实现「内容风格 + 排版格式」双合规。
+三层规则优先级 **official < custom < user**。在 `~/.gongwen-skill/user_rules/` 放同名 YAML 即可覆盖官方字体/字号，无需改代码。相关命令：`rule-export`（导出参考）、`rule-import`（导入）、`rule-list`（查看）。详见 `REFERENCE.md`。
 
-## 规则化 / 二次定制
+## ⚠️ 使用红线
 
-三层规则优先级：**official < custom < user**。用户可在 `~/.gongwen-skill/user_rules/` 放置同名 YAML 覆盖官方规则，实现按单位要求定制格式，无需改代码。详见 `REFERENCE.md`。
-
-## 工作流建议
-
-1. 先 `check --json` 拿到问题清单，向用户说明 P0/P1/P2 问题
-2. 若涉及语言风格，参考 `prompts/style-prompts.md` 改写内容
-3. 用户确认后 `optimize` 生成修复文件
-4. 只修部分问题时用 `--selected-rules` 指定规则 ID
-
-详细架构、修复动作、编程调用方式见 `REFERENCE.md`。
+- 不伪造、冒用真实机关正式发文；生成物仅为草稿，正式发文须走审核流程
+- 不编造政策依据、数据、结论；缺失信息用 `XXX` 占位
+- 涉密材料先脱敏再处理
 
 ---
 
-**版权与出处**：本 Skill 源自开源项目「AI 公文智能优化助手」，(c) 2026 Jose AI（https://www.linhut.cn），MIT 许可证。
+**版权与出处**：本 Skill 源自开源项目「AI 公文智能优化助手」，(c) 2026 Jose AI（https://www.linhut.cn），MIT 许可证。完整命令与架构见 `REFERENCE.md`。
