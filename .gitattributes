@@ -1,0 +1,4 @@
+# logo 图片仅用于 GitHub README 展示，从发布压缩包（git archive）中排除，
+# 使下载导入的 skill 包保持精简（仅含运行必需的代码/规则/文档）。
+logo/ export-ignore
+.gitattributes export-ignore
