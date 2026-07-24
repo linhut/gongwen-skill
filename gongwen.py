@@ -353,7 +353,7 @@ def cmd_check(args):
         if issues:
             print()
             print(f"{_bold('💡 建议')}：执行 optimize 进行自动修复")
-            print(f"   python gongwen.py optimize {args.input} -o 修复版.docx -t {args.doc_type}")
+            print(f"   python gongwen.py optimize {args.input} -o 修复版.docx -t {doc_type}")
 
 
 def cmd_optimize(args):
@@ -364,7 +364,11 @@ def cmd_optimize(args):
 
     engine = RuleEngine()
     input_path = Path(args.input)
-    out = Path(args.output) if args.output else input_path.with_stem(input_path.stem + "_优化版")
+    try:
+        out = Path(args.output) if args.output else input_path.with_stem(input_path.stem + "_优化版")
+    except AttributeError:
+        # Python < 3.9 兼容：with_stem 是 3.9 新增
+        out = Path(args.output) if args.output else input_path.with_name(input_path.stem + "_优化版" + input_path.suffix)
 
     # 安全警告：optimize 修改格式
     print(f"{_bold('📄 正在解析')}：{input_path}")
@@ -566,7 +570,7 @@ def cmd_md2docx(args):
     - doc_type: 公文类型（默认 notice）
     """
     import io
-    from core.document.parser import _parse_paragraph_format, _parse_run
+    from core.document.parser_format import _parse_paragraph_format, _parse_run
     from core.document.generator import generate_docx
     from core.document.models import (
         DocumentModel, DocumentMetadata, PageSetup,
@@ -618,8 +622,18 @@ def cmd_md2docx(args):
             doc_date = front_matter.get("date", doc_date)
             attachments = front_matter.get("attachments", attachments)
 
-    # 智能解析文档类型（支持中英文别名、拼音）
-    doc_type = _resolve_doc_type(args)
+    # 智能解析文档类型：Front Matter 中指定的 doc_type 优先级最高
+    # _resolve_doc_type 仅在 FM 未指定时做自动推断
+    fm_has_type = False
+    if lines and lines[0].strip() == "---":
+        for i in range(1, len(lines)):
+            if lines[i].strip().startswith("doc_type:"):
+                fm_has_type = True
+                break
+            if lines[i].strip() == "---":
+                break
+    if not fm_has_type:
+        doc_type = _resolve_doc_type(args)
 
     # 加载规则获取页边距等
     rules = load_rules_merged(doc_type)

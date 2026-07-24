@@ -75,8 +75,8 @@ Licensed under the MIT License. See the LICENSE file for details.
 | 范围 | 命令 | 修改内容 | 修改格式 | 安全级别 |
 |------|------|---------|---------|---------|
 | 🔍 **只读** | `check` / `parse` / `list-types` / `rule-list` | ❌ 不改 | ❌ 不改 | 🟢 绝对安全 |
-| ✏️ **只改内容** | `revise` / `md2docx` | ✅ 改内容 | ❌ 不改格式 | 🟡 安全（保留原排版） |
-| 🔧 **改格式** | `optimize` / `template` | ❌ 不改 | ✅ 改字体/边距/行距等 | 🔴 必须用户明确确认 |
+| ✏️ **只改内容** | `revise` | ✅ 改内容 | ❌ 不改格式 | 🟡 安全（保留原排版） |
+| 🔧 **改格式** | `optimize` / `template` / `md2docx` | ❌ 不改 | ✅ 改字体/边距/行距等 | 🔴 必须用户明确确认 |
 
 ### 流程路径速查（根据用户意图直接跳转）
 
@@ -131,8 +131,8 @@ Licensed under the MIT License. See the LICENSE file for details.
 | `rule-list` | 🔍 只读 | 查看已加载的规则 |
 | `check` | 🔍 只读 | 检查格式是否合规 |
 | `parse` | 🔍 只读 | 导出为 JSON 中间表示 |
-| `revise` | ✏️ 只改内容 | 内容修订对比（红色高亮+删除线+修改说明） |
-| `md2docx` | ✏️ 只改内容 | Markdown 转公文（保留原文排版） |
+| `revise` | ✏️ 只改内容 | 内容修订（红色高亮+删除线+修改说明） |
+| `md2docx` | 🔧 生成新文件 | Markdown 转公文（含格式排版） |
 | `optimize` | 🔧 改格式 | 自动修复字体/字号/行距/边距 |
 | `template` | 🔧 生成新文件 | 生成空白公文模板 |
 
@@ -342,9 +342,9 @@ Step 5: 确认是否需要再次调整
 |------|------|------|
 | 检查一个文档 | `check input.docx -t notice` | 只读，安全 |
 | 修复文档 | `optimize input.docx -o out.docx -t report -y` | 自动确认 |
-| 内容修订对比 | `revise 原文.docx -o 对比.docx -f 修订后.md` | 红色高亮+删除线+修改说明 |
+| 内容修订 | `revise 原文.docx -o 修订版.docx -f 修订后.md` | 红色高亮+删除线+修改说明 |
 | 生成模板 | `template notice -o 模板.docx` | 空白模板 |
-| Markdown 转公文 | `md2docx 草稿.md -o 公文.docx` | 含 Front Matter 支持 |
+| Markdown 转公文 | `md2docx 草稿.md -o 公文.docx` | 从零生成含格式排版 |
 | 查看规则 | `rule-list --source official` | 三层规则可查 |
 | 只看严重问题 | `check input.docx -t notice -s P0 --json` | 精确输出 |
 

@@ -24,7 +24,7 @@ from core.document.models import (
     DocumentModel, DocumentMetadata, Paragraph, Run, RunFormat,
     ParagraphFormat, PageSetup, Table, TableCell, HeaderFooter
 )
-from core.document.font_utils import detect_font_from_run, get_effective_font
+from core.document.font_utils import get_effective_font
 from core.document.parser_format import parse_paragraph_format, parse_run, _safe_pt2
 from utils.logger import logger
 
@@ -676,134 +676,7 @@ def _apply_style_fallback(para, runs: list[Run], para_format: ParagraphFormat) -
         pass
 
 
-def _parse_paragraph_format(para) -> ParagraphFormat:
-    """Parse paragraph-level formatting comprehensively."""
-    pf = para.paragraph_format
-
-    # 对齐
-    alignment = "left"
-    if para.alignment is not None:
-        alignment_map = {
-            WD_ALIGN_PARAGRAPH.LEFT: "left",
-            WD_ALIGN_PARAGRAPH.CENTER: "center",
-            WD_ALIGN_PARAGRAPH.RIGHT: "right",
-            WD_ALIGN_PARAGRAPH.JUSTIFY: "justify",
-        }
-        alignment = alignment_map.get(para.alignment, "left")
-
-    # 行间距
-    line_spacing_pt = None
-    line_spacing_rule = None
-    if pf.line_spacing is not None:
-        try:
-            # 优先使用 line_spacing_rule 来区分模式
-            from docx.enum.text import WD_LINE_SPACING
-            rule = pf.line_spacing_rule
-            if rule == WD_LINE_SPACING.MULTIPLE:
-                # 倍数模式：pf.line_spacing 是倍数值 (如 1.5)
-                # 转换为 pt：倍数 × 16pt（公文正文标准字号）
-                line_spacing_pt = float(pf.line_spacing) * 16
-                line_spacing_rule = "multiple"
-            elif rule == WD_LINE_SPACING.EXACTLY:
-                # 固定值模式：pf.line_spacing 是 EMU 整数值
-                # 必须通过 Length 转换为 pt（1pt = 12700 EMU）
-                line_spacing_pt = round(Length(pf.line_spacing, 0).pt, 2)
-                line_spacing_rule = "exact"
-            elif rule == WD_LINE_SPACING.AT_LEAST:
-                # 最小值模式：pf.line_spacing 是 Length 对象
-                line_spacing_pt = round(Length(pf.line_spacing, 0).pt, 2)
-                line_spacing_rule = "atLeast"
-            elif isinstance(pf.line_spacing, (int, float)):
-                if pf.line_spacing > 100:
-                    # 值 >100，很可能是 EMU（如 367665 EMU ≈ 28.95pt）
-                    line_spacing_pt = round(Length(int(pf.line_spacing), 0).pt, 2)
-                    line_spacing_rule = "exact"
-                elif pf.line_spacing > 3:
-                    # 值 3-100，视为 pt 值
-                    line_spacing_pt = float(pf.line_spacing)
-                    line_spacing_rule = "exact"
-                else:
-                    # 值<=3，视为倍数
-                    line_spacing_pt = float(pf.line_spacing) * 16
-                    line_spacing_rule = "multiple"
-            else:
-                # Length 对象
-                line_spacing_pt = round(Length(pf.line_spacing, 0).pt, 2)
-                line_spacing_rule = "exact"
-        except Exception:
-            pass
-
-    # 首行缩进
-    first_line_indent_pt = _safe_pt2(pf.first_line_indent)
-
-    # XML 级别回退：python-docx 仅读取 w:firstLine，中文公文常用 w:firstLineChars
-    # 当 python-docx 无法读取时（仅设了 firstLineChars），从 XML 直接解析
-    if first_line_indent_pt is None:
-        try:
-            pPr = para._element.pPr
-            if pPr is not None:
-                ind = pPr.find(qn('w:ind'))
-                if ind is not None:
-                    chars_val = ind.get(qn('w:firstLineChars'))
-                    if chars_val:
-                        # firstLineChars 单位为百分之一字符，200 = 2字符
-                        # 1字符 = 1字号 = 16pt（公文正文标准字号）
-                        first_line_indent_pt = round(float(chars_val) / 100 * 16, 2)
-        except Exception:
-            pass
-
-    left_indent_pt = _safe_pt2(pf.left_indent)
-    right_indent_pt = _safe_pt2(pf.right_indent)
-
-
-
-# ---------------------------------------------------------------------------
-#  Table
-# ---------------------------------------------------------------------------
-
-def _parse_run(run, index: int) -> Run:
-    """Parse a single text run with full font information."""
-    font = run.font
-
-    font_size_pt = None
-    if font.size:
-        try:
-            # font.size 返回 Length 对象（EMU 单位），用 .pt 属性转为磅值
-            # 错误写法：Pt(font.size).pt → 会把 EMU 值当成 pt 返回（如 203200.0 而非 16.0）
-            font_size_pt = round(font.size.pt, 1)
-        except Exception:
-            pass
-
-    # 使用 font_utils 获取有效中文字体
-    effective_font = get_effective_font(run)
-
-    # 获取 RGB 颜色
-    color_rgb = None
-    if font.color and font.color.rgb:
-        color_rgb = str(font.color.rgb)
-
-    # 通过 XML 检测删除线（python-docx 1.2.0 无 font.strikethrough）
-    _strikethrough = False
-    ns = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
-    rPr = run._element.find(f'{ns}rPr')
-    if rPr is not None:
-        strike_el = rPr.find(f'{ns}strike')
-        if strike_el is not None:
-            _strikethrough = True
-
-    return Run(
-        text=run.text,
-        index=index,
-        format=RunFormat(
-            font_name=effective_font,
-            font_size_pt=font_size_pt,
-            bold=font.bold if font.bold is not None else False,
-            italic=font.italic if font.italic is not None else False,
-            underline=font.underline if font.underline is not None else False,
-            strikethrough=_strikethrough,
-            color=color_rgb,
-        ),
-    )
+# 已迁移至 parser_format.py
 
 
 # ---------------------------------------------------------------------------
@@ -834,18 +707,4 @@ def _parse_table(table, index: int) -> Table:
         cells=cells,
     )
 
-
-# ---------------------------------------------------------------------------
-#  Helpers
-# ---------------------------------------------------------------------------
-
-def _safe_pt2(value, default: float | None = None) -> float | None:
-    """Safely convert a docx Length (EMU) to points float."""
-    try:
-        if value is None:
-            return default
-        # python-docx 属性返回 Length 对象（EMU），用 .pt 转为磅值
-        # 注意：Pt(value).pt 不会做单位转换，会把 EMU 原值当 pt 返回（BUG）
-        return round(Length(value, 0).pt, 2)
-    except Exception:
-        return default
+# 已迁移至 parser_format.py
