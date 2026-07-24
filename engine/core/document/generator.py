@@ -271,7 +271,16 @@ def _replace_paragraph_content(doc: Document, p_element, para_model: Paragraph):
                 if sub_tag in ('drawing', 'pict'):
                     has_image = True
                     break
-            if not has_image:
+            # 保留分页 run（含 w:br type=page）
+            has_page_break = False
+            for sub in child:
+                sub_tag = sub.tag.split('}')[-1] if '}' in sub.tag else sub.tag
+                if sub_tag == 'br':
+                    for attr_name in ('type',):
+                        if sub.get(qn('w:type')) == 'page':
+                            has_page_break = True
+                            break
+            if not has_image and not has_page_break:
                 p_element.remove(child)
         elif tag == 'hyperlink':
             # 保留超链接（可能包含图片）
