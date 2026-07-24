@@ -895,8 +895,10 @@ def _apply_run_format(run, run_model: Run):
         run.font.italic = fmt.italic
     if fmt.underline is not None:
         run.font.underline = fmt.underline
-    if fmt.strikethrough is not None:
-        run.font.strikethrough = fmt.strikethrough
+    if fmt.strikethrough is not None and fmt.strikethrough:
+        rPr = run._element.get_or_add_rPr()
+        strike_el = OxmlElement('w:strike')
+        rPr.append(strike_el)
 
     # === 颜色 ===
     if fmt.color:
