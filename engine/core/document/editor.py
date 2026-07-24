@@ -448,7 +448,8 @@ def _get_bold_prefix(text: str) -> str:
 
     规则：
     - 序号标记（一是/二是/一要/二要等） 仅前 2 字
-    - 普通正文  到第一个逗号"，"止（含逗号）
+    - 有点题句（句号结尾） 到第一个句号"。"止（含句号）
+    - 无点题句  到第一个逗号"，"止（含逗号）
     - 无逗号  前 15 字
     """
     if not text:
@@ -463,10 +464,15 @@ def _get_bold_prefix(text: str) -> str:
         if text.startswith(m):
             return m
 
-    # 普通正文：到第一个逗号
-    idx = text.find("，")
-    if idx >= 0:
-        return text[:idx + 1]
+    # 点题句：到第一个句号（含），且句号后还有内容（不是段落结尾）
+    dot_idx = text.find("。")
+    if dot_idx >= 0 and dot_idx <= 30 and dot_idx < len(text) - 1:
+        return text[:dot_idx + 1]
+
+    # 普通正文：到第一个逗号（含）
+    comma_idx = text.find("，")
+    if comma_idx >= 0:
+        return text[:comma_idx + 1]
 
     # 无逗号：前 15 字
     return text[:15]
