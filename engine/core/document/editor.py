@@ -297,7 +297,7 @@ def make_revision_model(
         result.paragraphs.append(Paragraph(
             index=len(result.paragraphs), text=note_text, role="annotation",
             runs=[Run(index=0, text=note_text,
-                      format=RunFormat(font_name="仿宋_GB2312", font_size_pt=12.0, color="555555"))],
+                      format=RunFormat(font_name="楷体", font_size_pt=12.0, color="555555"))],
             format=ParagraphFormat(alignment="justify", line_spacing_pt=22.0),
         ))
 
