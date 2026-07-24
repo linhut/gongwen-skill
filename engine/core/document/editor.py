@@ -317,43 +317,6 @@ def make_revision_model(
                     "note": diff.note or "", "background": background or "",
                 })
 
-    # ── 末尾分页汇总 ──
-    if mod_records:
-        total = mod_count + del_count + add_count
-        result.paragraphs.append(Paragraph(
-            index=len(result.paragraphs), text="", role="annotation",
-            runs=[], format=ParagraphFormat(),
-            page_break=True,
-        ))
-        summary_title = f"修改建议与说明（共修改 {mod_count} 处、删除 {del_count} 处、新增 {add_count} 处）"
-        result.paragraphs.append(Paragraph(
-            index=len(result.paragraphs), text=summary_title, role="annotation",
-            runs=[Run(index=0, text=summary_title,
-                      format=RunFormat(font_name="黑体", font_size_pt=16.0))],
-            format=ParagraphFormat(alignment="left", space_before_pt=6),
-        ))
-        result.paragraphs.append(Paragraph(
-            index=len(result.paragraphs), text="", role="annotation",
-            runs=[], format=ParagraphFormat(),
-        ))
-        for rec in mod_records:
-            head = f"{rec['num']}. 【{rec['type']}】"
-            body_parts = []
-            if rec['note']:
-                body_parts.append(f"【修改说明】{rec['note']}")
-            if rec['background']:
-                body_parts.append(f"【依据】{rec['background']}")
-            if perspective:
-                body_parts.append(f"【行文风格】{perspective}")
-            body_text = " ".join(body_parts)
-            line = f"{head} {body_text}"
-            result.paragraphs.append(Paragraph(
-                index=len(result.paragraphs), text=line, role="annotation",
-                runs=[Run(index=0, text=line,
-                          format=RunFormat(font_name="仿宋_GB2312", font_size_pt=14.0))],
-                format=ParagraphFormat(alignment="justify", first_line_indent_pt=0, space_before_pt=4),
-            ))
-
     return result
 
 
@@ -469,8 +432,8 @@ def _get_bold_prefix(text: str) -> str:
     if dot_idx >= 0 and dot_idx <= 30 and dot_idx < len(text) - 1:
         return text[:dot_idx + 1]
 
-    # 无句号/逗号：前 15 字（不按逗号加粗）
-    return text[:15]
+    # 其他一律不加粗
+    return ""
 
 
 def bold_first_sentence(paragraph: Paragraph, min_len: int = 1) -> Paragraph:
