@@ -85,6 +85,28 @@
 请指导我如何修改 YAML 文件，然后帮我导入自定义规则。
 ```
 
+### 场景五：对公文内容进行修订对比 ✨
+
+```
+我有一份公文需要做内容修改，请帮我生成修订对比文档。
+
+原文：./会议纪要.docx
+公文类型：meeting
+
+以下是修订后的内容（请逐段对比原文，展示修改差异）：
+---
+各部门、各子公司：
+现将2026年第二季度工作会议纪要印发给你们，请结合实际认真贯彻落实。
+...
+
+请按以下要求出对比报告：
+1. 修改处用红色字体高亮
+2. 删除的内容加删除线（灰色）
+3. 每处修改附修改说明
+4. 段落首句自动加粗
+5. 不要改变原文的排版格式
+```
+
 ---
 
 ## 📋 支持的公文类型速查
@@ -139,6 +161,11 @@ python gongwen.py optimize 文件.docx -o 文件_优化版.docx -t notice -y
 
 # 选择性修复
 python gongwen.py optimize 文件.docx -o 文件_优化版.docx --selected-rules FIX-N001,FIX-N002
+
+# 内容修订对比（✨ 新增）
+python gongwen.py revise 原文.docx -o 修订对比.docx -f 修订后.md
+python gongwen.py revise 原文.docx -o 修订对比.docx --text "修订后内容"
+cat 修订后.txt | python gongwen.py revise 原文.docx -o 修订对比.docx
 
 # 生成模板
 python gongwen.py template notice -o 通知模板.docx

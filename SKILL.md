@@ -123,6 +123,22 @@ python gongwen.py pagenum in.docx --alignment center                            
 
 ## 22 种公文类型（`-t` 参数取值）
 
+### 场景 E：用户需要对公文内容进行修订（不改变格式）✨
+
+```
+Step 1: 拿到用户提供的原文 .docx 和修订后的文本内容（Markdown / 纯文本）
+Step 2: 执行 revise 生成对比文档：
+        python gongwen.py revise 原文.docx -o 修订对比.docx -f 修订后.md
+Step 3: 向用户解释对比标记含义：
+        · 🔴 红色 = 修改后内容（首句加粗）
+        · ⚪ 灰色删除线 = 原文被删除部分
+        · 💡 修改说明 = 每处变更的修改理由
+Step 4: 确认是否需要再次调整
+Step 5: 定稿后可选执行 optimize --selected-rules 做格式精修
+```
+
+## 支持的公文类型（22 种）
+
 | 类型 | 命令名 | 说明 |
 |------|--------|------|
 | 通知 | `notice` | 通用通知、事务通知 |

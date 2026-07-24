@@ -21,6 +21,7 @@ VERSION = "1.2.2"
   parse     <in.docx>          解析文档为结构化 JSON（DocumentModel）
   check     <in.docx>          按规则检查格式问题（只读，不改文件）
   optimize  <in.docx> -o out   检查 + 自动修复 + 生成合规文档（支持 --layout 版式注入）
+  revise    <in.docx> -o out   内容修订对比（原文对照/红色高亮/删除线/修改说明）
   generate  <model.json> -o    从 DocumentModel JSON 生成 .docx
   md2docx   <input.md> -o      将 Markdown 文本转为格式化的公文 .docx
   header    <in.docx>          注入版头：发文机关标志 + 发文字号 + 签发人 + 红色反线
@@ -252,6 +253,73 @@ def cmd_generate(args):
     out = Path(args.output) if args.output else Path("generated.docx")
     generate_docx(model, out)
     print(f"{_bold('✅ 文档已生成')}：{out}")
+
+
+def cmd_revise(args):
+    """
+    内容修订对比：输入原文 .docx + 修订后 Markdown/文本，
+    生成带原文对照、红色高亮、删除线、修改说明的对比文档。
+    仅修改内容，不改变原文排版格式。
+    """
+    from core.document.parser import parse_docx
+    from core.document.editor import (
+        compare_paragraphs,
+        make_revision_model,
+        bold_first_sentence_in_model,
+        generate_revision_doc,
+    )
+
+    # 读取修订后内容
+    revised_text: str
+    if args.file:
+        revised_text = Path(args.file).read_text(encoding="utf-8")
+        source_desc = f"文件 {args.file}"
+    elif args.text:
+        revised_text = args.text
+        source_desc = "内联文本"
+    elif not sys.stdin.isatty():
+        revised_text = sys.stdin.read()
+        source_desc = "stdin"
+    else:
+        print(f"{_bold('❌ 错误')}：请提供修订内容（--file、--text 或管道输入）", file=sys.stderr)
+        print(f"{_bold('💡 示例')}：python gongwen.py revise 原文.docx -o 修订对比.docx -f 修订后.md", file=sys.stderr)
+        sys.exit(1)
+
+    # 解析修订后内容为段落列表
+    revised_lines = [line.strip() for line in revised_text.split("\n") if line.strip()]
+    revised_texts = [("body", line) for line in revised_lines]
+
+    # 解析原文获取段落
+    input_path = Path(args.input)
+    print(f"{_bold('📄 正在解析原文')}：{input_path}")
+    orig_model = parse_docx(str(input_path))
+    original_texts = [(p.role or "body", p.text) for p in orig_model.paragraphs if p.text.strip()]
+
+    # 段落对比
+    print(f"{_bold('🔍 正在对比内容')}（原文 {len(original_texts)} 段 → 修订 {len(revised_texts)} 段）...")
+    sections = compare_paragraphs(original_texts, revised_texts)
+
+    # 生成修订模型
+    doc_type = args.doc_type or "notice"
+    rev_model = make_revision_model(orig_model, sections, doc_type)
+
+    # 段落首句自动加粗
+    bold_first_sentence_in_model(rev_model)
+
+    # 生成文档（使用 generate_docx 直接生成，不触发表格/页边距等格式规则）
+    from core.document.generator import generate_docx
+
+    out = Path(args.output) if args.output else Path("修订对比.docx")
+    generate_docx(rev_model, str(out))
+
+    # 统计
+    mod_count = sum(1 for s in sections for d in s.diffs if d.type != "same")
+    del_count = sum(1 for s in sections for d in s.diffs if d.type == "deleted")
+    add_count = sum(1 for s in sections for d in s.diffs if d.type == "added")
+
+    print(f"{_bold('✅ 修订对比文档已生成')}：{out}")
+    print(f"  {_bold('修订概况')}：共 {len(sections)} 段，其中修改 {mod_count} 处，删除 {del_count} 处，新增 {add_count} 处")
+    print(f"  {_bold('修订内容来源')}：{source_desc}")
 
 
 def cmd_md2docx(args):
@@ -617,6 +685,14 @@ def main():
     p.add_argument("--format", default="— {PAGE} —",
                    help="页码格式，可用 {PAGE} / {NUMPAGES}（默认 '— {PAGE} —'）")
     p.set_defaults(func=cmd_pagenum)
+
+    p = sub.add_parser("revise", help="内容修订对比（原文对照、红色高亮、删除线、修改说明）")
+    p.add_argument("input", help="原文 .docx 路径")
+    p.add_argument("-o", "--output", help="输出 .docx 路径（默认 修订对比.docx）")
+    p.add_argument("-t", "--doc-type", default="notice", help="公文类型（默认 notice）")
+    p.add_argument("-f", "--file", help="修订后内容文件（.md 或 .txt）")
+    p.add_argument("--text", help="修订后内容文本（内联输入）")
+    p.set_defaults(func=cmd_revise)
 
     p = sub.add_parser("md2docx", help="将 Markdown 文本转为格式化的公文 .docx")
     p.add_argument("input", help="输入 .md 路径，或 '-' 从标准输入读取（支持管道）")

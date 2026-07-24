@@ -415,6 +415,12 @@ def _add_runs_via_xml(p_element, para_model: Paragraph):
                 rPr.append(OxmlElement('w:b'))
             if fmt.italic:
                 rPr.append(OxmlElement('w:i'))
+            if fmt.strikethrough:
+                rPr.append(OxmlElement('w:strike'))
+            if fmt.color:
+                color_el = OxmlElement('w:color')
+                color_el.set(qn('w:val'), fmt.color.lstrip('#'))
+                rPr.append(color_el)
             if len(rPr) > 0:
                 r.append(rPr)
             t = OxmlElement('w:t')
@@ -889,6 +895,8 @@ def _apply_run_format(run, run_model: Run):
         run.font.italic = fmt.italic
     if fmt.underline is not None:
         run.font.underline = fmt.underline
+    if fmt.strikethrough is not None:
+        run.font.strikethrough = fmt.strikethrough
 
     # === 颜色 ===
     if fmt.color:
