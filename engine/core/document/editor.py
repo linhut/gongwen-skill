@@ -469,12 +469,7 @@ def _get_bold_prefix(text: str) -> str:
     if dot_idx >= 0 and dot_idx <= 30 and dot_idx < len(text) - 1:
         return text[:dot_idx + 1]
 
-    # 普通正文：到第一个逗号（含）
-    comma_idx = text.find("，")
-    if comma_idx >= 0:
-        return text[:comma_idx + 1]
-
-    # 无逗号：前 15 字
+    # 无句号/逗号：前 15 字（不按逗号加粗）
     return text[:15]
 
 
