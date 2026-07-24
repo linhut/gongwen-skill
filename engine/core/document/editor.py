@@ -206,121 +206,116 @@ def make_revision_model(
     perspective: str = "",
 ) -> DocumentModel:
     """
-    根据修订节生成对比文档 DocumentModel。
-
-    Args:
-        background:  修订背景（如"根据上级文件精神"）
-        context:     修订语境（如"面向基层单位发文"）
-        perspective: 修订角度（如"庄重严谨"、"平实简洁"）
-
-    格式：
-      ┌─────────────────────────────────┐
-      │  【修订报告】类型: notice        │
-      │  背景：xxx  语境：xxx  角度：xxx │
-      │                                  │
-      │  ─── 段落 1（修改）───           │
-      │  🔴 修订：xxxxx                 │  ← 红色
-      │  ⚪ 原文：xxxxx（带删除线）     │
-      │  💡 说明：优化措辞              │
-      │                                  │
-      │  ─── 段落 2（无修改）───         │
-      │  xxxxx                          │
-      │                                  │
-      │  ─── 段落 3（删除）───           │
-      │  ~~~xxxxx~~~（删除线）          │
-      │  💡 说明：删除冗余内容          │
-      └─────────────────────────────────┘
+    基于原文模型生成内容修订文档。
+    保留原文所有格式（字体/字号/行距/缩进/对齐/边距），
+    仅对修改处嵌入红色标注 + 删除线。
     """
-    # 继承原文的页面设置
-    page_setup = original_model.page_setup or PageSetup()
-    
-    # 如果没有页边距，设置默认公文边距
+    import copy
+
+    # 克隆原文的页面设置
+    page_setup = copy.deepcopy(original_model.page_setup) if original_model.page_setup else PageSetup()
     if not page_setup.margin_top_mm:
         page_setup.margin_top_mm = 37
         page_setup.margin_bottom_mm = 35
         page_setup.margin_left_mm = 28
         page_setup.margin_right_mm = 26
-        page_setup.paper_width_mm = 210
-        page_setup.paper_height_mm = 297
 
     result = DocumentModel(
-        metadata=DocumentMetadata(title=f"修订报告 - {doc_type}"),
+        metadata=copy.deepcopy(original_model.metadata) if original_model.metadata else DocumentMetadata(),
         page_setup=page_setup,
+        headers=copy.deepcopy(original_model.headers) if original_model.headers else [],
+        footers=copy.deepcopy(original_model.footers) if original_model.footers else [],
     )
 
     para_idx = 0
 
-    # 标题：修订报告
+    # ── 标题：在文档顶部添加修订标识 ──
+    rev_title_text = "📝 内容修订对照"
     result.paragraphs.append(Paragraph(
-        index=para_idx, text=f"修订报告（公文类型：{doc_type}）", role="title",
-        runs=[Run(index=0, text=f"修订报告（公文类型：{doc_type}）",
-                  format=RunFormat(font_name="方正小标宋简体", font_size_pt=22.0, bold=True))],
-        format=ParagraphFormat(alignment="center"),
-    ))
-    para_idx += 1
-
-    # 分隔线
-    result.paragraphs.append(Paragraph(
-        index=para_idx, text="", role="body",
-        runs=[], format=ParagraphFormat(),
+        index=para_idx, text=rev_title_text, role="title",
+        runs=[Run(index=0, text=rev_title_text,
+                  format=RunFormat(font_name="黑体", font_size_pt=14.0, bold=True, color="333333"))],
+        format=ParagraphFormat(alignment="left"),
     ))
     para_idx += 1
 
     # 背景/语境/角度信息栏
     info_parts = []
     if background:
-        info_parts.append(f"📌 修订背景：{background}")
+        info_parts.append(f"📌 背景：{background}")
     if context:
-        info_parts.append(f"📎 修订语境：{context}")
+        info_parts.append(f"📎 语境：{context}")
     if perspective:
-        info_parts.append(f"🎯 修订角度：{perspective}")
+        info_parts.append(f"🎯 角度：{perspective}")
     if info_parts:
         info_text = " | ".join(info_parts)
         result.paragraphs.append(Paragraph(
             index=para_idx, text=info_text, role="body",
-            runs=[_make_colored_run(info_text, font_name="楷体", font_size=14.0, color="333333")],
+            runs=[Run(index=0, text=info_text,
+                      format=RunFormat(font_name="楷体", font_size_pt=12.0, color="555555"))],
             format=ParagraphFormat(alignment="left"),
         ))
         para_idx += 1
-        result.paragraphs.append(Paragraph(
-            index=para_idx, text="", role="body",
-            runs=[], format=ParagraphFormat(),
-        ))
-        para_idx += 1
+    # 空行分隔
+    result.paragraphs.append(Paragraph(
+        index=para_idx, text="", role="body",
+        runs=[], format=ParagraphFormat(),
+    ))
+    para_idx += 1
 
-    # 逐节输出修订内容
-    for sec in sections:
-        # 节标题
-        result.paragraphs.append(Paragraph(
-            index=para_idx, text=f"── {sec.title} ──", role="body",
-            runs=[_make_colored_run(f"── {sec.title} ──", bold=True, font_name="仿宋_GB2312", font_size=14.0)],
-            format=ParagraphFormat(alignment="left", space_before_pt=6, space_after_pt=3),
-        ))
-        para_idx += 1
+    # ── 图例说明 ──
+    legend_text = "图例：🔴 红色=修改/新增内容 | ~~删除线~~=原文被删除内容 | 💡=修改说明"
+    result.paragraphs.append(Paragraph(
+        index=para_idx, text=legend_text, role="body",
+        runs=[Run(index=0, text=legend_text,
+                  format=RunFormat(font_name="楷体", font_size_pt=12.0, color="888888"))],
+        format=ParagraphFormat(alignment="left"),
+    ))
+    para_idx += 1
+    result.paragraphs.append(Paragraph(
+        index=para_idx, text="─" * 60, role="body",
+        runs=[Run(index=0, text="─" * 60,
+                  format=RunFormat(font_name="仿宋_GB2312", font_size_pt=10.0, color="CCCCCC"))],
+        format=ParagraphFormat(alignment="left"),
+    ))
+    para_idx += 1
 
+    # ── 逐段输出修订内容 ──
+    for sec_idx, sec in enumerate(sections):
         for diff in sec.diffs:
             if diff.type == "same":
-                # 无修改 — 正常显示
-                first_sentence, rest = _split_first_sentence(diff.original)
-                runs = []
-                if first_sentence:
-                    runs.append(_make_colored_run(first_sentence, bold=True))
-                if rest:
-                    runs.append(_make_colored_run(rest))
-                if not runs:
-                    runs.append(_make_colored_run(diff.original))
-                result.paragraphs.append(Paragraph(
-                    index=para_idx, text=diff.original, role="body",
-                    runs=runs,
-                    format=ParagraphFormat(alignment="justify", line_spacing_pt=28.95, first_line_indent_pt=32),
-                ))
+                # 无修改 — 完全保留原文格式
+                if sec_idx < len(original_model.paragraphs):
+                    orig_para = original_model.paragraphs[sec_idx]
+                    result.paragraphs.append(copy.deepcopy(orig_para))
+                else:
+                    runs = []
+                    first_sentence, rest = _split_first_sentence(diff.original)
+                    if first_sentence:
+                        runs.append(_make_colored_run(first_sentence, bold=True))
+                    if rest:
+                        runs.append(_make_colored_run(rest))
+                    if not runs:
+                        runs.append(_make_colored_run(diff.original))
+                    result.paragraphs.append(Paragraph(
+                        index=para_idx, text=diff.original, role="body",
+                        runs=runs,
+                        format=ParagraphFormat(alignment="justify", line_spacing_pt=28.95, first_line_indent_pt=32),
+                    ))
                 para_idx += 1
 
             elif diff.type == "modified":
-                # 修改 — 红色显示修订后，灰色显示原文（带删除线）
-                # 修订后文本（红色 + 首句加粗）
+                # 修改：修订后内容（红色）+ 原文（红色+删除线）+ 说明
+                # 修订后文本 — 基于原文格式，内容用红色
+                orig_para_fmt = ParagraphFormat(alignment="justify", line_spacing_pt=28.95, first_line_indent_pt=32)
+                if sec_idx < len(original_model.paragraphs):
+                    orig_fmt = original_model.paragraphs[sec_idx].format
+                    if orig_fmt.alignment or orig_fmt.line_spacing_pt or orig_fmt.first_line_indent_pt:
+                        orig_para_fmt = orig_fmt
+
+                # 修订后内容（红色）
                 first_sentence, rest = _split_first_sentence(diff.revised)
-                rev_runs = [_make_colored_run("📝 修订：", bold=True, font_name="黑体", font_size=14.0, color="000000")]
+                rev_runs = [_make_colored_run("📝 修订：", bold=True, color="000000")]
                 if first_sentence:
                     rev_runs.append(_make_colored_run(first_sentence, color="FF0000", bold=True))
                 if rest:
@@ -329,14 +324,13 @@ def make_revision_model(
                     rev_runs.append(_make_colored_run(diff.revised, color="FF0000"))
                 result.paragraphs.append(Paragraph(
                     index=para_idx, text=f"修订：{diff.revised}", role="body",
-                    runs=rev_runs,
-                    format=ParagraphFormat(alignment="justify", line_spacing_pt=28.95, first_line_indent_pt=32),
+                    runs=rev_runs, format=copy.deepcopy(orig_para_fmt),
                 ))
                 para_idx += 1
 
-                # 原文（红色 + 删除线，标记被删除部分）
+                # 原文（红色 + 删除线）
                 if diff.original:
-                    orig_runs = [_make_colored_run("原文：", bold=True, font_name="黑体", font_size=14.0, color="FF0000")]
+                    orig_runs = [_make_colored_run("原文：", bold=True, color="FF0000")]
                     orig_runs.append(_make_colored_run(diff.original, color="FF0000", strikethrough=True))
                     result.paragraphs.append(Paragraph(
                         index=para_idx, text=f"原文：{diff.original}", role="body",
@@ -347,15 +341,14 @@ def make_revision_model(
 
                 # 修改说明
                 if diff.note:
-                    note_runs = [_make_colored_run(f"💡 修改说明：{diff.note}", font_name="楷体", font_size=14.0, color="333333")]
+                    note_runs = [_make_colored_run(f"💡 {diff.note}", font_size=12.0, color="555555")]
                     result.paragraphs.append(Paragraph(
                         index=para_idx, text=f"修改说明：{diff.note}", role="body",
-                        runs=note_runs,
-                        format=ParagraphFormat(alignment="left"),
+                        runs=note_runs, format=ParagraphFormat(alignment="left"),
                     ))
                     para_idx += 1
 
-                # 空行分隔
+                # 空行
                 result.paragraphs.append(Paragraph(
                     index=para_idx, text="", role="body",
                     runs=[], format=ParagraphFormat(),
@@ -363,8 +356,11 @@ def make_revision_model(
                 para_idx += 1
 
             elif diff.type == "deleted":
-                # 删除 — 带删除线
-                runs = [_make_colored_run(f"⚠ 删除：{diff.original}", color="FF0000", strikethrough=True)]
+                # 删除 — 红色 + 删除线
+                orig_font = "仿宋_GB2312"
+                if sec_idx < len(original_model.paragraphs) and original_model.paragraphs[sec_idx].runs:
+                    orig_font = original_model.paragraphs[sec_idx].runs[0].format.font_name or orig_font
+                runs = [_make_colored_run(f"⚠ 删除：{diff.original}", color="FF0000", strikethrough=True, font_name=orig_font)]
                 result.paragraphs.append(Paragraph(
                     index=para_idx, text=f"删除：{diff.original}", role="body",
                     runs=runs,
@@ -373,8 +369,8 @@ def make_revision_model(
                 para_idx += 1
                 if diff.note:
                     result.paragraphs.append(Paragraph(
-                        index=para_idx, text=f"💡 删除原因：{diff.note}", role="body",
-                        runs=[_make_colored_run(f"💡 删除原因：{diff.note}", font_name="楷体", font_size=14.0, color="333333")],
+                        index=para_idx, text=f"💡 {diff.note}", role="body",
+                        runs=[_make_colored_run(f"💡 {diff.note}", font_size=12.0, color="555555")],
                         format=ParagraphFormat(alignment="left"),
                     ))
                     para_idx += 1
@@ -387,7 +383,7 @@ def make_revision_model(
             elif diff.type == "added":
                 # 新增 — 红色字体
                 first_sentence, rest = _split_first_sentence(diff.revised)
-                runs = [_make_colored_run("🆕 新增：", bold=True, font_name="黑体", font_size=14.0, color="000000")]
+                runs = [_make_colored_run("🆕 新增：", bold=True, color="000000")]
                 if first_sentence:
                     runs.append(_make_colored_run(first_sentence, color="FF0000", bold=True))
                 if rest:
