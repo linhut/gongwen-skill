@@ -484,6 +484,11 @@ def bold_first_sentence(paragraph: Paragraph, min_len: int = 1) -> Paragraph:
     if not paragraph.text or not paragraph.runs or paragraph.role != "body":
         return paragraph
 
+    # 跳过日期/签名类段落（纯日期、数字年份开头等）
+    text = paragraph.text.strip()
+    if re.match(r'^\d{4}年\d{1,2}月', text):  # 2026年7月...
+        return paragraph
+
     bold_prefix = _get_bold_prefix(paragraph.text)
     if not bold_prefix or len(bold_prefix) < min_len:
         return paragraph

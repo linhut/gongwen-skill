@@ -535,6 +535,10 @@ def _assign_paragraph_roles(paragraphs: list[Paragraph]) -> None:
         idx, para = non_empty[i]
         text = para.text.strip()
 
+        # 跳过修改说明汇总条目（含【修改】关键词）
+        if '【修改' in text:
+            continue
+
         # 日期
         if _DATE_RE.match(text) or _DATE_ALT_RE.match(text):
             para.role = 'date'
