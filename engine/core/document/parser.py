@@ -782,6 +782,15 @@ def _parse_run(run, index: int) -> Run:
     if font.color and font.color.rgb:
         color_rgb = str(font.color.rgb)
 
+    # 通过 XML 检测删除线（python-docx 1.2.0 无 font.strikethrough）
+    _strikethrough = False
+    ns = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+    rPr = run._element.find(f'{ns}rPr')
+    if rPr is not None:
+        strike_el = rPr.find(f'{ns}strike')
+        if strike_el is not None:
+            _strikethrough = True
+
     return Run(
         text=run.text,
         index=index,
@@ -791,6 +800,7 @@ def _parse_run(run, index: int) -> Run:
             bold=font.bold if font.bold is not None else False,
             italic=font.italic if font.italic is not None else False,
             underline=font.underline if font.underline is not None else False,
+            strikethrough=_strikethrough,
             color=color_rgb,
         ),
     )

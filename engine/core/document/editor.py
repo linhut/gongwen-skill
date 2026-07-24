@@ -207,7 +207,8 @@ def make_revision_model(
 ) -> DocumentModel:
     """
     基于原文模型生成内容修订文档。
-    保留原文所有格式，仅在修改处加红色+删除线，不添加任何额外内容。
+    行内修订：同一段内，删除部分红色+删除线，新增部分红色，不变部分保留原格式。
+    不改变原文样式格式，不额外加粗，不生成两个版本。
     """
     import copy
 
@@ -224,39 +225,40 @@ def make_revision_model(
                 result.paragraphs.append(copy.deepcopy(original_model.paragraphs[sec_idx]))
 
             elif diff.type == "modified":
-                # 修改 — 保留原文格式，内容用红色标注
+                # 修改 — 行内修订：不变+删除线+新增 混合在一段内
                 orig_para = original_model.paragraphs[sec_idx] if sec_idx < len(original_model.paragraphs) else None
+                if not orig_para:
+                    continue
 
-                if orig_para:
-                    # 第一段：修订后内容（红色）
-                    rev_run = Run(
-                        index=0, text=diff.revised,
-                        format=RunFormat(
-                            font_name=orig_para.runs[0].format.font_name if orig_para.runs else None,
-                            font_size_pt=orig_para.runs[0].format.font_size_pt if orig_para.runs else None,
-                            color="FF0000",
-                        ),
-                    )
-                    result.paragraphs.append(Paragraph(
-                        index=len(result.paragraphs), text=diff.revised, role=orig_para.role,
-                        runs=[rev_run],
-                        format=copy.deepcopy(orig_para.format),
-                    ))
+                # 获取原文格式信息
+                fmt_base = orig_para.runs[0].format if orig_para.runs else RunFormat()
+                font = fmt_base.font_name
+                size = fmt_base.font_size_pt
 
-                    # 第二段：原文（红色 + 删除线）
-                    orig_run = Run(
-                        index=0, text=diff.original,
-                        format=RunFormat(
-                            font_name=orig_para.runs[0].format.font_name if orig_para.runs else None,
-                            font_size_pt=orig_para.runs[0].format.font_size_pt if orig_para.runs else None,
-                            color="FF0000", strikethrough=True,
-                        ),
-                    )
-                    result.paragraphs.append(Paragraph(
-                        index=len(result.paragraphs), text=diff.original, role=orig_para.role,
-                        runs=[orig_run],
-                        format=copy.deepcopy(orig_para.format),
-                    ))
+                # 用 _word_diff 做字符级差异
+                word_diffs = _word_diff(diff.original, diff.revised)
+
+                # 构建行内 runs
+                inline_runs = []
+                for tag, text in word_diffs:
+                    if tag == "same":
+                        inline_runs.append(Run(index=len(inline_runs), text=text,
+                            format=RunFormat(font_name=font, font_size_pt=size)))
+                    elif tag == "delete":
+                        inline_runs.append(Run(index=len(inline_runs), text=text,
+                            format=RunFormat(font_name=font, font_size_pt=size, color="FF0000", strikethrough=True)))
+                    elif tag == "insert":
+                        inline_runs.append(Run(index=len(inline_runs), text=text,
+                            format=RunFormat(font_name=font, font_size_pt=size, color="FF0000")))
+
+                # 组合段落文本
+                full_text = "".join(r.text for r in inline_runs)
+
+                result.paragraphs.append(Paragraph(
+                    index=len(result.paragraphs), text=full_text, role=orig_para.role,
+                    runs=inline_runs,
+                    format=copy.deepcopy(orig_para.format),
+                ))
 
                 # 修改说明
                 note_parts = []
@@ -271,13 +273,6 @@ def make_revision_model(
                         runs=[Run(index=0, text=note_text,
                                   format=RunFormat(font_name="仿宋_GB2312", font_size_pt=12.0, color="333333"))],
                         format=ParagraphFormat(alignment="justify", line_spacing_pt=22.0),
-                    ))
-                else:
-                    # 无原文参考时：仅红色
-                    result.paragraphs.append(Paragraph(
-                        index=len(result.paragraphs), text=diff.revised, role="body",
-                        runs=[Run(index=0, text=diff.revised, format=RunFormat(color="FF0000"))],
-                        format=ParagraphFormat(alignment="justify"),
                     ))
 
             elif diff.type == "deleted" and sec_idx < len(original_model.paragraphs):
@@ -299,10 +294,14 @@ def make_revision_model(
 
             elif diff.type == "added":
                 # 新增 — 红色字体
+                orig_para = original_model.paragraphs[sec_idx] if sec_idx < len(original_model.paragraphs) else None
+                fmt = orig_para.runs[0].format if orig_para and orig_para.runs else RunFormat()
+                add_run = Run(index=0, text=diff.revised,
+                    format=RunFormat(font_name=fmt.font_name, font_size_pt=fmt.font_size_pt, color="FF0000"))
                 result.paragraphs.append(Paragraph(
                     index=len(result.paragraphs), text=diff.revised, role="body",
-                    runs=[Run(index=0, text=diff.revised, format=RunFormat(color="FF0000"))],
-                    format=ParagraphFormat(alignment="justify", line_spacing_pt=28.95, first_line_indent_pt=32),
+                    runs=[add_run],
+                    format=copy.deepcopy(orig_para.format) if orig_para else ParagraphFormat(alignment="justify"),
                 ))
 
     return result
