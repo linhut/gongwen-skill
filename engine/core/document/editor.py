@@ -257,6 +257,21 @@ def make_revision_model(
                         runs=[orig_run],
                         format=copy.deepcopy(orig_para.format),
                     ))
+
+                # 修改说明
+                note_parts = []
+                if diff.note:
+                    note_parts.append(f"【修改说明】{diff.note}")
+                if background:
+                    note_parts.append(f"【依据】{background}")
+                if note_parts:
+                    note_text = " ".join(note_parts)
+                    result.paragraphs.append(Paragraph(
+                        index=len(result.paragraphs), text=note_text, role="body",
+                        runs=[Run(index=0, text=note_text,
+                                  format=RunFormat(font_name="仿宋_GB2312", font_size_pt=12.0, color="333333"))],
+                        format=ParagraphFormat(alignment="justify", line_spacing_pt=22.0),
+                    ))
                 else:
                     # 无原文参考时：仅红色
                     result.paragraphs.append(Paragraph(
