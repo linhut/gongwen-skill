@@ -169,14 +169,24 @@ python gongwen.py pagenum in.docx --alignment center                            
 
 ```
 Step 1: 拿到用户提供的原文 .docx 和修订后的文本内容（Markdown / 纯文本）
-Step 2: 执行 revise 生成对比文档：
-        python gongwen.py revise 原文.docx -o 修订对比.docx -f 修订后.md
-Step 3: 向用户解释对比标记含义：
+Step 2: 确认修订的背景/语境/角度（用户未提供时自动标注"未指定"）：
+        --background "根据上级文件精神"      # 修订背景说明
+        --context "面向基层单位发文"          # 修订语境说明
+        --perspective "庄重严谨"             # 修订角度/风格
+Step 3: 执行 revise 生成对比文档：
+        python gongwen.py revise 原文.docx -o 修订对比.docx -f 修订后.md \
+          --background "根据上级文件精神" \
+          --context "面向基层单位发文" \
+          --perspective "庄重严谨"
+Step 4: 向用户解释对比标记含义：
+        · 📌 修订背景 = 本次修订的出发点
+        · 📎 修订语境 = 发文对象和使用场景
+        · 🎯 修订角度 = 语言风格和切入角度
         · 🔴 红色 = 修改后内容（首句加粗）
         · ⚪ 灰色删除线 = 原文被删除部分
         · 💡 修改说明 = 每处变更的修改理由
-Step 4: 确认是否需要再次调整
-Step 5: 定稿后可选执行 optimize --selected-rules 做格式精修
+Step 5: 确认是否需要再次调整
+Step 6: 定稿后可选执行 optimize --selected-rules 做格式精修
 ```
 
 ## 支持的公文类型（22 种）

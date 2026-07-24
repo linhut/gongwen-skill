@@ -201,13 +201,22 @@ def make_revision_model(
     original_model: DocumentModel,
     sections: list[RevisionSection],
     doc_type: str = "notice",
+    background: str = "",
+    context: str = "",
+    perspective: str = "",
 ) -> DocumentModel:
     """
     根据修订节生成对比文档 DocumentModel。
 
+    Args:
+        background:  修订背景（如"根据上级文件精神"）
+        context:     修订语境（如"面向基层单位发文"）
+        perspective: 修订角度（如"庄重严谨"、"平实简洁"）
+
     格式：
       ┌─────────────────────────────────┐
       │  【修订报告】类型: notice        │
+      │  背景：xxx  语境：xxx  角度：xxx │
       │                                  │
       │  ─── 段落 1（修改）───           │
       │  🔴 修订：xxxxx                 │  ← 红色
@@ -256,6 +265,28 @@ def make_revision_model(
         runs=[], format=ParagraphFormat(),
     ))
     para_idx += 1
+
+    # 背景/语境/角度信息栏
+    info_parts = []
+    if background:
+        info_parts.append(f"📌 修订背景：{background}")
+    if context:
+        info_parts.append(f"📎 修订语境：{context}")
+    if perspective:
+        info_parts.append(f"🎯 修订角度：{perspective}")
+    if info_parts:
+        info_text = " | ".join(info_parts)
+        result.paragraphs.append(Paragraph(
+            index=para_idx, text=info_text, role="body",
+            runs=[_make_colored_run(info_text, font_name="楷体", font_size=14.0, color="333333")],
+            format=ParagraphFormat(alignment="left"),
+        ))
+        para_idx += 1
+        result.paragraphs.append(Paragraph(
+            index=para_idx, text="", role="body",
+            runs=[], format=ParagraphFormat(),
+        ))
+        para_idx += 1
 
     # 逐节输出修订内容
     for sec in sections:

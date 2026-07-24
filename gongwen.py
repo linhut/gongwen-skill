@@ -496,7 +496,12 @@ def cmd_revise(args):
 
     # 生成修订模型
     doc_type = _resolve_doc_type(args, orig_model)
-    rev_model = make_revision_model(orig_model, sections, doc_type)
+    rev_model = make_revision_model(
+        orig_model, sections, doc_type,
+        background=getattr(args, "background", ""),
+        context=getattr(args, "context", ""),
+        perspective=getattr(args, "perspective", ""),
+    )
 
     # 段落首句自动加粗
     bold_first_sentence_in_model(rev_model)
@@ -892,6 +897,9 @@ def main():
     p.add_argument("-t", "--doc-type", default="notice", help="公文类型（默认 notice）")
     p.add_argument("-f", "--file", help="修订后内容文件（.md 或 .txt）")
     p.add_argument("--text", help="修订后内容文本（内联输入）")
+    p.add_argument("--background", help="修订背景说明（如'根据上级文件精神'）")
+    p.add_argument("--context", help="修订语境说明（如'面向基层单位发文'）")
+    p.add_argument("--perspective", help="修订角度/风格（如'庄重严谨'、'平实简洁'）")
     p.set_defaults(func=cmd_revise)
 
     p = sub.add_parser("md2docx", help="将 Markdown 文本转为格式化的公文 .docx")
