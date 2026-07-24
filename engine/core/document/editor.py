@@ -267,7 +267,7 @@ def make_revision_model(
                 if note_parts:
                     note_text = " ".join(note_parts)
                     result.paragraphs.append(Paragraph(
-                        index=len(result.paragraphs), text=note_text, role="body",
+                        index=len(result.paragraphs), text=note_text, role="annotation",
                         runs=[Run(index=0, text=note_text,
                                   format=RunFormat(font_name="仿宋_GB2312", font_size_pt=12.0, color="555555"))],
                         format=ParagraphFormat(alignment="justify", line_spacing_pt=22.0),
@@ -321,19 +321,19 @@ def make_revision_model(
     if mod_records:
         total = mod_count + del_count + add_count
         result.paragraphs.append(Paragraph(
-            index=len(result.paragraphs), text="", role="body",
+            index=len(result.paragraphs), text="", role="annotation",
             runs=[], format=ParagraphFormat(),
             page_break=True,
         ))
         summary_title = f"修改建议与说明（共修改 {mod_count} 处、删除 {del_count} 处、新增 {add_count} 处）"
         result.paragraphs.append(Paragraph(
-            index=len(result.paragraphs), text=summary_title, role="body",
+            index=len(result.paragraphs), text=summary_title, role="annotation",
             runs=[Run(index=0, text=summary_title,
                       format=RunFormat(font_name="黑体", font_size_pt=16.0))],
             format=ParagraphFormat(alignment="left", space_before_pt=6),
         ))
         result.paragraphs.append(Paragraph(
-            index=len(result.paragraphs), text="", role="body",
+            index=len(result.paragraphs), text="", role="annotation",
             runs=[], format=ParagraphFormat(),
         ))
         for rec in mod_records:
@@ -348,7 +348,7 @@ def make_revision_model(
             body_text = " ".join(body_parts)
             line = f"{head} {body_text}"
             result.paragraphs.append(Paragraph(
-                index=len(result.paragraphs), text=line, role="body",
+                index=len(result.paragraphs), text=line, role="annotation",
                 runs=[Run(index=0, text=line,
                           format=RunFormat(font_name="仿宋_GB2312", font_size_pt=14.0))],
                 format=ParagraphFormat(alignment="justify", first_line_indent_pt=0, space_before_pt=4),
@@ -491,7 +491,7 @@ def bold_first_sentence(paragraph: Paragraph, min_len: int = 8) -> Paragraph:
 
 
 def bold_first_sentence_in_model(model: DocumentModel, min_len: int = 8) -> DocumentModel:
-    """对 DocumentModel 中所有正文段落的首句加粗（仅 role=body，最后一步执行）。"""
+    """对 DocumentModel 中所有正文段落的首句加粗（仅 role=body，跳过 annotation，最后一步执行）。"""
     for para in model.paragraphs:
         if para.role == "body" and para.text:
             bold_first_sentence(para, min_len)

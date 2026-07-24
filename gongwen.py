@@ -452,8 +452,8 @@ def cmd_generate(args):
 
 def cmd_revise(args):
     """
-    内容修订对比：输入原文 .docx + 修订后 Markdown/文本，
-    生成带原文对照、红色高亮、删除线、修改说明的对比文档。
+    内容修订：输入原文 .docx + 修订后 Markdown/文本，
+    生成行内修订版本（红色高亮+删除线+修改说明）。
     仅修改内容，不改变原文排版格式。
     """
     from core.document.parser import parse_docx
@@ -461,8 +461,6 @@ def cmd_revise(args):
         compare_paragraphs,
         make_revision_model,
         bold_first_sentence_in_model,
-        collect_revision_summary,
-        add_summary_to_model,
     )
 
     # 读取修订后内容
@@ -478,7 +476,7 @@ def cmd_revise(args):
         source_desc = "stdin"
     else:
         print(f"{_bold('❌ 错误')}：请提供修订内容（--file、--text 或管道输入）", file=sys.stderr)
-        print(f"{_bold('💡 示例')}：python gongwen.py revise 原文.docx -o 修订对比.docx -f 修订后.md", file=sys.stderr)
+        print(f"{_bold('💡 示例')}：python gongwen.py revise 原文.docx -o 修订版.docx -f 修订后.md", file=sys.stderr)
         sys.exit(1)
 
     # 解析修订后内容为段落列表
@@ -504,7 +502,7 @@ def cmd_revise(args):
     print(f"{_bold('⚠️ 注意')}：revise 命令 ✏️ 仅修改内容，不改变原文排版格式")
     print(f"  共 {len(sections)} 段，其中修改 {mod_count} 处、删除 {del_count} 处、新增 {add_count} 处")
     if not args.yes:
-        msg = f"将生成内容修订对比文档，是否继续？"
+        msg = f"将生成修订版本，是否继续？"
         if not _confirm(msg, default=True):
             print(f"{_bold('❌ 已取消')}")
             sys.exit(0)
@@ -521,14 +519,10 @@ def cmd_revise(args):
     # 段落首句自动加粗
     bold_first_sentence_in_model(rev_model)
 
-    # 收集修改建议与说明（文档内+对话框双输出）
-    summary_lines = collect_revision_summary(sections)
-    rev_model = add_summary_to_model(rev_model, summary_lines)
-
-    # 生成文档（使用 generate_docx 直接生成，不触发表格/页边距等格式规则）
+    # 生成文档
     from core.document.generator import generate_docx
 
-    out = Path(args.output) if args.output else Path("修订对比.docx")
+    out = Path(args.output) if args.output else Path("修订版.docx")
     generate_docx(rev_model, str(out))
 
     # 统计
@@ -536,23 +530,27 @@ def cmd_revise(args):
     del_count = sum(1 for s in sections for d in s.diffs if d.type == "deleted")
     add_count = sum(1 for s in sections for d in s.diffs if d.type == "added")
 
-    print(f"{_bold('✅ 修订对比文档已生成')}：{out}")
+    print(f"{_bold('✅ 修订版已生成')}：{out}")
     print(f"  {_bold('修订概况')}：共 {len(sections)} 段，其中修改 {mod_count} 处，删除 {del_count} 处，新增 {add_count} 处")
     print(f"  {_bold('修订内容来源')}：{source_desc}")
-    if getattr(args, "background", "") or getattr(args, "context", "") or getattr(args, "perspective", ""):
-        info_parts = []
-        if args.background:
-            info_parts.append(f"📌 背景：{args.background}")
-        if args.context:
-            info_parts.append(f"📎 语境：{args.context}")
-        if args.perspective:
-            info_parts.append(f"🎯 角度：{args.perspective}")
-        print(f"  {_bold('修订依据')}：{' | '.join(info_parts)}")
+    info_parts = []
+    if getattr(args, "background", ""):
+        info_parts.append(f"📌 背景：{args.background}")
+    if getattr(args, "context", ""):
+        info_parts.append(f"📎 语境：{args.context}")
+    if getattr(args, "perspective", ""):
+        info_parts.append(f"🎯 角度：{args.perspective}")
+    if info_parts:
+        print(f"  {' | '.join(info_parts)}")
     print()
     print(f"  {_bold('━ 修改建议与说明 ━')}")
-    for line in summary_lines:
-        if line.strip():
-            print(f"  {line}")
+    print(f"  共修改 {mod_count} 处、删除 {del_count} 处、新增 {add_count} 处")
+    for i, s in enumerate(sections, 1):
+        for d in s.diffs:
+            if d.type != "same":
+                note = d.note or "优化措辞"
+                print(f"  {i}. 【{d.type}】{note}")
+                break
 
 
 def cmd_md2docx(args):
