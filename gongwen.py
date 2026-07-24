@@ -483,8 +483,18 @@ def cmd_revise(args):
         print(f"{_bold('💡 示例')}：python gongwen.py revise 原文.docx -o 修订版.docx -f 修订后.md", file=sys.stderr)
         sys.exit(1)
 
-    # 解析修订后内容为段落列表
-    revised_lines = [line.strip() for line in revised_text.split("\n") if line.strip()]
+    # 解析修订后内容为段落列表（跳过 YAML Front Matter）
+    raw_lines = revised_text.split("\n")
+    if raw_lines and raw_lines[0].strip() == "---":
+        # 跳过 Front Matter 块
+        fm_end = None
+        for i in range(1, len(raw_lines)):
+            if raw_lines[i].strip() == "---":
+                fm_end = i
+                break
+        if fm_end is not None:
+            raw_lines = raw_lines[fm_end + 1:]
+    revised_lines = [line.strip() for line in raw_lines if line.strip()]
     revised_texts = [("body", line) for line in revised_lines]
 
     # 解析原文获取段落
