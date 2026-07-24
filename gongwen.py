@@ -9,6 +9,9 @@
 #
 # 本文件为独立发行版的统一入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
+
+VERSION = "1.1.0"
+
 """
 公文文档格式化 Skill —— 基于 GB/T 9704 国家标准的公文 .docx 处理引擎。
 
@@ -56,6 +59,54 @@ except Exception:
 
 
 # ---------------------------------------------------------------------------
+#  辅助函数
+# ---------------------------------------------------------------------------
+
+def _bold(text: str) -> str:
+    """返回 ANSI 粗体文本（Windows 终端 >=10 和 *nix 均支持）。"""
+    return f"\033[1m{text}\033[0m"
+
+
+def _confirm(prompt: str, default: bool = False) -> bool:
+    """交互式确认，默认返回 default 对应的值。非 TTY（管道）环境自动返回 default。"""
+    if not sys.stdin.isatty():
+        return default
+    suffix = " [Y/n]" if default else " [y/N]"
+    while True:
+        try:
+            resp = input(prompt + suffix + " ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return default
+        if not resp:
+            return default
+        if resp in ("y", "yes", "是", "确认"):
+            return True
+        if resp in ("n", "no", "否", "取消"):
+            return False
+        print("  请输入 y/n")
+
+
+def _print_summary(issues: list, prefix: str = ""):
+    """格式化输出问题摘要。"""
+    p0 = sum(1 for i in issues if i.severity == "P0")
+    p1 = sum(1 for i in issues if i.severity == "P1")
+    p2 = sum(1 for i in issues if i.severity == "P2")
+    print(f"{prefix}{_bold('检查完成')}：共 {len(issues)} 个问题（P0:{p0}  P1:{p1}  P2:{p2}）")
+    if issues:
+        print(f"{prefix}  {'级别':<5} {'规则ID':<14} {'问题描述':<20} {'位置'}")
+        print(f"{prefix}  {'────':<5} {'──────':<14} {'──────────':<20} {'────'}")
+        for i in issues:
+            sev_icon = {"P0": "🔴", "P1": "🟡", "P2": "🟢"}.get(i.severity, "  ")
+            print(f"{prefix}  {sev_icon} {i.severity:<5} {i.rule_id:<14} {i.name:<20} {i.location}")
+            if i.original_text:
+                print(f"{prefix}      实际：{i.original_text}")
+            if i.suggested_fix:
+                print(f"{prefix}      期望：{i.suggested_fix}")
+    return p0, p1, p2
+
+
+# ---------------------------------------------------------------------------
 #  子命令实现
 # ---------------------------------------------------------------------------
 
@@ -66,8 +117,9 @@ def cmd_list_types(args):
     if args.json:
         print(json.dumps(types, ensure_ascii=False, indent=2))
     else:
+        print(f"{_bold(f'📋 支持 {len(types)} 种公文类型')}：")
         for t in types:
-            print(t)
+            print(f"  • {t}")
 
 
 def cmd_template(args):
@@ -82,7 +134,7 @@ def cmd_template(args):
 
     out = Path(args.output) if args.output else Path(f"{doc_type}_template.docx")
     generate_docx(model, out)
-    print(f"模板已生成: {out} (类型: {doc_type})")
+    print(f"{_bold('✅ 模板已生成')}：{out}（类型：{doc_type}）")
 
 
 def cmd_parse(args):
@@ -94,7 +146,7 @@ def cmd_parse(args):
     text = json.dumps(data, ensure_ascii=False, indent=2)
     if args.output:
         Path(args.output).write_text(text, encoding="utf-8")
-        print(f"已解析: {args.output} ({len(model.paragraphs)} 段落, {len(model.tables)} 表格)")
+        print(f"{_bold('✅ 已解析')}：{args.output}（{len(model.paragraphs)} 段落，{len(model.tables)} 表格）")
     else:
         print(text)
 
@@ -120,35 +172,60 @@ def cmd_check(args):
         } for i in issues]
         print(json.dumps(results, ensure_ascii=False, indent=2))
     else:
-        p0 = sum(1 for i in issues if i.severity == "P0")
-        p1 = sum(1 for i in issues if i.severity == "P1")
-        p2 = sum(1 for i in issues if i.severity == "P2")
-        print(f"检查完成: {len(issues)} 个问题 (P0:{p0}, P1:{p1}, P2:{p2})")
-        for i in issues:
-            print(f"  [{i.severity}] {i.rule_id}: {i.name} @ {i.location}")
-            print(f"       实际: {i.original_text}  → 期望: {i.suggested_fix}")
+        p0, p1, p2 = _print_summary(issues, prefix="📋")
+        if issues:
+            print()
+            print(f"{_bold('💡 建议')}：执行 optimize 进行自动修复")
+            print(f"   python gongwen.py optimize {args.input} -o 修复版.docx -t {args.doc_type}")
 
 
 def cmd_optimize(args):
-    """检查 + 修复 + 生成。"""
+    """检查 + 修复 + 生成（带交互确认）。"""
     from core.document.parser import parse_docx
     from core.document.generator import generate_docx
     from core.rules.engine import RuleEngine
 
     engine = RuleEngine()
     input_path = Path(args.input)
-    out = Path(args.output) if args.output else input_path.with_stem(input_path.stem + "_optimized")
+    out = Path(args.output) if args.output else input_path.with_stem(input_path.stem + "_优化版")
 
+    print(f"{_bold('📄 正在解析')}：{input_path}")
     model = parse_docx(str(input_path))
     selected = args.selected_rules.split(",") if args.selected_rules else None
-    issues, fixed = engine.check_and_fix(model, args.doc_type, selected)
-    generate_docx(fixed, str(out))
 
+    # 先检查，展示问题
+    print(f"{_bold('🔍 正在检查')}（类型：{args.doc_type}）...")
+    issues, fixed = engine.check_and_fix(model, args.doc_type, selected)
+
+    if not issues:
+        print(f"{_bold('✅ 文档已合规')}，无需修复。")
+        if args.output:
+            # 即使无问题，也输出副本
+            generate_docx(model, str(out))
+            print(f"  {_bold('已复制到')}：{out}")
+        return
+
+    # 展示问题摘要
+    _print_summary(issues, prefix="")
+    print()
+
+    # 交互确认（除非 -y 跳过）
+    if not args.yes:
+        if selected:
+            msg = f"将按指定规则修复以上问题，是否继续？"
+        else:
+            msg = f"将自动修复以上 {len(issues)} 个问题，是否继续？"
+        if not _confirm(msg, default=True):
+            print(f"{_bold('❌ 已取消')}")
+            sys.exit(0)
+
+    # 执行修复 + 生成
+    generate_docx(fixed, str(out))
+    print(f"{_bold('✅ 优化完成')}：{out}")
     p0 = sum(1 for i in issues if i.severity == "P0")
     p1 = sum(1 for i in issues if i.severity == "P1")
     p2 = sum(1 for i in issues if i.severity == "P2")
-    print(f"优化完成: {out}")
-    print(f"  修复 {len(issues)} 项 (P0:{p0}, P1:{p1}, P2:{p2})")
+    print(f"  {_bold('已修复')} {len(issues)} 项（P0:{p0}  P1:{p1}  P2:{p2}）")
 
     # 可选：版头/版记/页码一次性注入（--layout 指向 JSON 配置）
     if getattr(args, "layout", None):
@@ -174,7 +251,7 @@ def cmd_generate(args):
     model = DocumentModel(**data)
     out = Path(args.output) if args.output else Path("generated.docx")
     generate_docx(model, out)
-    print(f"文档已生成: {out}")
+    print(f"{_bold('✅ 文档已生成')}：{out}")
 
 
 def cmd_md2docx(args):
@@ -329,10 +406,10 @@ def cmd_md2docx(args):
     out = Path(args.output) if args.output else Path("output.docx")
     generate_docx(model, str(out))
 
-    print(f"公文已生成: {out}")
-    print(f"  类型: {doc_type}, 段落: {len(model.paragraphs)}, Markdown 转换: {changes} 处")
+    print(f"{_bold('✅ 公文已生成')}：{out}")
+    print(f"  {_bold('类型')}：{doc_type}，{_bold('段落')}：{len(model.paragraphs)}，{_bold('Markdown 转换')}：{changes} 处")
     if source_desc != "stdin" and args.input != "-":
-        print(f"  来源: {source_desc}")
+        print(f"  {_bold('来源')}：{source_desc}")
 
 
 def cmd_header(args):
@@ -406,7 +483,7 @@ def cmd_rule_export(args):
     text = yaml.dump(rules, allow_unicode=True, default_flow_style=False, sort_keys=False)
     if args.output:
         Path(args.output).write_text(text, encoding="utf-8")
-        print(f"规则已导出: {args.output} (类型: {args.type})")
+        print(f"{_bold('✅ 规则已导出')}：{args.output}（类型：{args.type}）")
     else:
         print(text)
 
@@ -418,8 +495,14 @@ def cmd_rule_list(args):
     if args.json:
         print(json.dumps(files, ensure_ascii=False, indent=2))
     else:
+        if not files:
+            print(f"{_bold('📭 未找到任何规则文件')}")
+            return
+        print(f"{_bold(f'📋 共 {len(files)} 个规则文件')}：")
+        print(f"  {'层级':<10} {'名称':<20} {'大小'}")
+        print(f"  {'────':<10} {'────':<20} {'────'}")
         for f in files:
-            print(f"  [{f['source_type']}] {f['key']}  ({f['size']} bytes)")
+            print(f"  [{f['source_type']:<7}] {f['key']:<20} ({f['size']} bytes)")
 
 
 def cmd_rule_import(args):
@@ -435,25 +518,26 @@ def cmd_rule_import(args):
     elif not sys.stdin.isatty():
         content = yaml.safe_load(sys.stdin.read())
     else:
-        print("错误：请提供 --file 或 --text，或通过管道输入 YAML", file=sys.stderr)
+        print(f"{_bold('❌ 错误')}：请提供 --file 或 --text，或通过管道输入 YAML", file=sys.stderr)
+        print(f"{_bold('💡 示例')}：python gongwen.py rule-import my_rules -f my_rules.yaml", file=sys.stderr)
         sys.exit(1)
 
     if not isinstance(content, dict):
-        print("错误：YAML 内容必须是一个字典", file=sys.stderr)
+        print(f"{_bold('❌ 错误')}：YAML 内容必须是一个字典", file=sys.stderr)
         sys.exit(1)
 
     try:
         validate_rule(content)
     except ValueError as e:
-        print(f"错误：规则校验失败 - {e}", file=sys.stderr)
+        print(f"{_bold('❌ 错误')}：规则校验失败 - {e}", file=sys.stderr)
         sys.exit(1)
 
     source = args.source or "user"
     ok = save_rule(key, content, source)
     if ok:
-        print(f"规则已保存: {key} ({source})")
+        print(f"{_bold('✅ 规则已保存')}：{key}（{source}）")
     else:
-        print(f"错误：保存失败", file=sys.stderr)
+        print(f"{_bold('❌ 错误')}：保存失败", file=sys.stderr)
         sys.exit(1)
 
 
@@ -468,6 +552,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
+    parser.add_argument("--version", action="store_true", help="显示版本号")
     sub = parser.add_subparsers(dest="command", help="子命令")
 
     p = sub.add_parser("list-types", help="列出支持的公文类型")
@@ -484,24 +569,25 @@ def main():
     p.add_argument("-o", "--output", help="输出 JSON 路径（缺省打印到 stdout）")
     p.set_defaults(func=cmd_parse)
 
-    p = sub.add_parser("check", help="检查文档格式（只读）")
+    p = sub.add_parser("check", help="检查文档格式（只读，不改文件）")
     p.add_argument("input", help="输入 .docx 路径")
     p.add_argument("-t", "--doc-type", default="notice", help="公文类型（默认 notice）")
     p.add_argument("-s", "--severity", choices=["P0", "P1", "P2"], help="仅显示指定级别")
     p.add_argument("--json", action="store_true", help="JSON 输出")
     p.set_defaults(func=cmd_check)
 
-    p = sub.add_parser("optimize", help="检查 + 修复 + 生成")
+    p = sub.add_parser("optimize", help="检查 + 修复 + 生成（交互式确认）")
     p.add_argument("input", help="输入 .docx 路径")
-    p.add_argument("-o", "--output", help="输出 .docx 路径")
+    p.add_argument("-o", "--output", help="输出 .docx 路径（默认在原文件名后加 _优化版）")
     p.add_argument("-t", "--doc-type", default="notice", help="公文类型（默认 notice）")
     p.add_argument("--selected-rules", help="仅应用指定修复规则 ID，逗号分隔")
     p.add_argument("--layout", help="版式注入 JSON 配置（含 header/footer/page_number）")
+    p.add_argument("-y", "--yes", action="store_true", help="跳过确认提示，直接执行修复")
     p.set_defaults(func=cmd_optimize)
 
     p = sub.add_parser("generate", help="从 DocumentModel JSON 生成 .docx")
     p.add_argument("input", help="输入 model.json 路径")
-    p.add_argument("-o", "--output", help="输出 .docx 路径")
+    p.add_argument("-o", "--output", help="输出 .docx 路径（默认 generated.docx）")
     p.set_defaults(func=cmd_generate)
 
     p = sub.add_parser("header", help="注入版头：发文机关标志 + 发文字号 + 签发人 + 红色反线")
@@ -544,10 +630,10 @@ def main():
 
     p = sub.add_parser("rule-export", help="导出合并后的规则为 YAML")
     p.add_argument("type", help="公文类型")
-    p.add_argument("-o", "--output", help="输出 YAML 路径")
+    p.add_argument("-o", "--output", help="输出 YAML 路径（缺省打印到 stdout）")
     p.set_defaults(func=cmd_rule_export)
 
-    p = sub.add_parser("rule-list", help="列出三层规则")
+    p = sub.add_parser("rule-list", help="列出三层规则文件")
     p.add_argument("--source", default="all", choices=["all", "official", "custom", "user"])
     p.add_argument("--json", action="store_true", help="JSON 输出")
     p.set_defaults(func=cmd_rule_list)
@@ -556,10 +642,19 @@ def main():
     p.add_argument("key", help="规则标识符（仅字母数字下划线连字符）")
     p.add_argument("-f", "--file", help="YAML 文件路径")
     p.add_argument("--text", help="YAML 文本内容（内联）")
-    p.add_argument("--source", default="user", choices=["user", "custom"], help="保存层级")
+    p.add_argument("--source", default="user", choices=["user", "custom"], help="保存层级（默认 user）")
     p.set_defaults(func=cmd_rule_import)
 
     args = parser.parse_args()
+
+    # --version 优先处理
+    if args.version:
+        from core.rules.loader import list_available_types
+        types_count = len(list_available_types())
+        print(f"gongwen-skill v{VERSION} (支持 {types_count} 种公文类型)")
+        print(f"GB/T 9704 公文格式化引擎 · MIT License · (c) 2026 Jose AI")
+        sys.exit(0)
+
     if not args.command:
         parser.print_help()
         sys.exit(1)
@@ -567,10 +662,11 @@ def main():
     try:
         args.func(args)
     except FileNotFoundError as e:
-        print(f"错误：文件不存在 - {e}", file=sys.stderr)
+        print(f"{_bold('❌ 错误')}：文件不存在 - {e}", file=sys.stderr)
+        print(f"{_bold('💡 提示')}：请检查文件路径是否正确", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
-        print(f"错误：{e}", file=sys.stderr)
+        print(f"{_bold('❌ 错误')}：{e}", file=sys.stderr)
         sys.exit(1)
 
 
