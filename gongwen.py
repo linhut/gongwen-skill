@@ -10,7 +10,7 @@
 # 本文件为独立发行版的统一入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 
 """
 公文文档格式化 Skill —— 基于 GB/T 9704 国家标准的公文 .docx 处理引擎。
@@ -357,7 +357,7 @@ def cmd_check(args):
 
 
 def cmd_optimize(args):
-    """检查 + 修复 + 生成（带交互确认）。"""
+    """检查 + 修复 + 生成（带交互确认）。⚠️ 会修改字体/行距/边距等格式。"""
     from core.document.parser import parse_docx
     from core.document.generator import generate_docx
     from core.rules.engine import RuleEngine
@@ -366,12 +366,28 @@ def cmd_optimize(args):
     input_path = Path(args.input)
     out = Path(args.output) if args.output else input_path.with_stem(input_path.stem + "_优化版")
 
+    # 安全警告：optimize 修改格式
     print(f"{_bold('📄 正在解析')}：{input_path}")
+    print(f"{_bold('⚠️ 注意')}：optimize 命令会修改字体、字号、行距、页边距等格式属性")
+    if args.content_only:
+        print(f"  已指定 {_bold('--content-only')}，将跳过所有格式修复规则")
+    elif args.format_only:
+        print(f"  已指定 {_bold('--format-only')}，仅修复格式问题")
+
     model = parse_docx(str(input_path))
     selected = args.selected_rules.split(",") if args.selected_rules else None
 
     # 智能解析文档类型
     doc_type = _resolve_doc_type(args, model)
+
+    # 根据 --content-only 决定是否执行格式检查
+    if args.content_only:
+        print(f"{_bold('🔍 跳过格式检查')}（--content-only 模式）")
+        # content-only 模式下直接生成副本，不作格式修复
+        generate_docx(model, str(out))
+        print(f"{_bold('✅ 已生成副本')}：{out}")
+        print(f"  💡 如需内容修订对比，请使用 revise 命令")
+        return
 
     # 先检查，展示问题
     print(f"{_bold('🔍 正在检查')}（类型：{doc_type}）...")
@@ -826,13 +842,15 @@ def main():
     p.add_argument("--json", action="store_true", help="JSON 输出")
     p.set_defaults(func=cmd_check)
 
-    p = sub.add_parser("optimize", help="检查 + 修复 + 生成（交互式确认）")
+    p = sub.add_parser("optimize", help="检查 + 修复 + 生成（默认交互确认，⚠️ 会修改字体/行距/边距等格式）")
     p.add_argument("input", help="输入 .docx 路径")
     p.add_argument("-o", "--output", help="输出 .docx 路径（默认在原文件名后加 _优化版）")
-    p.add_argument("-t", "--doc-type", default="notice", help="公文类型（默认 notice）")
+    p.add_argument("-t", "--doc-type", default="notice", help="公文类型（默认 notice，支持自动检测）")
     p.add_argument("--selected-rules", help="仅应用指定修复规则 ID，逗号分隔")
     p.add_argument("--layout", help="版式注入 JSON 配置（含 header/footer/page_number）")
     p.add_argument("-y", "--yes", action="store_true", help="跳过确认提示，直接执行修复")
+    p.add_argument("--format-only", action="store_true", help="仅修复格式，不改内容（默认行为）")
+    p.add_argument("--content-only", action="store_true", help="仅处理内容，跳过所有格式修复规则")
     p.set_defaults(func=cmd_optimize)
 
     p = sub.add_parser("generate", help="从 DocumentModel JSON 生成 .docx")

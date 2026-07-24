@@ -5,6 +5,26 @@
 
 ---
 
+## 🟢 最小可用指引（给不熟悉本工具的 LLM）
+
+如果你记不住所有命令，只记住这 **3 条**就够了：
+
+```
+# 1️⃣ 用户要检查文件 → 只读，安全
+python gongwen.py check 文件.docx
+
+# 2️⃣ 用户要修改内容 → 只改内容不改格式
+python gongwen.py revise 原文.docx -o 对比.docx -f 修订后.md
+
+# 3️⃣ 用户确认要修格式 → 先展示问题再执行
+python gongwen.py optimize 文件.docx -o 优化版.docx
+```
+
+**不记得参数也没关系**，系统会自动推断文档类型和输出文件名。
+**不确定用什么命令**，就先用 `check`（绝对安全）。
+
+---
+
 ## 📌 基础指令模板
 
 ```
@@ -144,36 +164,39 @@
 # 查看版本
 python gongwen.py --version
 
-# 列出所有类型
+# 列出所有类型（🔍 只读）
 python gongwen.py list-types
 
-# 检查格式（只读，推荐先执行）
+# 检查格式（🔍 只读，推荐先执行）
 python gongwen.py check 文件.docx -t notice
 
-# 只看严重问题
+# 只看严重问题（🔍 只读）
 python gongwen.py check 文件.docx -t notice -s P0 --json
 
-# 一键优化（交互确认模式）
+# 一键优化（🔧 会修改字体/行距/边距等格式！默认交互确认）
 python gongwen.py optimize 文件.docx -o 文件_优化版.docx -t notice
 
-# 跳过确认（已知问题后快速修复）
+# 跳过确认（🔧 已知问题后快速修复格式）
 python gongwen.py optimize 文件.docx -o 文件_优化版.docx -t notice -y
 
-# 选择性修复
+# 选择性修复（🔧 仅修改指定规则）
 python gongwen.py optimize 文件.docx -o 文件_优化版.docx --selected-rules FIX-N001,FIX-N002
 
-# 内容修订对比（✨ 新增）
+# 仅保留格式、不做任何修复（🔧 跳过格式规则）
+python gongwen.py optimize 文件.docx -o 文件_优化版.docx --content-only
+
+# 内容修订对比（✏️ 只改内容不改格式！）
 python gongwen.py revise 原文.docx -o 修订对比.docx -f 修订后.md
 python gongwen.py revise 原文.docx -o 修订对比.docx --text "修订后内容"
 cat 修订后.txt | python gongwen.py revise 原文.docx -o 修订对比.docx
 
-# 生成模板
+# 生成模板（🔧 生成新文件，含标准排版）
 python gongwen.py template notice -o 通知模板.docx
 
-# Markdown 转公文
+# Markdown 转公文（✏️ 只改内容不改格式）
 python gongwen.py md2docx 草稿.md -o 公文.docx -t report --signer "XX局" --date "2026年7月24日"
 
-# 规则管理
+# 规则管理（🔍 只读）
 python gongwen.py rule-list
 python gongwen.py rule-export notice -o notice_rules.yaml
 ```
