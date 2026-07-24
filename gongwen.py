@@ -108,8 +108,182 @@ def _print_summary(issues: list, prefix: str = ""):
 
 
 # ---------------------------------------------------------------------------
-#  子命令实现
+#  文档类型智能解析（语义级容错）
 # ---------------------------------------------------------------------------
+
+# 中文别名 ↔ 英文类型名 映射表（支持常见变体、缩写、拼音）
+_DOC_TYPE_ALIASES: dict[str, str] = {
+    "通知": "notice", "tongzhi": "notice", "tz": "notice",
+    "请示": "request", "qingshi": "request", "qs": "request",
+    "报告": "report", "baogao": "report", "bg": "report", "汇报": "report",
+    "函": "letter", "han": "letter", "公函": "letter", "商洽函": "letter", "答复函": "letter",
+    "会议纪要": "meeting", "纪要": "meeting", "huiyijiyao": "meeting", "hy": "meeting",
+    "minutes": "minutes", "jilu": "minutes",
+    "决定": "decision", "jueding": "decision", "jd": "decision",
+    "通告": "announcement", "tonggao": "announcement", "tg": "announcement",
+    "公告": "notice_public", "gonggao": "notice_public", "gg": "notice_public",
+    "命令": "command", "mingling": "command", "ml": "command",
+    "通报": "bulletin", "tongbao": "bulletin", "tb": "bulletin",
+    "议案": "bill", "yian": "bill", "ya": "bill",
+    "批复": "reply", "pifu": "reply", "pf": "reply",
+    "指示": "instruction", "zhishi": "instruction", "zs": "instruction",
+    "制度": "regulation", "zhidu": "regulation", "zd": "regulation", "办法": "regulation", "章程": "regulation",
+    "公报": "communique", "gongbao": "communique", "gb": "communique",
+    "意见": "opinion", "yijian": "opinion", "yj": "opinion",
+    "总结": "summary", "zongjie": "summary", "zj": "summary",
+    "方案": "work_plan", "计划": "work_plan", "方案计划": "work_plan",
+    "fang'an": "work_plan", "fangan": "work_plan", "fa": "work_plan",
+    "桌签": "table_sign", "zhuoqian": "table_sign", "zq": "table_sign",
+    "技术方案": "technical_proposal", "tech": "technical_proposal",
+    "决议": "resolution", "jueyi": "resolution", "jy": "resolution",
+}
+
+# 文件名关键词 → 类型（按优先级排序）
+_FILENAME_KEYWORDS: list[tuple[list[str], str]] = [
+    (["通知", "tz", "tongzhi"], "notice"),
+    (["请示", "qs", "qingshi", "申请"], "request"),
+    (["报告", "bg", "baogao", "汇报", "报告书"], "report"),
+    (["函", "han", "公函"], "letter"),
+    (["纪要", "会议纪要", "hy", "meeting"], "meeting"),
+    (["决定", "jd", "jueding"], "decision"),
+    (["通告", "tg", "tonggao"], "announcement"),
+    (["公告", "gg", "gonggao"], "notice_public"),
+    (["命令", "ml", "mingling"], "command"),
+    (["通报", "tb", "tongbao"], "bulletin"),
+    (["议案", "ya", "yian"], "bill"),
+    (["批复", "pf", "pifu", "批"], "reply"),
+    (["指示", "zs", "zhishi"], "instruction"),
+    (["制度", "zd", "zhidu", "办法", "章程", "规定"], "regulation"),
+    (["公报", "gb", "gongbao"], "communique"),
+    (["意见", "yj", "yijian"], "opinion"),
+    (["总结", "zj", "zongjie", "小结"], "summary"),
+    (["方案", "计划", "工作计", "方安", "work"], "work_plan"),
+    (["桌签", "zq", "zhuoqian"], "table_sign"),
+    (["技术方案", "技术", "tech"], "technical_proposal"),
+    (["决议", "jy", "jueyi"], "resolution"),
+]
+
+
+def _fuzzy_match_type(raw: str) -> str | None:
+    """
+    模糊匹配文档类型。支持：
+    - 精确匹配（大小写不敏感）
+    - 中文别名映射
+    - 部分匹配
+    - 拼音/缩写
+
+    Returns:
+        匹配到的类型名（小写）或 None
+    """
+    raw_lower = raw.strip().lower()
+
+    # 1. 直接精确匹配
+    from core.rules.loader import list_available_types
+    available = list_available_types()
+    for t in available:
+        if t == raw_lower:
+            return t
+
+    # 2. 别名映射
+    if raw_lower in _DOC_TYPE_ALIASES:
+        return _DOC_TYPE_ALIASES[raw_lower]
+
+    # 3. 在可用类型中做部分匹配
+    for t in available:
+        if raw_lower in t or t in raw_lower:
+            return t
+
+    # 4. 看别名表的 key 是否包含输入
+    for alias, type_name in _DOC_TYPE_ALIASES.items():
+        if raw_lower in alias.lower():
+            return type_name
+
+    return None
+
+
+def _detect_type_from_filename(path: str | Path) -> str | None:
+    """从文件名推断文档类型。"""
+    fname = Path(path).stem.lower()
+    for keywords, doc_type in _FILENAME_KEYWORDS:
+        for kw in keywords:
+            if kw.lower() in fname:
+                return doc_type
+    return None
+
+
+def _detect_type_from_content(model) -> str | None:
+    """从文档内容推断公文类型。"""
+    # 收集所有段落文本
+    texts = [p.text for p in model.paragraphs if p.text.strip()]
+    full_text = "\n".join(texts)
+
+    # 按优先级检查关键词
+    # 会议纪要类
+    if any(kw in full_text for kw in ["会议纪要", "会议记录", "纪要如下"]):
+        return "meeting"
+
+    # 请示类
+    if any(kw in full_text for kw in ["请示", "妥否", "请批示", "请批复"]):
+        return "request"
+
+    # 通知类
+    if any(kw in full_text for kw in ["通知如下", "现将有关", "特此通知", "印发给你们"]):
+        return "notice"
+
+    # 报告类
+    if any(kw in full_text for kw in ["报告如下", "汇报如下", "特此报告"]):
+        return "report"
+
+    # 函类
+    if any(kw in full_text for kw in ["函", "商洽", "致函"]):
+        return "letter"
+
+    # 批复类
+    if any(kw in full_text for kw in ["批复如下", "现批复", "你单位.*请示"]):
+        return "reply"
+
+    # 决定类
+    if any(kw in full_text for kw in ["决定如下", "特此决定", "作出.*决定"]):
+        return "decision"
+
+    return None
+
+
+def _resolve_doc_type(args, model=None) -> str:
+    """
+    智能解析文档类型，按优先级：
+      1. 命令行显式指定（-t）
+      2. 文件名推断
+      3. 文档内容分析
+      4. 默认值 notice
+    """
+    # 如果命令行指定了类型且不是默认值，优先使用
+    raw = getattr(args, "doc_type", None) or getattr(args, "type", None)
+    if raw:
+        matched = _fuzzy_match_type(raw)
+        if matched:
+            return matched
+        # 未匹配到，给出提示并尝试自动检测
+        print(f"{_bold('⚠️ 类型')}「{raw}」未识别，正在自动检测...", file=sys.stderr)
+
+    # 从文件名推断
+    input_path = getattr(args, "input", None) or getattr(args, "type", None)
+    if input_path:
+        detected = _detect_type_from_filename(str(input_path))
+        if detected:
+            print(f"{_bold('🔍 自动检测')}：根据文件名识别为「{detected}」")
+            return detected
+
+    # 从文档内容推断
+    if model is not None:
+        detected = _detect_type_from_content(model)
+        if detected:
+            print(f"{_bold('🔍 自动检测')}：根据内容识别为「{detected}」")
+            return detected
+
+    # 兜底
+    print(f"{_bold('ℹ️ 使用默认类型')}：notice（可用 list-types 查看所有类型）")
+    return "notice"
 
 def cmd_list_types(args):
     """列出所有支持的公文类型。"""
@@ -129,7 +303,7 @@ def cmd_template(args):
     from core.document.generator import generate_docx
     from template_builder import create_template_document
 
-    doc_type = args.type
+    doc_type = _resolve_doc_type(args)
     rules = load_rules_merged(doc_type)
     model = create_template_document(doc_type, rules)
 
@@ -159,7 +333,9 @@ def cmd_check(args):
 
     engine = RuleEngine()
     model = parse_docx(args.input)
-    issues = engine.check(model, args.doc_type)
+    # 智能解析文档类型
+    doc_type = _resolve_doc_type(args, model)
+    issues = engine.check(model, doc_type)
 
     if args.severity:
         issues = [i for i in issues if i.severity == args.severity]
@@ -194,9 +370,12 @@ def cmd_optimize(args):
     model = parse_docx(str(input_path))
     selected = args.selected_rules.split(",") if args.selected_rules else None
 
+    # 智能解析文档类型
+    doc_type = _resolve_doc_type(args, model)
+
     # 先检查，展示问题
-    print(f"{_bold('🔍 正在检查')}（类型：{args.doc_type}）...")
-    issues, fixed = engine.check_and_fix(model, args.doc_type, selected)
+    print(f"{_bold('🔍 正在检查')}（类型：{doc_type}）...")
+    issues, fixed = engine.check_and_fix(model, doc_type, selected)
 
     if not issues:
         print(f"{_bold('✅ 文档已合规')}，无需修复。")
@@ -300,7 +479,7 @@ def cmd_revise(args):
     sections = compare_paragraphs(original_texts, revised_texts)
 
     # 生成修订模型
-    doc_type = args.doc_type or "notice"
+    doc_type = _resolve_doc_type(args, orig_model)
     rev_model = make_revision_model(orig_model, sections, doc_type)
 
     # 段落首句自动加粗
@@ -386,6 +565,9 @@ def cmd_md2docx(args):
             signer = front_matter.get("signer", signer)
             doc_date = front_matter.get("date", doc_date)
             attachments = front_matter.get("attachments", attachments)
+
+    # 智能解析文档类型（支持中英文别名、拼音）
+    doc_type = _resolve_doc_type(args)
 
     # 加载规则获取页边距等
     rules = load_rules_merged(doc_type)
