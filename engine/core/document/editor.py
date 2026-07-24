@@ -443,46 +443,60 @@ def make_revision_model(
 # 已废弃
 # 已废弃
 
-def _split_first_sentence(text: str) -> tuple[str, str]:
-    """
-    将段落文本拆分为"首句"和"其余部分"。
-    首句定义：遇到第一个句号/问号/感叹号/换行前的部分（含标点）。
+def _get_bold_prefix(text: str) -> str:
+    """返回公文段落应加粗的前缀，用于讲话稿/讨论稿视觉锚点。
+
+    规则：
+    - 序号标记（一是/二是/一要/二要等） 仅前 2 字
+    - 普通正文  到第一个逗号"，"止（含逗号）
+    - 无逗号  前 15 字
     """
     if not text:
-        return ("", "")
-    match = re.match(r'^([^。！？\n]*[。！？]?)', text)
-    if match and match.group(1):
-        first = match.group(1)
-        rest = text[len(first):]
-        return (first, rest)
-    return (text, "")
+        return ""
+
+    # 序号标记：一是 二是 三是  六是 / 一要 二要  六要
+    markers = [
+        "一是", "二是", "三是", "四是", "五是", "六是",
+        "一要", "二要", "三要", "四要", "五要", "六要",
+    ]
+    for m in markers:
+        if text.startswith(m):
+            return m
+
+    # 普通正文：到第一个逗号
+    idx = text.find("，")
+    if idx >= 0:
+        return text[:idx + 1]
+
+    # 无逗号：前 15 字
+    return text[:15]
 
 
-def bold_first_sentence(paragraph: Paragraph, min_len: int = 8) -> Paragraph:
+def bold_first_sentence(paragraph: Paragraph, min_len: int = 1) -> Paragraph:
     """
-    将段落文本的首句加粗。
+    将段落的前缀标记加粗。
     规则：
     - 仅对 role="body" 的正文段落生效
-    - 首句至少 min_len 个字符才加粗（避免短标题/短句误加粗）
+    - 前缀至少 min_len 个字符才加粗
     - 本函数应在所有内容修订完成后最后一步执行
     """
     if not paragraph.text or not paragraph.runs or paragraph.role != "body":
         return paragraph
 
-    first_sentence, _ = _split_first_sentence(paragraph.text)
-    if not first_sentence or len(first_sentence) < min_len:
+    bold_prefix = _get_bold_prefix(paragraph.text)
+    if not bold_prefix or len(bold_prefix) < min_len:
         return paragraph
 
-    # 在现有 runs 中找到首句所在部分并加粗
+    # 在现有 runs 中找到前缀所在部分并加粗
     accumulated = 0
-    first_len = len(first_sentence)
+    prefix_len = len(bold_prefix)
     for run in paragraph.runs:
-        if accumulated >= first_len:
+        if accumulated >= prefix_len:
             break
         run_start = accumulated
         run_end = accumulated + len(run.text)
-        if run_start < first_len:
-            bold_end = min(run_end, first_len)
+        if run_start < prefix_len:
+            bold_end = min(run_end, prefix_len)
             if bold_end > run_start:
                 run.format.bold = True
         accumulated = run_end
@@ -490,7 +504,7 @@ def bold_first_sentence(paragraph: Paragraph, min_len: int = 8) -> Paragraph:
     return paragraph
 
 
-def bold_first_sentence_in_model(model: DocumentModel, min_len: int = 8) -> DocumentModel:
+def bold_first_sentence_in_model(model: DocumentModel, min_len: int = 4) -> DocumentModel:
     """对 DocumentModel 中所有正文段落的首句加粗（仅 role=body，跳过 annotation，最后一步执行）。"""
     for para in model.paragraphs:
         if para.role == "body" and para.text:
