@@ -221,6 +221,13 @@ def _replace_paragraphs(doc: Document, model: DocumentModel):
         else:
             # model 比原文多的段落，追加到 body 末尾
             new_para = doc.add_paragraph()
+            # 段前分页
+            if para_model.page_break:
+                run_break = OxmlElement('w:r')
+                br = OxmlElement('w:br')
+                br.set(qn('w:type'), 'page')
+                run_break.append(br)
+                new_para._element.insert(0, run_break)
             _apply_paragraph_format(new_para, para_model)
             _add_runs_to_paragraph(new_para, para_model)
 
@@ -241,6 +248,18 @@ def _replace_paragraph_content(doc: Document, p_element, para_model: Paragraph):
     """
     替换一个 <w:p> 元素的内容（清除旧文本 runs，写入新 runs），保留段落属性和图片。
     """
+    # 段前分页
+    if para_model.page_break:
+        pPr = p_element.find(qn('w:pPr'))
+        if pPr is None:
+            pPr = OxmlElement('w:pPr')
+            p_element.insert(0, pPr)
+        run_break = OxmlElement('w:r')
+        br = OxmlElement('w:br')
+        br.set(qn('w:type'), 'page')
+        run_break.append(br)
+        p_element.insert(1, run_break)
+
     # 清除文本 runs，但保留含图片/绘图的 runs
     for child in list(p_element):
         tag = child.tag.split('}')[-1] if '}' in child.tag else child.tag

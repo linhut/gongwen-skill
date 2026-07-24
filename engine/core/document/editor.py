@@ -206,9 +206,10 @@ def make_revision_model(
     perspective: str = "",
 ) -> DocumentModel:
     """
-    基于原文模型生成内容修订文档。
-    行内修订：同一段内，删除部分红色+删除线，新增部分红色，不变部分保留原格式。
-    不改变原文样式格式，不额外加粗，不生成两个版本。
+    基于原文模型生成终版修订文档。
+    直接输出修改后的终版（无红色标注、无删除线），
+    【修改说明】统一放在末尾新起一页。
+    不改变原文样式格式，不加粗。
     """
     import copy
 
@@ -216,6 +217,9 @@ def make_revision_model(
     result = copy.deepcopy(original_model)
     result.paragraphs = []
     result.tables = copy.deepcopy(original_model.tables) if original_model.tables else []
+
+    # 收集所有修改说明
+    all_notes: list[str] = []
 
     # 逐段映射修订内容
     for sec_idx, sec in enumerate(sections):
@@ -225,84 +229,67 @@ def make_revision_model(
                 result.paragraphs.append(copy.deepcopy(original_model.paragraphs[sec_idx]))
 
             elif diff.type == "modified":
-                # 修改 — 行内修订：不变+删除线+新增 混合在一段内
+                # 修改 — 直接输出终版，无标注
                 orig_para = original_model.paragraphs[sec_idx] if sec_idx < len(original_model.paragraphs) else None
                 if not orig_para:
                     continue
-
-                # 获取原文格式信息
-                fmt_base = orig_para.runs[0].format if orig_para.runs else RunFormat()
-                font = fmt_base.font_name
-                size = fmt_base.font_size_pt
-
-                # 用 _word_diff 做字符级差异
-                word_diffs = _word_diff(diff.original, diff.revised)
-
-                # 构建行内 runs
-                inline_runs = []
-                for tag, text in word_diffs:
-                    if tag == "same":
-                        inline_runs.append(Run(index=len(inline_runs), text=text,
-                            format=RunFormat(font_name=font, font_size_pt=size)))
-                    elif tag == "delete":
-                        inline_runs.append(Run(index=len(inline_runs), text=text,
-                            format=RunFormat(font_name=font, font_size_pt=size, color="FF0000", strikethrough=True)))
-                    elif tag == "insert":
-                        inline_runs.append(Run(index=len(inline_runs), text=text,
-                            format=RunFormat(font_name=font, font_size_pt=size, color="FF0000")))
-
-                # 组合段落文本
-                full_text = "".join(r.text for r in inline_runs)
-
+                rev_run = Run(
+                    index=0, text=diff.revised,
+                    format=RunFormat(
+                        font_name=orig_para.runs[0].format.font_name if orig_para.runs else None,
+                        font_size_pt=orig_para.runs[0].format.font_size_pt if orig_para.runs else None,
+                    ),
+                )
                 result.paragraphs.append(Paragraph(
-                    index=len(result.paragraphs), text=full_text, role=orig_para.role,
-                    runs=inline_runs,
+                    index=len(result.paragraphs), text=diff.revised, role=orig_para.role,
+                    runs=[rev_run],
                     format=copy.deepcopy(orig_para.format),
                 ))
-
-                # 修改说明
+                # 收集修改说明
                 note_parts = []
                 if diff.note:
                     note_parts.append(f"【修改说明】{diff.note}")
                 if background:
                     note_parts.append(f"【依据】{background}")
                 if note_parts:
-                    note_text = " ".join(note_parts)
-                    result.paragraphs.append(Paragraph(
-                        index=len(result.paragraphs), text=note_text, role="body",
-                        runs=[Run(index=0, text=note_text,
-                                  format=RunFormat(font_name="仿宋_GB2312", font_size_pt=12.0, color="333333"))],
-                        format=ParagraphFormat(alignment="justify", line_spacing_pt=22.0),
-                    ))
+                    all_notes.append(" ".join(note_parts))
 
-            elif diff.type == "deleted" and sec_idx < len(original_model.paragraphs):
-                # 删除 — 保留原文格式，红色 + 删除线
-                orig_para = original_model.paragraphs[sec_idx]
-                del_run = Run(
-                    index=0, text=diff.original,
-                    format=RunFormat(
-                        font_name=orig_para.runs[0].format.font_name if orig_para.runs else None,
-                        font_size_pt=orig_para.runs[0].format.font_size_pt if orig_para.runs else None,
-                        color="FF0000", strikethrough=True,
-                    ),
-                )
-                result.paragraphs.append(Paragraph(
-                    index=len(result.paragraphs), text=diff.original, role=orig_para.role,
-                    runs=[del_run],
-                    format=copy.deepcopy(orig_para.format),
-                ))
+            elif diff.type == "deleted":
+                # 删除 — 不输出（终版不含已删除内容）
+                pass
 
             elif diff.type == "added":
-                # 新增 — 红色字体
+                # 新增 — 保持原文格式输出终版
                 orig_para = original_model.paragraphs[sec_idx] if sec_idx < len(original_model.paragraphs) else None
                 fmt = orig_para.runs[0].format if orig_para and orig_para.runs else RunFormat()
                 add_run = Run(index=0, text=diff.revised,
-                    format=RunFormat(font_name=fmt.font_name, font_size_pt=fmt.font_size_pt, color="FF0000"))
+                    format=RunFormat(font_name=fmt.font_name, font_size_pt=fmt.font_size_pt))
                 result.paragraphs.append(Paragraph(
                     index=len(result.paragraphs), text=diff.revised, role="body",
                     runs=[add_run],
                     format=copy.deepcopy(orig_para.format) if orig_para else ParagraphFormat(alignment="justify"),
                 ))
+
+    # ── 末尾新起一页输出修改说明 ──
+    if all_notes:
+        # 说明标题（段前分页）
+        note_title = "修改说明"
+        result.paragraphs.append(Paragraph(
+            index=len(result.paragraphs), text=note_title, role="title",
+            runs=[Run(index=0, text=note_title,
+                      format=RunFormat(font_name="黑体", font_size_pt=16.0))],
+            format=ParagraphFormat(alignment="left", space_before_pt=12),
+            page_break=True,
+        ))
+        # 逐条输出
+        for i, note in enumerate(all_notes, 1):
+            note_text = f"{i}. {note}"
+            result.paragraphs.append(Paragraph(
+                index=len(result.paragraphs), text=note_text, role="body",
+                runs=[Run(index=0, text=note_text,
+                          format=RunFormat(font_name="仿宋_GB2312", font_size_pt=14.0))],
+                format=ParagraphFormat(alignment="justify", first_line_indent_pt=0),
+            ))
 
     return result
 

@@ -54,6 +54,7 @@ class Paragraph(BaseModel):
     role: Optional[str] = None               # 段落角色: title/recipient/body/signature/date/attachment/cc/notes
     runs: list[Run] = Field(default_factory=list)
     format: ParagraphFormat = Field(default_factory=ParagraphFormat)
+    page_break: bool = False                 # 段前分页
 
 
 class TableCell(BaseModel):
