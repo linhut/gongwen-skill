@@ -291,7 +291,7 @@ def make_revision_model(
                     ),
                 )
                 result.paragraphs.append(Paragraph(
-                    index=len(result.paragraphs), text=diff.original, role=orig_para.role,
+                    index=len(result.paragraphs), text=diff.original, role="annotation",
                     runs=[del_run], format=copy.deepcopy(orig_para.format),
                 ))
                 mod_records.append({
@@ -488,24 +488,46 @@ def bold_first_sentence(paragraph: Paragraph, min_len: int = 1) -> Paragraph:
     if not bold_prefix or len(bold_prefix) < min_len:
         return paragraph
 
-    # 在现有 runs 中找到前缀所在部分并加粗
-    accumulated = 0
+    import copy
     prefix_len = len(bold_prefix)
-    for run in paragraph.runs:
+    accumulated = 0
+
+    for run in list(paragraph.runs):
         if accumulated >= prefix_len:
             break
         run_start = accumulated
         run_end = accumulated + len(run.text)
-        if run_start < prefix_len:
-            bold_end = min(run_end, prefix_len)
-            if bold_end > run_start:
-                run.format.bold = True
+
+        if run_start < prefix_len < run_end:
+            # 前缀落在 run 内部 → 拆分 run
+            split_point = prefix_len - run_start
+            left_text = run.text[:split_point]
+            right_text = run.text[split_point:]
+
+            # 修改当前 run 为前半段（加粗）
+            run.text = left_text
+            run.format.bold = True
+
+            # 新建 run 为后半段（保持原格式）
+            new_run = copy.deepcopy(run)
+            new_run.text = right_text
+            new_run.format.bold = False
+
+            # 将新 run 插入到当前 run 之后
+            idx = paragraph.runs.index(run)
+            paragraph.runs.insert(idx + 1, new_run)
+            break  # 已处理，后续不再需要
+
+        elif run_end <= prefix_len:
+            # run 完全在前缀内 → 整体加粗
+            run.format.bold = True
+
         accumulated = run_end
 
     return paragraph
 
 
-def bold_first_sentence_in_model(model: DocumentModel, min_len: int = 4) -> DocumentModel:
+def bold_first_sentence_in_model(model: DocumentModel, min_len: int = 2) -> DocumentModel:
     """对 DocumentModel 中所有正文段落的首句加粗（仅 role=body，跳过 annotation，最后一步执行）。"""
     for para in model.paragraphs:
         if para.role == "body" and para.text:
