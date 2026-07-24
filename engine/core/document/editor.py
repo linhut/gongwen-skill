@@ -209,7 +209,7 @@ def make_revision_model(
     基于原文模型生成行内修订文档。
     - 修改处行内标注：新增红色、删除红色+删除线、不变保留原格式
     - 每处修改后附 【修改说明】【依据】【行文风格】
-    - 无汇总页，单文件输出
+    - 末尾分页汇总修改建议与说明
     """
     import copy
 
@@ -217,14 +217,19 @@ def make_revision_model(
     result.paragraphs = []
     result.tables = copy.deepcopy(original_model.tables) if original_model.tables else []
 
+    # 收集修改记录用于末尾汇总
+    mod_records: list[dict] = []
+    mod_count = 0
+    del_count = 0
+    add_count = 0
+
     for sec_idx, sec in enumerate(sections):
         for diff in sec.diffs:
             if diff.type == "same" and sec_idx < len(original_model.paragraphs):
-                # 无修改 — 完全保留原文格式和内容
                 result.paragraphs.append(copy.deepcopy(original_model.paragraphs[sec_idx]))
 
             elif diff.type == "modified":
-                # 修改 — 行内标注：不变原样、删除红色+删除线、新增红色
+                mod_count += 1
                 orig_para = original_model.paragraphs[sec_idx] if sec_idx < len(original_model.paragraphs) else None
                 if not orig_para:
                     continue
@@ -267,9 +272,15 @@ def make_revision_model(
                                   format=RunFormat(font_name="仿宋_GB2312", font_size_pt=12.0, color="555555"))],
                         format=ParagraphFormat(alignment="justify", line_spacing_pt=22.0),
                     ))
+                # 记录
+                mod_records.append({
+                    "type": "修改", "num": mod_count,
+                    "original": diff.original, "revised": diff.revised,
+                    "note": diff.note or "", "background": background or "",
+                })
 
             elif diff.type == "deleted" and sec_idx < len(original_model.paragraphs):
-                # 删除 — 红色 + 删除线
+                del_count += 1
                 orig_para = original_model.paragraphs[sec_idx]
                 del_run = Run(
                     index=0, text=diff.original,
@@ -283,9 +294,14 @@ def make_revision_model(
                     index=len(result.paragraphs), text=diff.original, role=orig_para.role,
                     runs=[del_run], format=copy.deepcopy(orig_para.format),
                 ))
+                mod_records.append({
+                    "type": "删除", "num": del_count,
+                    "original": diff.original, "revised": "",
+                    "note": diff.note or "", "background": background or "",
+                })
 
             elif diff.type == "added":
-                # 新增 — 红色
+                add_count += 1
                 orig_para = original_model.paragraphs[sec_idx] if sec_idx < len(original_model.paragraphs) else None
                 fmt = orig_para.runs[0].format if orig_para and orig_para.runs else RunFormat()
                 add_run = Run(index=0, text=diff.revised,
@@ -295,6 +311,48 @@ def make_revision_model(
                     runs=[add_run],
                     format=copy.deepcopy(orig_para.format) if orig_para else ParagraphFormat(alignment="justify"),
                 ))
+                mod_records.append({
+                    "type": "新增", "num": add_count,
+                    "original": "", "revised": diff.revised,
+                    "note": diff.note or "", "background": background or "",
+                })
+
+    # ── 末尾分页汇总 ──
+    if mod_records:
+        total = mod_count + del_count + add_count
+        result.paragraphs.append(Paragraph(
+            index=len(result.paragraphs), text="", role="body",
+            runs=[], format=ParagraphFormat(),
+            page_break=True,
+        ))
+        summary_title = f"修改建议与说明（共修改 {mod_count} 处、删除 {del_count} 处、新增 {add_count} 处）"
+        result.paragraphs.append(Paragraph(
+            index=len(result.paragraphs), text=summary_title, role="body",
+            runs=[Run(index=0, text=summary_title,
+                      format=RunFormat(font_name="黑体", font_size_pt=16.0))],
+            format=ParagraphFormat(alignment="left", space_before_pt=6),
+        ))
+        result.paragraphs.append(Paragraph(
+            index=len(result.paragraphs), text="", role="body",
+            runs=[], format=ParagraphFormat(),
+        ))
+        for rec in mod_records:
+            head = f"{rec['num']}. 【{rec['type']}】"
+            body_parts = []
+            if rec['note']:
+                body_parts.append(f"【修改说明】{rec['note']}")
+            if rec['background']:
+                body_parts.append(f"【依据】{rec['background']}")
+            if perspective:
+                body_parts.append(f"【行文风格】{perspective}")
+            body_text = " ".join(body_parts)
+            line = f"{head} {body_text}"
+            result.paragraphs.append(Paragraph(
+                index=len(result.paragraphs), text=line, role="body",
+                runs=[Run(index=0, text=line,
+                          format=RunFormat(font_name="仿宋_GB2312", font_size_pt=14.0))],
+                format=ParagraphFormat(alignment="justify", first_line_indent_pt=0, space_before_pt=4),
+            ))
 
     return result
 
@@ -400,16 +458,19 @@ def _split_first_sentence(text: str) -> tuple[str, str]:
     return (text, "")
 
 
-def bold_first_sentence(paragraph: Paragraph) -> Paragraph:
+def bold_first_sentence(paragraph: Paragraph, min_len: int = 8) -> Paragraph:
     """
     将段落文本的首句加粗。
-    修改原文段落模型的 runs，确保第一个句子的 run 包含 bold=True。
+    规则：
+    - 仅对 role="body" 的正文段落生效
+    - 首句至少 min_len 个字符才加粗（避免短标题/短句误加粗）
+    - 本函数应在所有内容修订完成后最后一步执行
     """
-    if not paragraph.text or not paragraph.runs:
+    if not paragraph.text or not paragraph.runs or paragraph.role != "body":
         return paragraph
 
     first_sentence, _ = _split_first_sentence(paragraph.text)
-    if not first_sentence:
+    if not first_sentence or len(first_sentence) < min_len:
         return paragraph
 
     # 在现有 runs 中找到首句所在部分并加粗
@@ -420,9 +481,7 @@ def bold_first_sentence(paragraph: Paragraph) -> Paragraph:
             break
         run_start = accumulated
         run_end = accumulated + len(run.text)
-        # 如果此 run 在首句范围内
         if run_start < first_len:
-            # 确定此 run 需要加粗的部分
             bold_end = min(run_end, first_len)
             if bold_end > run_start:
                 run.format.bold = True
@@ -431,11 +490,11 @@ def bold_first_sentence(paragraph: Paragraph) -> Paragraph:
     return paragraph
 
 
-def bold_first_sentence_in_model(model: DocumentModel) -> DocumentModel:
-    """对 DocumentModel 中所有正文段落的首句加粗。"""
+def bold_first_sentence_in_model(model: DocumentModel, min_len: int = 8) -> DocumentModel:
+    """对 DocumentModel 中所有正文段落的首句加粗（仅 role=body，最后一步执行）。"""
     for para in model.paragraphs:
-        if para.role in ("body", "title", "signature", "recipient") and para.text:
-            bold_first_sentence(para)
+        if para.role == "body" and para.text:
+            bold_first_sentence(para, min_len)
     return model
 
 
