@@ -207,32 +207,27 @@ def make_revision_model(
 ) -> DocumentModel:
     """
     基于原文模型生成行内修订文档。
-    - 修改处行内标注：新增红色、删除红色+删除线、不变保留原格式
-    - 每处修改后附 【修改说明】【依据】【行文风格】
-    - 末尾分页汇总修改建议与说明
+    以原文档为基底完整保留所有段落格式，仅对有差异的段落做行内修订。
     """
     import copy
 
+    # 以原文档为基底，保留所有段落、页面设置、页眉页脚
     result = copy.deepcopy(original_model)
-    result.paragraphs = []
-    result.tables = copy.deepcopy(original_model.tables) if original_model.tables else []
-
-    # 收集修改记录用于末尾汇总
-    mod_records: list[dict] = []
-    mod_count = 0
-    del_count = 0
-    add_count = 0
+    # 记录哪些段落索引已被替换
+    replaced_indices: set[int] = set()
 
     for sec_idx, sec in enumerate(sections):
         for diff in sec.diffs:
-            if diff.type == "same" and sec_idx < len(original_model.paragraphs):
-                result.paragraphs.append(copy.deepcopy(original_model.paragraphs[sec_idx]))
+            if diff.type == "same":
+                # 无修改 — 保留原文段落（已经在 result 中）
+                continue
 
             elif diff.type == "modified":
-                mod_count += 1
-                orig_para = original_model.paragraphs[sec_idx] if sec_idx < len(original_model.paragraphs) else None
-                if not orig_para:
+                # 在 original_model 中找匹配的段落（按文本匹配）
+                matched_idx = _find_para_by_text(original_model.paragraphs, diff.original, replaced_indices)
+                if matched_idx is None:
                     continue
+                orig_para = original_model.paragraphs[matched_idx]
                 fmt_base = orig_para.runs[0].format if orig_para.runs else RunFormat()
                 font = fmt_base.font_name
                 size = fmt_base.font_size_pt
@@ -251,10 +246,12 @@ def make_revision_model(
                             format=RunFormat(font_name=font, font_size_pt=size, color="FF0000")))
 
                 full_text = "".join(r.text for r in inline_runs)
-                result.paragraphs.append(Paragraph(
-                    index=len(result.paragraphs), text=full_text, role=orig_para.role,
-                    runs=inline_runs, format=copy.deepcopy(orig_para.format),
-                ))
+                if matched_idx < len(result.paragraphs):
+                    result.paragraphs[matched_idx] = Paragraph(
+                        index=matched_idx, text=full_text, role=orig_para.role,
+                        runs=inline_runs, format=copy.deepcopy(orig_para.format),
+                    )
+                replaced_indices.add(matched_idx)
 
                 # 修改说明（段落后）
                 note_parts = []
@@ -266,58 +263,49 @@ def make_revision_model(
                     note_parts.append(f"【行文风格】{perspective}")
                 if note_parts:
                     note_text = " ".join(note_parts)
-                    result.paragraphs.append(Paragraph(
-                        index=len(result.paragraphs), text=note_text, role="annotation",
+                    result.paragraphs.insert(matched_idx + 1, Paragraph(
+                        index=matched_idx + 1, text=note_text, role="annotation",
                         runs=[Run(index=0, text=note_text,
                                   format=RunFormat(font_name="仿宋_GB2312", font_size_pt=12.0, color="555555"))],
                         format=ParagraphFormat(alignment="justify", line_spacing_pt=22.0),
                     ))
-                # 记录
-                mod_records.append({
-                    "type": "修改", "num": mod_count,
-                    "original": diff.original, "revised": diff.revised,
-                    "note": diff.note or "", "background": background or "",
-                })
 
-            elif diff.type == "deleted" and sec_idx < len(original_model.paragraphs):
-                del_count += 1
-                orig_para = original_model.paragraphs[sec_idx]
-                del_run = Run(
-                    index=0, text=diff.original,
-                    format=RunFormat(
-                        font_name=orig_para.runs[0].format.font_name if orig_para.runs else None,
-                        font_size_pt=orig_para.runs[0].format.font_size_pt if orig_para.runs else None,
-                        color="FF0000", strikethrough=True,
-                    ),
-                )
-                result.paragraphs.append(Paragraph(
-                    index=len(result.paragraphs), text=diff.original, role="annotation",
-                    runs=[del_run], format=copy.deepcopy(orig_para.format),
-                ))
-                mod_records.append({
-                    "type": "删除", "num": del_count,
-                    "original": diff.original, "revised": "",
-                    "note": diff.note or "", "background": background or "",
-                })
+            elif diff.type == "deleted":
+                matched_idx = _find_para_by_text(original_model.paragraphs, diff.original, replaced_indices)
+                if matched_idx is None:
+                    continue
+                orig_para = original_model.paragraphs[matched_idx]
+                fmt = orig_para.runs[0].format if orig_para.runs else RunFormat()
+                del_run = Run(index=0, text=diff.original,
+                    format=RunFormat(font_name=fmt.font_name, font_size_pt=fmt.font_size_pt,
+                                     color="FF0000", strikethrough=True))
+                if matched_idx < len(result.paragraphs):
+                    result.paragraphs[matched_idx] = Paragraph(
+                        index=matched_idx, text=diff.original, role="annotation",
+                        runs=[del_run], format=copy.deepcopy(orig_para.format),
+                    )
+                replaced_indices.add(matched_idx)
 
             elif diff.type == "added":
-                add_count += 1
-                orig_para = original_model.paragraphs[sec_idx] if sec_idx < len(original_model.paragraphs) else None
-                fmt = orig_para.runs[0].format if orig_para and orig_para.runs else RunFormat()
+                # 新增段落追加到末尾
                 add_run = Run(index=0, text=diff.revised,
-                    format=RunFormat(font_name=fmt.font_name, font_size_pt=fmt.font_size_pt, color="FF0000"))
+                    format=RunFormat(font_name="仿宋_GB2312", font_size_pt=16.0, color="FF0000"))
                 result.paragraphs.append(Paragraph(
                     index=len(result.paragraphs), text=diff.revised, role="body",
-                    runs=[add_run],
-                    format=copy.deepcopy(orig_para.format) if orig_para else ParagraphFormat(alignment="justify"),
+                    runs=[add_run], format=ParagraphFormat(alignment="justify"),
                 ))
-                mod_records.append({
-                    "type": "新增", "num": add_count,
-                    "original": "", "revised": diff.revised,
-                    "note": diff.note or "", "background": background or "",
-                })
 
     return result
+
+
+def _find_para_by_text(paragraphs: list, text: str, excluded: set[int]) -> int | None:
+    """在段落列表中查找文本匹配的段落索引（跳过已标记的索引）。"""
+    for i, p in enumerate(paragraphs):
+        if i in excluded:
+            continue
+        if p.text and p.text.strip() == text.strip():
+            return i
+    return None
 
 
 # 已废弃

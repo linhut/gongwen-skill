@@ -501,7 +501,7 @@ def cmd_revise(args):
     input_path = Path(args.input)
     print(f"{_bold('📄 正在解析原文')}：{input_path}")
     orig_model = parse_docx(str(input_path))
-    original_texts = [(p.role or "body", p.text) for p in orig_model.paragraphs if p.text.strip()]
+    original_texts = [(p.role or "body", p.text) for p in orig_model.paragraphs]
 
     # 段落对比
     print(f"{_bold('🔍 正在对比内容')}（原文 {len(original_texts)} 段 → 修订 {len(revised_texts)} 段）...")
