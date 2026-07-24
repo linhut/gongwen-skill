@@ -334,10 +334,10 @@ def make_revision_model(
                 ))
                 para_idx += 1
 
-                # 原文（带删除线，灰色）
+                # 原文（红色 + 删除线，标记被删除部分）
                 if diff.original:
-                    orig_runs = [_make_colored_run("原文：", bold=True, font_name="黑体", font_size=14.0, color="666666")]
-                    orig_runs.append(_make_colored_run(diff.original, color="666666", strikethrough=True))
+                    orig_runs = [_make_colored_run("原文：", bold=True, font_name="黑体", font_size=14.0, color="FF0000")]
+                    orig_runs.append(_make_colored_run(diff.original, color="FF0000", strikethrough=True))
                     result.paragraphs.append(Paragraph(
                         index=para_idx, text=f"原文：{diff.original}", role="body",
                         runs=orig_runs,
@@ -409,9 +409,91 @@ def make_revision_model(
     return result
 
 
-# ---------------------------------------------------------------------------
-#  段落首句加粗工具
-# ---------------------------------------------------------------------------
+def collect_revision_summary(sections: list[RevisionSection]) -> list[str]:
+    """
+    从修订节中提取修改建议与说明，用于文档末尾汇总和对话框输出。
+    返回格式化的说明行列表。
+    """
+    lines: list[str] = []
+    mod_count = 0
+    del_count = 0
+    add_count = 0
+
+    for sec in sections:
+        for diff in sec.diffs:
+            if diff.type == "modified":
+                mod_count += 1
+                reason = diff.note or "优化措辞"
+                orig_preview = diff.original[:40] + ("..." if len(diff.original) > 40 else "")
+                rev_preview = diff.revised[:40] + ("..." if len(diff.revised) > 40 else "")
+                lines.append(f"  • 修改第 {mod_count} 处：{reason}")
+                lines.append(f"    原文：「{orig_preview}」")
+                lines.append(f"    修订：「{rev_preview}」")
+            elif diff.type == "deleted":
+                del_count += 1
+                reason = diff.note or "删除冗余内容"
+                orig_preview = diff.original[:40] + ("..." if len(diff.original) > 40 else "")
+                lines.append(f"  • 删除第 {del_count} 处：{reason}")
+                lines.append(f"    删除内容：「{orig_preview}」")
+            elif diff.type == "added":
+                add_count += 1
+                reason = diff.note or "新增必要内容"
+                rev_preview = diff.revised[:40] + ("..." if len(diff.revised) > 40 else "")
+                lines.append(f"  • 新增第 {add_count} 处：{reason}")
+                lines.append(f"    新增内容：「{rev_preview}」")
+
+    summary_header = [
+        "",
+        f"📋 修改建议与说明（共修改 {mod_count} 处、删除 {del_count} 处、新增 {add_count} 处）",
+        "─" * 60,
+    ]
+    return summary_header + lines + [""]
+
+
+def add_summary_to_model(model: DocumentModel, summary_lines: list[str]) -> DocumentModel:
+    """将修改建议与说明追加到修订文档末尾。"""
+    para_idx = len(model.paragraphs)
+
+    model.paragraphs.append(Paragraph(
+        index=para_idx, text="", role="body",
+        runs=[], format=ParagraphFormat(),
+    ))
+    para_idx += 1
+
+    for line_text in summary_lines:
+        if line_text.startswith("📋"):
+            model.paragraphs.append(Paragraph(
+                index=para_idx, text=line_text, role="body",
+                runs=[_make_colored_run(line_text, bold=True, font_name="黑体", font_size=15.0, color="000000")],
+                format=ParagraphFormat(alignment="left", space_before_pt=6),
+            ))
+        elif line_text.startswith("─"):
+            model.paragraphs.append(Paragraph(
+                index=para_idx, text=line_text, role="body",
+                runs=[_make_colored_run(line_text, color="999999", font_size=12.0)],
+                format=ParagraphFormat(alignment="left"),
+            ))
+        elif line_text.startswith("  •"):
+            model.paragraphs.append(Paragraph(
+                index=para_idx, text=line_text, role="body",
+                runs=[_make_colored_run(line_text, font_name="仿宋_GB2312", font_size=15.0, color="CC0000")],
+                format=ParagraphFormat(alignment="left", first_line_indent_pt=0),
+            ))
+        elif line_text.startswith("    原文") or line_text.startswith("    删除内容"):
+            model.paragraphs.append(Paragraph(
+                index=para_idx, text=line_text, role="body",
+                runs=[_make_colored_run(line_text, font_name="仿宋_GB2312", font_size=14.0, color="999999", strikethrough=True)],
+                format=ParagraphFormat(alignment="left", left_indent_pt=24),
+            ))
+        elif line_text.startswith("    修订") or line_text.startswith("    新增内容"):
+            model.paragraphs.append(Paragraph(
+                index=para_idx, text=line_text, role="body",
+                runs=[_make_colored_run(line_text, font_name="仿宋_GB2312", font_size=14.0, color="FF0000")],
+                format=ParagraphFormat(alignment="left", left_indent_pt=24),
+            ))
+        para_idx += 1
+
+    return model
 
 def _split_first_sentence(text: str) -> tuple[str, str]:
     """

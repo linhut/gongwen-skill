@@ -461,7 +461,8 @@ def cmd_revise(args):
         compare_paragraphs,
         make_revision_model,
         bold_first_sentence_in_model,
-        generate_revision_doc,
+        collect_revision_summary,
+        add_summary_to_model,
     )
 
     # 读取修订后内容
@@ -494,6 +495,20 @@ def cmd_revise(args):
     print(f"{_bold('🔍 正在对比内容')}（原文 {len(original_texts)} 段 → 修订 {len(revised_texts)} 段）...")
     sections = compare_paragraphs(original_texts, revised_texts)
 
+    # 统计
+    mod_count = sum(1 for s in sections for d in s.diffs if d.type != "same")
+    del_count = sum(1 for s in sections for d in s.diffs if d.type == "deleted")
+    add_count = sum(1 for s in sections for d in s.diffs if d.type == "added")
+
+    # 交互确认（除非 -y 跳过）
+    print(f"{_bold('⚠️ 注意')}：revise 命令 ✏️ 仅修改内容，不改变原文排版格式")
+    print(f"  共 {len(sections)} 段，其中修改 {mod_count} 处、删除 {del_count} 处、新增 {add_count} 处")
+    if not args.yes:
+        msg = f"将生成内容修订对比文档，是否继续？"
+        if not _confirm(msg, default=True):
+            print(f"{_bold('❌ 已取消')}")
+            sys.exit(0)
+
     # 生成修订模型
     doc_type = _resolve_doc_type(args, orig_model)
     rev_model = make_revision_model(
@@ -505,6 +520,10 @@ def cmd_revise(args):
 
     # 段落首句自动加粗
     bold_first_sentence_in_model(rev_model)
+
+    # 收集修改建议与说明（文档内+对话框双输出）
+    summary_lines = collect_revision_summary(sections)
+    rev_model = add_summary_to_model(rev_model, summary_lines)
 
     # 生成文档（使用 generate_docx 直接生成，不触发表格/页边距等格式规则）
     from core.document.generator import generate_docx
@@ -520,6 +539,20 @@ def cmd_revise(args):
     print(f"{_bold('✅ 修订对比文档已生成')}：{out}")
     print(f"  {_bold('修订概况')}：共 {len(sections)} 段，其中修改 {mod_count} 处，删除 {del_count} 处，新增 {add_count} 处")
     print(f"  {_bold('修订内容来源')}：{source_desc}")
+    if getattr(args, "background", "") or getattr(args, "context", "") or getattr(args, "perspective", ""):
+        info_parts = []
+        if args.background:
+            info_parts.append(f"📌 背景：{args.background}")
+        if args.context:
+            info_parts.append(f"📎 语境：{args.context}")
+        if args.perspective:
+            info_parts.append(f"🎯 角度：{args.perspective}")
+        print(f"  {_bold('修订依据')}：{' | '.join(info_parts)}")
+    print()
+    print(f"  {_bold('━ 修改建议与说明 ━')}")
+    for line in summary_lines:
+        if line.strip():
+            print(f"  {line}")
 
 
 def cmd_md2docx(args):
@@ -900,6 +933,7 @@ def main():
     p.add_argument("--background", help="修订背景说明（如'根据上级文件精神'）")
     p.add_argument("--context", help="修订语境说明（如'面向基层单位发文'）")
     p.add_argument("--perspective", help="修订角度/风格（如'庄重严谨'、'平实简洁'）")
+    p.add_argument("-y", "--yes", action="store_true", help="跳过确认提示，直接生成修订对比文档")
     p.set_defaults(func=cmd_revise)
 
     p = sub.add_parser("md2docx", help="将 Markdown 文本转为格式化的公文 .docx")
