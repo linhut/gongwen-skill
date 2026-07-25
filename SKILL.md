@@ -284,6 +284,10 @@ doc = docx.Document("原文档.docx")
 ### 第2步：生成差异对比文档
 
 ```bash
+# 自动命名：{原文档名}+{内容风格}+{日期}+v1.docx（如 工作报告+庄重严谨+20260725+v1.docx）
+python gongwen.py optimize-content 原文档.docx --changes changes.json --apply
+
+# 也可显式指定输出文件名
 python gongwen.py optimize-content 原文档.docx -o 对比文档.docx --changes changes.json --apply
 ```
 

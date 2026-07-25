@@ -87,6 +87,42 @@ def _detect_doc_type(input_path: "Path", explicit: str | None) -> tuple[str, str
     return "notice", "默认（未识别到类型关键词）"
 
 
+def _extract_dominant_style(changes: list[dict]) -> str | None:
+    """从 changes 列表中提取出现次数最多的 style 标签。"""
+    from collections import Counter
+    styles = [c.get("style", "") for c in changes if c.get("style", "").strip()]
+    if not styles:
+        return None
+    return Counter(styles).most_common(1)[0][0]
+
+
+def _build_output_name(input_path: "str | Path", convention: str, style: str | None = None) -> str:
+    """根据命名规范构造输出文件名（不含路径，仅文件名）。
+
+    规范：
+    - 路径 A / C（格式优化 / 模板生成）：修订版+{原文档名}+{日期}+v1.docx
+    - 路径 B（内容优化对比文档）：{原文档名}+{内容风格}+{日期}+v1.docx
+
+    Args:
+        input_path: 原文档路径
+        convention: 'A' 或 'B'
+        style: 路径 B 的内容风格标签（如"庄重严谨"）
+
+    Returns:
+        符合命名规范的文件名，如 "工作报告+庄重严谨+20260725+v1.docx"
+    """
+    from datetime import date
+
+    stem = Path(input_path).stem
+    today = date.today().strftime("%Y%m%d")
+
+    if convention == "B":
+        style_part = f"+{style}" if style else ""
+        return f"{stem}{style_part}+{today}+v1.docx"
+    else:  # A / C
+        return f"修订版+{stem}+{today}+v1.docx"
+
+
 # ---------------------------------------------------------------------------
 #  子命令实现
 # ---------------------------------------------------------------------------
@@ -173,7 +209,7 @@ def cmd_optimize(args):
 
     engine = RuleEngine()
     input_path = Path(args.input)
-    out = Path(args.output) if args.output else input_path.with_stem(input_path.stem + "_optimized")
+    out = Path(args.output) if args.output else input_path.parent / _build_output_name(input_path, "A")
 
     # 确定文档类型（共享辅助函数，优先 -t 参数，其次文件名推断）
     doc_type, type_source = _detect_doc_type(input_path, args.doc_type)
@@ -504,17 +540,18 @@ def cmd_optimize_content(args):
         return
 
     # 执行模式
+    out_name = args.output or _build_output_name(args.input, "B", _extract_dominant_style(changes))
     kwargs = {}
     if hasattr(args, 'disclaimer') and args.disclaimer is not None:
         kwargs['disclaimer'] = args.disclaimer
     create_diff_document(
         args.input,
-        args.output or "对比文档.docx",
+        out_name,
         changes,
         keep_format=not args.optimize_format,
         **kwargs,
     )
-    print(f"差异对比文档已生成: {args.output or '对比文档.docx'}")
+    print(f"差异对比文档已生成: {out_name}")
     print(f"  共 {len(changes)} 处变更")
 
 
@@ -687,7 +724,7 @@ def main():
 
     p = sub.add_parser("optimize-content", help="内容优化差异对比：原文灰色+删除线，修改后红色高亮，每段附修改说明与依据")
     p.add_argument("input", help="输入 .docx 路径")
-    p.add_argument("-o", "--output", help="输出 .docx 路径（默认 对比文档.docx）")
+    p.add_argument("-o", "--output", help="输出 .docx 路径（默认按规范自动命名：{原文档名}+{内容风格}+{日期}+v1.docx）")
     p.add_argument("--changes", required=True, help="变更 JSON 文件路径（含 paragraph_index/original_text/optimized_text/reason/reference）")
     p.add_argument("--optimize-format", action="store_true", help="同时优化格式（默认仅做差异标注，不改格式）")
     p.add_argument("--apply", action="store_true", help="确认生成差异对比文档（默认预览）")
