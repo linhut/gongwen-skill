@@ -469,6 +469,22 @@ def create_diff_document(
                         _new_runs_data.append(rd)
                 runs_data = _new_runs_data
 
+            # 加粗泄漏防护：body 段落中，不以编号词开头的 run 取消加粗
+            # _apply_bold_from_source 会继承原文档 run 级 bold，可能将正文内容错误加粗
+            if para.role == "body":
+                _outline_starter = re.compile(
+                    r'^([一二三四五六七八九十]是'
+                    r'|[（(][一二三四五六七八九十]+[）)]'
+                    r'|[一二三四五六七八九十]、'
+                    r'|第[一二三四五六七八九十]+[条章节款]'
+                    r'|[（(][1-9]\d*[）)]'
+                    r'|首先|其次|再次|最后|此外|另外)'
+                )
+                for rd in runs_data:
+                    text = rd.get("text", "").strip()
+                    if text and not _outline_starter.match(text):
+                        rd["bold"] = False
+
             # 保持原文格式设置
             fmt = para.format
 
@@ -543,7 +559,13 @@ def create_diff_document(
             # 无变更段落：原样保持
             new_paragraphs.append(para)
 
-    # === 全部段落后处理：字体兜底 + 加粗规则 ===
+    # === 全部段落后处理：标题加粗 + 字体兜底 + 加粗规则 ===
+    # 标题强制加粗：role="heading" 的段落所有 run 设为 bold=True
+    for p in new_paragraphs:
+        if p.role == "heading":
+            for r in p.runs:
+                if r.format is not None:
+                    r.format.bold = True
     # 确保未变更段落也得到与 optimize 命令相同的格式处理
     _post_apply_font_protection(new_paragraphs)
     _post_apply_bold_rules(new_paragraphs)

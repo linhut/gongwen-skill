@@ -7,8 +7,10 @@
 # 项目出处：AI 公文智能优化助手 (https://www.linhut.cn)
 # Licensed under the MIT License. See the LICENSE file for details.
 #
-# 本文件为独立发行版的统一入口，任何人克隆仓库后即可运行，
+# 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
+
+__version__ = "1.6.1"
 """
 公文文档格式化 Skill —— 基于 GB/T 9704 国家标准的公文 .docx 处理引擎。
 

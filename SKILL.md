@@ -30,6 +30,14 @@ Licensed under the MIT License. See the LICENSE file for details.
 
 ---
 
+### 版本自检（Agent 必须在技能加载后执行）
+
+1. 读取 `gongwen.py` 顶部的 `__version__` 常量，获取本地版本号
+2. 在首次加载提示中告知用户：`当前加载 gongwen-skill v{__version__}`
+3. 如有 git 环境，可运行 `git -C <项目目录> describe --tags --abbrev=0` 获取最新 tag；若本地版本 ≠ 最新 tag，提示用户"有更新可用，最新版 {tag}，当前 {version}，请 git pull 更新"
+
+---
+
 ## 快速开始
 
 这个 Skill 做三件事：**格式修复**（不改文字）、**内容优化**（润色文字出对比版）、**生成模板**（直接出空白公文）。
