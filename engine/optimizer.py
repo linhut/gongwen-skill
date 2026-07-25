@@ -391,7 +391,21 @@ def create_diff_document(
 
     Returns:
         None（输出写入 output_path）
+
+    防御性约束（调用方必须在生成 changes 时遵守）：
+    - 整段删除（original_text 有内容、optimized_text 为空）仅允许在"去重"场景，
+      且 reason 中必须写明与哪一段完全重复。禁止以"精简""压缩"为由整段删空原文。
+    - 若 optimized_text 相比 original_text 缺失了关键信息要素（里程碑/经费/政策依据/
+      领导汇报记录/省情背景），应在生成 changes 前拦截并拒绝该 change，而非交由本函数渲染。
     """
+    # 防御性审计：记录本次 changes 中包含的整段删除操作
+    _full_deletions = [c for c in changes if c.get("original_text", "").strip() and not c.get("optimized_text", "").strip()]
+    if _full_deletions:
+        logger.warning(
+            f"检测到 {len(_full_deletions)} 处整段删除操作（paragraph_index: "
+            f"{[c['paragraph_index'] for c in _full_deletions]}），"
+            f"请确认 reason 字段已写明具体去重依据，非误删。"
+        )
     from core.document.parser import parse_docx
     from core.document.generator import generate_docx
     from core.document.models import DocumentModel, Paragraph, ParagraphFormat, Run, RunFormat
