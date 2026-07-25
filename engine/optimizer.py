@@ -24,6 +24,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from core.document.font_utils import _LATIN_FONTS, _contains_cjk, BODY_FONT
+from core.document.models import Paragraph, Run, RunFormat
 from utils.logger import logger
 
 
@@ -92,6 +94,75 @@ def _auto_bold_outline_items(runs_data: list[dict]) -> None:
         text = rd.get("text", "")
         if pattern.match(text.strip()):
             rd["bold"] = True
+
+
+def _post_apply_font_protection(paragraphs: list[Paragraph]) -> None:
+    """
+    对所有段落的所有 run 执行字体兜底保护。
+    若 run 字体为 Latin 字体（如 Times New Roman）且文本含 CJK 字符，
+    则将 font_name 替换为 BODY_FONT（仿宋_GB2312），避免 Word 回退渲染中文。
+    """
+    for para in paragraphs:
+        for run in para.runs:
+            fn = run.format.font_name
+            if fn and fn in _LATIN_FONTS and run.text and _contains_cjk(run.text):
+                run.format.font_name = BODY_FONT
+
+
+_OUTLINE_RE = re.compile(r'^([一二三四五六七八九十])是')
+
+
+def _post_apply_bold_rules(paragraphs: list[Paragraph]) -> None:
+    """
+    对所有段落应用提纲编号词加粗规则（包括 optimize-content 中未变更的段落）。
+
+    规则：
+    - 同段仅 1 个编号词：该 run 整段 bold
+    - 同段 ≥2 个编号词（长段嵌入）：拆 run，仅"X是"部分 bold，其余 NORM
+    """
+    for para in paragraphs:
+        if not para.runs:
+            continue
+
+        outline_indices = []
+        for ri, run in enumerate(para.runs):
+            if run.text and _OUTLINE_RE.match(run.text.strip()):
+                outline_indices.append(ri)
+
+        if not outline_indices:
+            continue
+
+        if len(outline_indices) >= 2:
+            # 长段嵌入：将包含编号词的 run 拆为 BOLD 前缀 + NORM 后缀
+            new_runs: list[Run] = []
+            for ri, run in enumerate(para.runs):
+                m = _OUTLINE_RE.match(run.text.strip())
+                if m:
+                    prefix = m.group()
+                    rest = run.text.strip()[len(prefix):]
+                    pf = run.format
+                    new_runs.append(Run(
+                        index=len(new_runs), text=prefix,
+                        format=RunFormat(
+                            font_name=pf.font_name, font_size_pt=pf.font_size_pt,
+                            bold=True, color=pf.color, strikethrough=pf.strikethrough,
+                        ),
+                    ))
+                    if rest:
+                        new_runs.append(Run(
+                            index=len(new_runs), text=rest,
+                            format=RunFormat(
+                                font_name=pf.font_name, font_size_pt=pf.font_size_pt,
+                                bold=False, color=pf.color, strikethrough=pf.strikethrough,
+                            ),
+                        ))
+                else:
+                    run.index = len(new_runs)
+                    new_runs.append(run)
+            para.runs = new_runs
+        else:
+            # 单个编号词：该 run 整句 bold
+            para.runs[outline_indices[0]].format.bold = True
 
 
 def _build_diff_runs(
@@ -379,6 +450,11 @@ def create_diff_document(
         else:
             # 无变更段落：原样保持
             new_paragraphs.append(para)
+
+    # === 全部段落后处理：字体兜底 + 加粗规则 ===
+    # 确保未变更段落也得到与 optimize 命令相同的格式处理
+    _post_apply_font_protection(new_paragraphs)
+    _post_apply_bold_rules(new_paragraphs)
 
     # 重建索引
     for i, p in enumerate(new_paragraphs):

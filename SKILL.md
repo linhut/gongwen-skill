@@ -6,7 +6,7 @@ description: 中文公文文档格式化与语言风格助手。当用户需要�
 <!--
 公文文档格式化 Skill
 (c) 2026 Jose AI (https://www.linhut.cn)
-项目出处：AI 公文智能优化助手（https://github.com/linhut/document-ai-assistant）
+项目出处：AI 公文智能优化助手（https://doc.linhut.cn）
 Licensed under the MIT License. See the LICENSE file for details.
 -->
 
@@ -307,7 +307,7 @@ Agent: 已生成对比版 v5.docx，共 6 处变更，字体/行距均继承原�
 
 ## 项目仓库
 
-- **父项目**（桌面应用 + 完整引擎）：https://github.com/linhut/document-ai-assistant
+- **父项目**（桌面应用 + 完整引擎）：https://doc.linhut.cn
 - **本 Skill**（精简 CLI 版）：嵌入在 `document-skills/gongwen-skill/` 目录
 - 引擎核心目录：`engine/core/document/`（parser / generator / modifier / models / font_utils）
 

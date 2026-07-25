@@ -15,8 +15,8 @@ Licensed under the MIT License. See the LICENSE file for details.
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)
 ![GB/T 9704](https://img.shields.io/badge/standard-GB%2FT%209704-red.svg)
 
-本 Skill 源自开源桌面项目 <a href="https://github.com/linhut/document-ai-assistant" target="_blank">AI 公文智能优化助手</a>，将其核心格式引擎抽取、剥离桌面端/数据库依赖后独立发行，供任何人（或任何 AI Agent）直接调用，实现公文的**模板建立、解析、规则化、检查、优化、生成**全流程能力，并附带公文语言风格改写提示词。
-> 👆 父项目：<a href="https://github.com/linhut/document-ai-assistant" target="_blank">github.com/linhut/document-ai-assistant</a>
+本 Skill 源自开源桌面项目 <a href="https://doc.linhut.cn" target="_blank">AI 公文智能优化助手</a>，将其核心格式引擎抽取、剥离桌面端/数据库依赖后独立发行，供任何人（或任何 AI Agent）直接调用，实现公文的**模板建立、解析、规则化、检查、优化、生成**全流程能力，并附带公文语言风格改写提示词。
+> 👆 父项目：<a href="https://doc.linhut.cn" target="_blank">doc.linhut.cn</a>
 
 ---
 
@@ -162,4 +162,4 @@ https://github.com/linhut/gongwen-skill
 
 MIT License · **(c) 2026 Jose AI** · https://www.linhut.cn
 
-本 Skill 源自开源项目 <a href="https://github.com/linhut/document-ai-assistant" target="_blank">AI 公文智能优化助手</a>，格式引擎与规则 YAML 版权归原作者所有，依 MIT 许可证发行。使用、修改、分发请保留版权声明。
+本 Skill 源自开源项目 <a href="https://doc.linhut.cn" target="_blank">AI 公文智能优化助手</a>，格式引擎与规则 YAML 版权归原作者所有，依 MIT 许可证发行。使用、修改、分发请保留版权声明。

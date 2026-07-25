@@ -23,6 +23,7 @@ from core.document.models import DocumentModel, Paragraph, Run, Table as TableMo
 from core.document.font_utils import (
     set_run_font, set_paragraph_font, validate_document_fonts,
     TITLE_FONT, BODY_FONT, LATIN_FONT,
+    _LATIN_FONTS, _contains_cjk,
 )
 from utils.logger import logger
 
@@ -400,11 +401,14 @@ def _add_runs_via_xml(p_element, para_model: Paragraph):
             rPr = OxmlElement('w:rPr')
             fmt = run_model.format
             if fmt.font_name:
-                # 使用统一的字体设置，区分拉丁/中文字体
+                # 字体兜底保护：Latin字体 + CJK文本 → eastAsia 使用 BODY_FONT
+                east_asian = fmt.font_name
+                if fmt.font_name in _LATIN_FONTS and run_model.text and _contains_cjk(run_model.text):
+                    east_asian = BODY_FONT
                 rFonts = OxmlElement('w:rFonts')
                 rFonts.set(qn('w:ascii'), LATIN_FONT)
                 rFonts.set(qn('w:hAnsi'), LATIN_FONT)
-                rFonts.set(qn('w:eastAsia'), fmt.font_name)
+                rFonts.set(qn('w:eastAsia'), east_asian)
                 rFonts.set(qn('w:cs'), LATIN_FONT)
                 rPr.append(rFonts)
             if fmt.font_size_pt:
