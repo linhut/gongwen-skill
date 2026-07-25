@@ -605,7 +605,7 @@ def load_changes_from_json(json_path: str) -> list[dict]:
     """从 JSON 文件加载变更列表。"""
     data = json.loads(Path(json_path).read_text(encoding="utf-8"))
     changes = data.get("changes", data) if isinstance(data, dict) else data
-    required = {"paragraph_index", "original_text", "optimized_text", "reason"}
+    required = {"paragraph_index", "original_text", "optimized_text", "reason", "style", "reference"}
     for c in changes:
         if not required.issubset(c.keys()):
             raise ValueError(

@@ -551,6 +551,13 @@ def generate_revision_doc(
     # 段落首句自动加粗
     bold_first_sentence_in_model(rev_model)
 
+    # 标题强制加粗：role="heading" 的段落所有 run 设为 bold=True
+    for p in rev_model.paragraphs:
+        if p.role == "heading":
+            for r in p.runs:
+                if r.format is not None:
+                    r.format.bold = True
+
     # 生成文档
     generate_docx(rev_model, output_path)
     return output_path

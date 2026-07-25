@@ -234,8 +234,8 @@ doc = docx.Document("原文档.docx")
       "original_text": "原段落文字",
       "optimized_text": "优化后的文字",
       "reason": "修改说明（仅描述具体的「原文」→「修订」差异）",
-      "style": "行文风格标签（如"庄重严谨"）",
-      "reference": "公文写作规范依据"
+      "style": "行文风格标签（⚠️ 必填，如"庄重严谨"）",
+      "reference": "公文写作规范依据（⚠️ 必填）"
     }
   ]
 }
@@ -256,6 +256,8 @@ doc = docx.Document("原文档.docx")
 - **具体务实**：内容具体、可操作性强
 - **规范统一**：格式一致、用语统一
 - **精准凝练**：表达精准、不拖泥带水
+
+**⚠️ `reference` 字段必填规则**：每个 change 对象的 `reference` 字段为**必填项**，不可留空或省略。必须引用真实、可查证的公文写作规范，格式为 `公文"XX"部分写作规范——具体规范说明`。引擎层已在 `load_changes_from_json` 中对 `style` 和 `reference` 做强制校验，漏填将直接抛出 `ValueError`。
 
 **生成 `reason` / `style` / `reference` 的三步思考法（LLM 每段必须执行）**：
 
