@@ -15,7 +15,8 @@ Licensed under the MIT License. See the LICENSE file for details.
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)
 ![GB/T 9704](https://img.shields.io/badge/standard-GB%2FT%209704-red.svg)
 
-本 Skill 源自开源桌面项目 **[AI 公文智能优化助手](https://www.linhut.cn)**，将其核心格式引擎抽取、剥离桌面端/数据库依赖后独立发行，供任何人（或任何 AI Agent）直接调用，实现公文的**模板建立、解析、规则化、检查、优化、生成**全流程能力，并附带公文语言风格改写提示词。
+本 Skill 源自开源桌面项目 <a href="https://github.com/linhut/document-ai-assistant" target="_blank">AI 公文智能优化助手</a>，将其核心格式引擎抽取、剥离桌面端/数据库依赖后独立发行，供任何人（或任何 AI Agent）直接调用，实现公文的**模板建立、解析、规则化、检查、优化、生成**全流程能力，并附带公文语言风格改写提示词。
+> 👆 父项目：<a href="https://github.com/linhut/document-ai-assistant" target="_blank">github.com/linhut/document-ai-assistant</a>
 
 ---
 
@@ -126,20 +127,18 @@ python gongwen.py rule-export notice -o notice_rules.yaml
 - **涉密、敏感材料应先脱敏** — 勿将涉密文件直接输入本工具
 - **字体版权** — 方正小标宋简体、仿宋_GB2312、楷体_GB2312 等字体可能受版权约束，缺少字体时 Word 会回退显示，不影响排版属性正确性
 
-## 🤖 在 AI 对话中使用（DeepSeek / 豆包 / 千问 / ChatGPT 等）
+## 🤖 在对话式 AI 中使用（DeepSeek 网页端 / 豆包网页端 / 千问网页端等）
 
-即使对方不运行本地命令，你也可以通过以下方式让它学会公文处理：
+将本项目的 GitHub 链接发给对话式 AI 工具：
 
-**方式一（推荐）—— 发 GitHub 链接让它自己读**
+```
+https://github.com/linhut/gongwen-skill
+```
 
-把仓库链接 `https://github.com/linhut/gongwen-skill` 发给任意 AI，它会自动抓取仓库顶部的 [`prompt.txt`](./prompt.txt)。该文件是全套规则的"文字纯享版"——格式规范、内容润色准则、提纲编号规则、段落角色识别，AI 读完就能直接用在工作。
+这些工具会读取仓库内容（README、代码、规则文件等），仓库顶部的 [`AI_PROMPT.md`](./AI_PROMPT.md) 是专门为 AI 准备的全套规则文字版——包含 GB/T 9704 格式规范、内容润色准则、提纲编号规则、段落角色识别。AI 读完后即可直接为用户提供公文格式检查、内容润色、结构建议等纯文字服务。
 
-**方式二 —— 复制粘贴提示词**
-
-打开 [`prompt.txt`](./prompt.txt)，复制全文发给 AI 作为第一条消息，后续对话即可按国标处理公文。
-
-**能做什么（纯文字）**：格式检查清单、内容润色、结构建议、公文类型识别。
-**不能做什么（需本地运行）**：排版 .docx、注入版头版记页码。此类需求需用下方命令行。
+**纯文字能力**：格式检查清单 · 内容润色 · 结构建议 · 公文类型识别
+**需本地运行**：生成/排版 .docx · 版头/版记/页码注入 → 见下方命令行
 
 ## 🤖 作为 Agent Skill 使用
 
@@ -163,4 +162,4 @@ python gongwen.py rule-export notice -o notice_rules.yaml
 
 MIT License · **(c) 2026 Jose AI** · https://www.linhut.cn
 
-本 Skill 源自开源项目「AI 公文智能优化助手」，格式引擎与规则 YAML 版权归原作者所有，依 MIT 许可证发行。使用、修改、分发请保留版权声明。
+本 Skill 源自开源项目 <a href="https://github.com/linhut/document-ai-assistant" target="_blank">AI 公文智能优化助手</a>，格式引擎与规则 YAML 版权归原作者所有，依 MIT 许可证发行。使用、修改、分发请保留版权声明。
