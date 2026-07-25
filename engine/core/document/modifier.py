@@ -977,3 +977,52 @@ def _extract_para_index(location: str) -> int | None:
         return int(location.split(":")[-1].split(",")[0])
     except (ValueError, IndexError):
         return None
+
+
+def bold_first_sentence_of_body(model: DocumentModel) -> int:
+    """将正文段落的首句（遇 。！？：； 为界）加粗。
+
+    符合《党政机关公文格式》规范：段落点题的第一句话默认加粗处理。
+    不修改标题段落、签名段落、日期段落。
+
+    Returns:
+        修改的段落数
+    """
+    import re
+    changes = 0
+    exclude_roles = {'signature', 'date', 'title', 'recipient'}
+    for para in model.paragraphs:
+        if para.is_heading:
+            continue
+        if para.role in exclude_roles:
+            continue
+        text = para.text.strip()
+        if not text or len(text) < 4:
+            continue
+
+        # 找到首句结束位置（。！？：；）
+        m = re.search(r'[。！？：；]', text)
+        if not m:
+            continue
+        first_sentence = text[:m.end()]
+
+        # 遍历 runs，将首句所在的 run 加粗
+        pos = 0
+        for run in para.runs:
+            run_text = run.text or ""
+            run_start = pos
+            run_end = pos + len(run_text)
+            if run_start <= m.end() < run_end:
+                # 该 run 包含首句结尾处 → 整个 run 加粗
+                if not run.format.bold:
+                    run.format.bold = True
+                    changes += 1
+                break
+            elif run_end <= m.end():
+                # 该 run 完全在首句内 → 加粗
+                if not run.format.bold:
+                    run.format.bold = True
+                    changes += 1
+            pos = run_end
+
+    return changes

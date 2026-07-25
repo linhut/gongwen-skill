@@ -56,6 +56,38 @@ except Exception:
 
 
 # ---------------------------------------------------------------------------
+#  共享辅助
+# ---------------------------------------------------------------------------
+
+# 文件名关键词 → 公文类型（长关键词优先，避免"会议纪要"被"纪要"抢先）
+_TYPE_KEYWORDS = {
+    "会议纪要": "meeting", "技术方案": "technical_proposal",
+    "通知": "notice", "请示": "request", "报告": "report",
+    "函": "letter", "纪要": "minutes", "决定": "decision",
+    "通告": "announcement", "公告": "notice_public", "命令": "command",
+    "通报": "bulletin", "议案": "bill", "批复": "reply",
+    "指示": "instruction", "制度": "regulation", "公报": "communique",
+    "意见": "opinion", "总结": "summary", "方案": "work_plan",
+    "计划": "work_plan", "桌签": "table_sign", "决议": "resolution",
+}
+
+
+def _detect_doc_type(input_path: "Path", explicit: str | None) -> tuple[str, str]:
+    """确定公文类型，返回 (类型, 来源说明)。
+
+    优先级：用户显式 -t > 文件名关键词推断 > 默认 notice。
+    """
+    from pathlib import Path as _P
+    if explicit:
+        return explicit, "用户指定"
+    stem = _P(input_path).stem
+    for kw, dt in sorted(_TYPE_KEYWORDS.items(), key=lambda x: -len(x[0])):
+        if kw in stem:
+            return dt, f"文件名含「{kw}」推断"
+    return "notice", "默认（未识别到类型关键词）"
+
+
+# ---------------------------------------------------------------------------
 #  子命令实现
 # ---------------------------------------------------------------------------
 
@@ -130,7 +162,11 @@ def cmd_check(args):
 
 
 def cmd_optimize(args):
-    """检查 + 修复 + 生成。"""
+    """检查 + 修复 + 生成（格式优化，不改内容）。
+
+    默认预览模式：检测类型 → 检查问题 → 列出摘要 → 提示下一步。
+    加 --apply 才真正执行修复并生成文件。
+    """
     from core.document.parser import parse_docx
     from core.document.generator import generate_docx
     from core.rules.engine import RuleEngine
@@ -139,18 +175,51 @@ def cmd_optimize(args):
     input_path = Path(args.input)
     out = Path(args.output) if args.output else input_path.with_stem(input_path.stem + "_optimized")
 
+    # 确定文档类型（共享辅助函数，优先 -t 参数，其次文件名推断）
+    doc_type, type_source = _detect_doc_type(input_path, args.doc_type)
+
+    # 解析文档并检查
     model = parse_docx(str(input_path))
+    issues = engine.check(model, doc_type)
+
+    p0 = [i for i in issues if i.severity == "P0"]
+    p1 = [i for i in issues if i.severity == "P1"]
+    p2 = [i for i in issues if i.severity == "P2"]
+
+    # === 预览信息（始终显示）===
+    print(f"📄 文件: {input_path.name}")
+    print(f"🔍 类型: {doc_type}（{type_source}）")
+    print(f"📊 问题: 共 {len(issues)} 项（P0:{len(p0)}, P1:{len(p1)}, P2:{len(p2)}）")
+    if issues:
+        print(f"  P0 示例（必须修复）:")
+        for i in p0[:3]:
+            print(f"    - {i.name} @ {i.location}")
+        if p1:
+            print(f"  P1 示例（建议修复）:")
+            for i in p1[:3]:
+                print(f"    - {i.name} @ {i.location}")
+    if args.layout:
+        lc = json.loads(Path(args.layout).read_text(encoding="utf-8"))
+        parts = [k for k in ("header", "footer", "page_number") if k in lc]
+        print(f"🎨 版式注入: {', '.join(parts)}")
+
+    if not args.apply:
+        print()
+        print("─── 预览模式 ───")
+        print("以上是本次将要修复的内容预览。")
+        print("加 --apply 执行修复，或指定 -t 切换公文类型。")
+        print("示例:")
+        print(f"  python gongwen.py optimize {args.input} -t notice --apply")
+        print(f"  python gongwen.py optimize {args.input} -o 成品.docx --apply --layout 版式.json")
+        return
+
+    # === 执行模式 ===
     selected = args.selected_rules.split(",") if args.selected_rules else None
-    issues, fixed = engine.check_and_fix(model, args.doc_type, selected)
+    _, fixed = engine.check_and_fix(model, doc_type, selected)
     generate_docx(fixed, str(out))
+    print(f"✅ 优化完成: {out}")
+    print(f"  修复 {len(issues)} 项 (P0:{len(p0)}, P1:{len(p1)}, P2:{len(p2)})")
 
-    p0 = sum(1 for i in issues if i.severity == "P0")
-    p1 = sum(1 for i in issues if i.severity == "P1")
-    p2 = sum(1 for i in issues if i.severity == "P2")
-    print(f"优化完成: {out}")
-    print(f"  修复 {len(issues)} 项 (P0:{p0}, P1:{p1}, P2:{p2})")
-
-    # 可选：版头/版记/页码一次性注入（--layout 指向 JSON 配置）
     if getattr(args, "layout", None):
         layout = json.loads(Path(args.layout).read_text(encoding="utf-8"))
         from inject import inject_header, inject_footer, inject_page_number
@@ -397,6 +466,76 @@ def cmd_pagenum(args):
     print(f"页码已注入: {out} (格式: {args.format}, 对齐: {args.alignment})")
 
 
+def cmd_optimize_content(args):
+    """内容优化差异对比：原文灰色+删除线，修改后红色高亮，附修改说明。
+
+    默认预览模式：列出变更摘要 → 提示下一步。
+    加 --apply 才真正生成差异对比文档。
+    """
+    from optimizer import load_changes_from_json, create_diff_document
+
+    changes = load_changes_from_json(args.changes)
+
+    # 预览：列出变更摘要
+    print(f"📄 文件: {Path(args.input).name}")
+    print(f"📝 变更: 共 {len(changes)} 处")
+    for c in changes[:5]:
+        pi = c.get("paragraph_index", "?")
+        orig = c.get("original_text", "")[:40]
+        opt = c.get("optimized_text", "")[:40]
+        reason = c.get("reason", "")[:30]
+        print(f"  #{pi} 原文: {orig}...")
+        print(f"     → {opt}...")
+        if reason:
+            print(f"     说明: {reason}")
+    if len(changes) > 5:
+        print(f"  ... 还有 {len(changes) - 5} 处变更未列出")
+
+    if not args.apply:
+        print()
+        print("─── 预览模式 ───")
+        print("以上是变更内容预览。")
+        print("加 --apply 生成差异对比文档。")
+        print(f"示例:")
+        print(f"  python gongwen.py optimize-content {args.input} --changes {args.changes} --apply")
+        return
+
+    # 执行模式
+    kwargs = {}
+    if hasattr(args, 'disclaimer') and args.disclaimer is not None:
+        kwargs['disclaimer'] = args.disclaimer
+    create_diff_document(
+        args.input,
+        args.output or "对比文档.docx",
+        changes,
+        keep_format=not args.optimize_format,
+        **kwargs,
+    )
+    print(f"差异对比文档已生成: {args.output or '对比文档.docx'}")
+    print(f"  共 {len(changes)} 处变更")
+
+
+def cmd_bold_first(args):
+    """正文段落首句加粗（符合公文规范）。"""
+    import shutil
+    from core.document.parser import parse_docx
+    from core.document.generator import generate_docx
+    from core.document.modifier import bold_first_sentence_of_body
+
+    input_path = Path(args.input)
+    out = Path(args.output) if args.output else input_path.with_stem(input_path.stem + "_加粗首句")
+
+    if out != input_path:
+        shutil.copy2(str(input_path), str(out))
+
+    model = parse_docx(str(out))
+    changes = bold_first_sentence_of_body(model)
+    generate_docx(model, str(out))
+
+    print(f"首句加粗完成: {out}")
+    print(f"  共加粗 {changes} 个段落")
+
+
 def cmd_rule_export(args):
     """导出某类型的合并规则为 YAML。"""
     from core.rules.manager import load_rules_merged
@@ -491,12 +630,13 @@ def main():
     p.add_argument("--json", action="store_true", help="JSON 输出")
     p.set_defaults(func=cmd_check)
 
-    p = sub.add_parser("optimize", help="检查 + 修复 + 生成")
+    p = sub.add_parser("optimize", help="检查 + 修复 + 生成（预览模式默认，--apply 执行）")
     p.add_argument("input", help="输入 .docx 路径")
     p.add_argument("-o", "--output", help="输出 .docx 路径")
-    p.add_argument("-t", "--doc-type", default="notice", help="公文类型（默认 notice）")
+    p.add_argument("-t", "--doc-type", default="", help="公文类型（默认自动检测，可指定）")
     p.add_argument("--selected-rules", help="仅应用指定修复规则 ID，逗号分隔")
     p.add_argument("--layout", help="版式注入 JSON 配置（含 header/footer/page_number）")
+    p.add_argument("--apply", action="store_true", help="确认执行修复（默认预览）")
     p.set_defaults(func=cmd_optimize)
 
     p = sub.add_parser("generate", help="从 DocumentModel JSON 生成 .docx")
@@ -541,6 +681,20 @@ def main():
     p.add_argument("--date", default="", help="成文日期")
     p.add_argument("--attachments", nargs="*", help="附件列表")
     p.set_defaults(func=cmd_md2docx)
+
+    p = sub.add_parser("optimize-content", help="内容优化差异对比：原文灰色+删除线，修改后红色高亮，每段附修改说明与依据")
+    p.add_argument("input", help="输入 .docx 路径")
+    p.add_argument("-o", "--output", help="输出 .docx 路径（默认 对比文档.docx）")
+    p.add_argument("--changes", required=True, help="变更 JSON 文件路径（含 paragraph_index/original_text/optimized_text/reason/reference）")
+    p.add_argument("--optimize-format", action="store_true", help="同时优化格式（默认仅做差异标注，不改格式）")
+    p.add_argument("--apply", action="store_true", help="确认生成差异对比文档（默认预览）")
+    p.add_argument("--disclaimer", default=None, help="文档末尾 AI 声明文字（默认：内容由GongWen-skills AI生成，仅供参考）")
+    p.set_defaults(func=cmd_optimize_content)
+
+    p = sub.add_parser("bold-first", help="正文段落首句加粗（符合公文规范：点题第一句话默认加粗）")
+    p.add_argument("input", help="输入 .docx 路径")
+    p.add_argument("-o", "--output", help="输出 .docx 路径（默认输入_加粗首句.docx）")
+    p.set_defaults(func=cmd_bold_first)
 
     p = sub.add_parser("rule-export", help="导出合并后的规则为 YAML")
     p.add_argument("type", help="公文类型")

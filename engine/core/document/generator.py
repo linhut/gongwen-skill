@@ -889,6 +889,8 @@ def _apply_run_format(run, run_model: Run):
         run.font.italic = fmt.italic
     if fmt.underline is not None:
         run.font.underline = fmt.underline
+    if fmt.strikethrough is not None:
+        run.font.strike = fmt.strikethrough
 
     # === 颜色 ===
     if fmt.color:

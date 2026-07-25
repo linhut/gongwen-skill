@@ -61,6 +61,44 @@ INVALID_FONT_PATTERNS = [
     "ＭＳ 明朝",
 ]
 
+# 已知拉丁/西文字体集——当 run 文本包含 CJK 字符时，eastAsia 不应使用这些字体
+_LATIN_FONTS = frozenset({
+    "Times New Roman", "Arial", "Calibri", "Cambria", "Courier New",
+    "Georgia", "Verdana", "Tahoma", "Trebuchet MS", "Segoe UI",
+    "Consolas", "Lucida Console", "Lucida Sans", "Impact",
+    "Comic Sans MS", "Palatino Linotype", "Garamond",
+})
+
+# CJK 字符 Unicode 区间
+_CJK_RANGES = [
+    (0x4E00, 0x9FFF),    # CJK Unified Ideographs
+    (0x3400, 0x4DBF),    # CJK Unified Ideographs Extension A
+    (0x20000, 0x2A6DF),  # Extension B
+    (0x2A700, 0x2B73F),  # Extension C
+    (0x2B740, 0x2B81F),  # Extension D
+    (0x2B820, 0x2CEAF),  # Extension E
+    (0x2CEB0, 0x2EBEF),  # Extension F
+    (0x30000, 0x3134F),  # Extension G
+    (0x31350, 0x323AF),  # Extension H
+    (0xF900, 0xFAFF),    # CJK Compatibility Ideographs
+    (0x2F800, 0x2FA1F),  # CJK Compatibility Ideographs Supplement
+    (0x3000, 0x303F),    # CJK Symbols and Punctuation（。、，等）
+    (0xFF00, 0xFFEF),    # Halfwidth and Fullwidth Forms
+    (0x3040, 0x309F),    # Hiragana
+    (0x30A0, 0x30FF),    # Katakana
+    (0xAC00, 0xD7AF),    # Hangul Syllables
+]
+
+
+def _contains_cjk(text: str) -> bool:
+    """检查文本是否包含 CJK 字符（中日韩文字）。"""
+    for ch in text:
+        code = ord(ch)
+        for lo, hi in _CJK_RANGES:
+            if lo <= code <= hi:
+                return True
+    return False
+
 
 def set_run_font(run, font_name: str, latin_font: str | None = None) -> None:
     """
@@ -75,6 +113,10 @@ def set_run_font(run, font_name: str, latin_font: str | None = None) -> None:
     只设置 run.font.name 只会写入 w:ascii 和 w:hAnsi，
     不会写入 w:eastAsia，导致 Word 使用默认东亚字体（MS Gothic）。
 
+    兜底保护：当 font_name 是拉丁字体且 run 文本含 CJK 字符时，
+    eastAsia 自动替换为 BODY_FONT（仿宋_GB2312），避免源文档
+    eastAsia 属性缺失导致的中文回退为 Times New Roman 问题。
+
     Args:
         run: python-docx Run 对象
         font_name: 中文字体名称
@@ -84,6 +126,13 @@ def set_run_font(run, font_name: str, latin_font: str | None = None) -> None:
         return
 
     latin = latin_font or LATIN_FONT
+
+    # 兜底：font_name 是拉丁字体且文本含 CJK → eastAsia 用 BODY_FONT
+    east_asian_font = font_name
+    if font_name in _LATIN_FONTS:
+        run_text = run.text if hasattr(run, 'text') else ''
+        if run_text and _contains_cjk(run_text):
+            east_asian_font = BODY_FONT
 
     # 1. 通过 python-docx API 设置基础字体（这会设置 w:ascii + w:hAnsi）
     run.font.name = latin
@@ -98,12 +147,12 @@ def set_run_font(run, font_name: str, latin_font: str | None = None) -> None:
         rPr.insert(0, rFonts)
 
     # 4. 设置四个关键字体属性
-    rFonts.set(qn('w:ascii'), latin)       # 西文 ASCII
-    rFonts.set(qn('w:hAnsi'), latin)       # 高位 ANSI
-    rFonts.set(qn('w:eastAsia'), font_name)  # 东亚文字（核心！）
-    rFonts.set(qn('w:cs'), font_name)       # 复杂脚本
+    rFonts.set(qn('w:ascii'), latin)              # 西文 ASCII
+    rFonts.set(qn('w:hAnsi'), latin)              # 高位 ANSI
+    rFonts.set(qn('w:eastAsia'), east_asian_font) # 东亚文字（核心！）
+    rFonts.set(qn('w:cs'), font_name)             # 复杂脚本
 
-    logger.debug(f"Set font: eastAsia={font_name}, latin={latin}")
+    logger.debug(f"Set font: eastAsia={east_asian_font}, latin={latin}")
 
 
 def set_run_font_east_asian(run, font_name: str) -> None:

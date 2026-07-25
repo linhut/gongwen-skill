@@ -21,6 +21,7 @@ class RunFormat(BaseModel):
     bold: Optional[bool] = None
     italic: Optional[bool] = None
     underline: Optional[bool] = None
+    strikethrough: Optional[bool] = None
     color: Optional[str] = None
 
 

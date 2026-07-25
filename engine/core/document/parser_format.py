@@ -42,14 +42,14 @@ def parse_paragraph_format(para) -> ParagraphFormat:
                 line_spacing_pt = float(pf.line_spacing) * 16
                 line_spacing_rule = "multiple"
             elif rule == WD_LINE_SPACING.EXACTLY:
-                line_spacing_pt = round(Length(pf.line_spacing, 0).pt, 2)
+                line_spacing_pt = round(Length(int(pf.line_spacing)).pt, 2)
                 line_spacing_rule = "exact"
             elif rule == WD_LINE_SPACING.AT_LEAST:
-                line_spacing_pt = round(Length(pf.line_spacing, 0).pt, 2)
+                line_spacing_pt = round(Length(int(pf.line_spacing)).pt, 2)
                 line_spacing_rule = "atLeast"
             elif isinstance(pf.line_spacing, (int, float)):
                 if pf.line_spacing > 100:
-                    line_spacing_pt = round(Length(int(pf.line_spacing), 0).pt, 2)
+                    line_spacing_pt = round(Length(int(pf.line_spacing)).pt, 2)
                     line_spacing_rule = "exact"
                 elif pf.line_spacing > 3:
                     line_spacing_pt = float(pf.line_spacing)
@@ -58,7 +58,8 @@ def parse_paragraph_format(para) -> ParagraphFormat:
                     line_spacing_pt = float(pf.line_spacing) * 16
                     line_spacing_rule = "multiple"
             else:
-                line_spacing_pt = round(Length(pf.line_spacing, 0).pt, 2)
+                # 尝试直接取 pt
+                line_spacing_pt = round(pf.line_spacing.pt, 2)
                 line_spacing_rule = "exact"
         except Exception:
             pass
@@ -130,6 +131,9 @@ def _safe_pt2(value, default: float | None = None) -> float | None:
     try:
         if value is None:
             return default
-        return round(Length(value, 0).pt, 2)
+        # Twips/Emu/Length 对象直接用 .pt，int 用 Length 包装
+        if hasattr(value, 'pt'):
+            return round(value.pt, 2)
+        return round(Length(int(value)).pt, 2)
     except Exception:
         return default
