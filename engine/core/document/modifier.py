@@ -74,7 +74,8 @@ def _select_paragraphs(model: DocumentModel, target: str) -> list[Paragraph]:
         non_empty = [p for p in model.paragraphs if p.text.strip()]
         return non_empty[-2:] if len(non_empty) >= 2 else non_empty
     elif target == "all":
-        return list(model.paragraphs)
+        # 排除注释段落（annotation），禁止格式化覆盖修订说明段
+        return [p for p in model.paragraphs if p.role != "annotation"]
     else:
         logger.warning(f"Unknown target: {target}")
         return []
@@ -222,7 +223,7 @@ def fix_bold_range(model: DocumentModel) -> int:
     2. 无边界但整段加粗 → 全部取消加粗
     """
     changes = 0
-    _EXCLUDE_ROLES = {'signature', 'date'}
+    _EXCLUDE_ROLES = {'signature', 'date', 'annotation'}
     _CLAUSE_RE = re.compile(r'[:：。、]')
 
     for para in model.paragraphs:
@@ -990,7 +991,7 @@ def bold_first_sentence_of_body(model: DocumentModel) -> int:
     """
     import re
     changes = 0
-    exclude_roles = {'signature', 'date', 'title', 'recipient'}
+    exclude_roles = {'signature', 'date', 'title', 'recipient', 'annotation'}
     for para in model.paragraphs:
         if para.is_heading:
             continue

@@ -78,24 +78,115 @@ def _word_diff(original: str, revised: str) -> list[tuple[str, str]]:
 
 
 def _build_revision_note(original: str, revised: str, context: str = "") -> str:
-    """根据原文和修订文自动生成修改说明。"""
+    """根据原文和修订文自动生成结构化修改说明。
+
+    基于字符级 diff 提取修改片段，经相邻合并和近距合并后生成可读描述。
+    格式：「原文片段」→「修订片段」，多修改点用分号分隔。
+    若修改过多（>8 组），归纳为「N 处措辞优化」并列举关键示例。
+    """
+    import re as _re
+
     if not original:
         return "新增内容"
     if not revised:
         return "删除冗余内容"
-    # 简单判断修改类型
-    if len(revised) > len(original) * 1.3:
-        return "补充完善"
-    elif len(original) > len(revised) * 1.3:
-        return "精简表述"
-    else:
+
+    raw_chunks = _word_diff(original, revised)
+
+    # 阶段 1：同类型相邻块合并
+    merged: list[tuple[str, str]] = []  # (tag, text)
+    for tag, text in raw_chunks:
+        if merged and merged[-1][0] == tag:
+            merged[-1] = (tag, merged[-1][1] + text)
+        else:
+            merged.append((tag, text))
+
+    # 阶段 2：将 (delete, insert)、(delete, ≤4-chars-equal, insert) 转换为 replace
+    normalized: list[tuple[str, str, str | None]] = []  # (tag, text, extra)
+    i = 0
+    while i < len(merged):
+        tag, text = merged[i]
+        if tag == "delete":
+            if i + 1 < len(merged) and merged[i + 1][0] == "insert":
+                normalized.append(("replace", text, merged[i + 1][1]))
+                i += 2
+                continue
+            if i + 2 < len(merged) and merged[i + 1][0] == "equal" and len(merged[i + 1][1]) <= 4 and merged[i + 2][0] == "insert":
+                # 保留中间 context 用于合并判断
+                normalized.append(("replace", text + merged[i + 1][1] + merged[i + 2][1], None))
+                i += 3
+                continue
+            normalized.append(("delete", text, None))
+            i += 1
+        elif tag == "insert":
+            # 检查前面是否刚结束一个 delete
+            if normalized and normalized[-1][0] == "replace":
+                # 合并到前一个 replace
+                prev_tag, prev_text, prev_extra = normalized[-1]
+                normalized[-1] = ("replace", prev_text, (prev_extra or "") + text)
+                i += 1
+                continue
+            normalized.append(("insert", text, None))
+            i += 1
+        else:
+            normalized.append((tag, text, None))
+            i += 1
+
+    # 阶段 3：以 same 块为硬边界，分隔相邻变化组
+    groups: list[list[tuple[str, str, str | None]]] = []
+    current_group: list[tuple[str, str, str | None]] = []
+    for tag, text, extra in normalized:
+        if tag == "same":
+            if current_group:
+                groups.append(current_group)
+                current_group = []
+            continue
+        current_group.append((tag, text, extra))
+
+    if current_group:
+        groups.append(current_group)
+
+    # 阶段 4：将每组提炼为一条修改说明
+    parts = []
+    for grp in groups:
+        only_equal = all(t == "equal" for t, _, _ in grp)
+        if only_equal:
+            continue
+
+        deleted_parts = []
+        inserted_parts = []
+        for tag, text, extra in grp:
+            if tag in ("delete", "replace"):
+                deleted_parts.append(text)
+            if tag in ("insert", "replace"):
+                inserted_parts.append(extra or text if tag == "insert" else extra or "")
+
+        old_text = "".join(deleted_parts)
+        new_text = "".join(inserted_parts)
+
+        old_clean = _re.sub(r'[\s\u3000]', '', old_text)
+        new_clean = _re.sub(r'[\s\u3000]', '', new_text)
+        if not old_clean and not new_clean:
+            continue
+
+        _old_d = old_text[:24] + "…" if len(old_text) > 24 else old_text
+        _new_d = new_text[:24] + "…" if len(new_text) > 24 else new_text
+
+        if old_clean and new_clean:
+            parts.append(f"「{_old_d}」→「{_new_d}」")
+        elif old_clean:
+            parts.append(f"删除「{_old_d}」")
+        else:
+            parts.append(f"新增「{_new_d}」")
+
+    if not parts:
         return "优化措辞"
 
+    # >8 组归纳
+    if len(parts) > 8:
+        return f"{len(parts)} 处措辞优化（如 {'；'.join(parts[:3])} 等）"
 
-# ---------------------------------------------------------------------------
-#  修订文档生成
-# ---------------------------------------------------------------------------
-
+    return "；".join(parts)
 def compare_paragraphs(
     original_texts: list[tuple[str, str]],  # [(role, text), ...]
     revised_texts: list[tuple[str, str]],
