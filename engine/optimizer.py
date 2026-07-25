@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -412,11 +413,11 @@ def create_diff_document(
 
     model = parse_docx(original_path)
 
-    # 建立变更索引
-    change_map: dict[int, dict] = {}
+    # 建立变更索引（list 聚合，同一段落的多条片段变更不会互相覆盖）
+    change_map: dict[int, list[dict]] = defaultdict(list)
     for c in changes:
         idx = c.get("paragraph_index", -1)
-        change_map[idx] = c
+        change_map[idx].append(c)
 
     # 遍历段落，有变更的做 diff 标注
     new_paragraphs: list[Paragraph] = []
@@ -445,9 +446,50 @@ def create_diff_document(
     for para in model.paragraphs:
         idx = para.index
         if idx in change_map:
-            c = change_map[idx]
-            orig_text = c.get("original_text", para.text)
-            opt_text = c.get("optimized_text", para.text)
+            fragments = change_map[idx]
+
+            if len(fragments) == 1 and fragments[0].get("original_text", "") == para.text:
+                # 单片段且覆盖整段：保持原有逻辑
+                c = fragments[0]
+                orig_text = c.get("original_text", para.text)
+                opt_text = c.get("optimized_text", para.text)
+            else:
+                # 多片段合并（或单片段但不覆盖整段）：
+                # 以原段落全文为基底，按序依次替换各片段
+                full_orig = para.text
+                full_opt = full_orig
+
+                # 按 original_text 在原段落中的出现顺序排序
+                sorted_fragments = sorted(
+                    fragments,
+                    key=lambda f: full_orig.find(f.get("original_text", ""))
+                )
+
+                for frag in sorted_fragments:
+                    frag_orig = frag.get("original_text", "")
+                    frag_opt = frag.get("optimized_text", "")
+                    if not frag_orig:
+                        logger.warning(f"段落 {idx}: fragment original_text 为空，跳过")
+                        continue
+                    count = full_opt.count(frag_orig)
+                    if count == 0:
+                        logger.warning(
+                            f"段落 {idx}: original_text 在基底文本中未找到，"
+                            f"跳过片段: {frag_orig[:60]}..."
+                        )
+                        continue
+                    if count > 1:
+                        logger.warning(
+                            f"段落 {idx}: original_text 出现 {count} 次，歧义，"
+                            f"跳过片段: {frag_orig[:60]}..."
+                        )
+                        continue
+                    full_opt = full_opt.replace(frag_orig, frag_opt, 1)
+
+                if len(fragments) == 1:
+                    c = fragments[0]
+                orig_text = full_orig
+                opt_text = full_opt
 
             # === 从原文段落读取字体/字号，绝不使用硬编码模板值 ===
             para_font, para_size = _get_para_font(para)
@@ -538,10 +580,18 @@ def create_diff_document(
             )
             new_paragraphs.append(new_para)
 
-            # 追加修改说明段
-            reason = c.get("reason", "")
-            reference = c.get("reference", "")
-            style = c.get("style", "")
+            # 追加修改说明段（多片段时合并各 fragment 的 reason/reference/style）
+            if len(fragments) == 1:
+                reason = fragments[0].get("reason", "")
+                reference = fragments[0].get("reference", "")
+                style = fragments[0].get("style", "")
+            else:
+                reasons = [f.get("reason", "") for f in fragments if f.get("reason", "").strip()]
+                references = [f.get("reference", "") for f in fragments if f.get("reference", "").strip()]
+                styles = [f.get("style", "") for f in fragments if f.get("style", "").strip()]
+                reason = "\n".join(reasons) if reasons else ""
+                reference = "\n".join(references) if references else ""
+                style = "\n".join(styles) if styles else ""
             if reason:
                 reason_para_data = _build_reason_para(reason, reference, style)
                 rr = []
