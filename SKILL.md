@@ -173,8 +173,13 @@ python gongwen.py pagenum 文件.docx --alignment center
 第0步：读取原文档格式（字体/字号/行距/缩进/对齐/边距）
 第1步：LLM 逐段分析 → changes.json
 第2步：gongwen.py optimize-content → 差异对比文档（自动继承原文档格式 + 声明文字）
-第3步（可选）：校对确认后 optimize 生成无标记成品
 ```
+
+**路径 B 到此结束。** 差异对比文档即为最终交付物。
+
+交付后询问用户：是否需要对此对比文档走**路径 A**做格式合规修复？
+- 用户同意 → 独立执行路径 A，生成无标记成品
+- 用户拒绝或不回应 → 流程结束，不做任何额外操作
 
 ### 第0步：读取原文档格式
 
@@ -261,13 +266,9 @@ python gongwen.py optimize-content 原文.docx --changes changes.json --apply --
 python gongwen.py optimize-content 原文.docx --changes changes.json --apply --disclaimer ""
 ```
 
-### 第3步（可选）：生成无标记成品
+### 如需格式修复：走路径 A
 
-用户确认对比版无误后：
-
-```bash
-python gongwen.py optimize 对比文档.docx -o 最终成品.docx -t <类型> --apply
-```
+用户确认对比版内容无误后，如需对差异对比文档做格式合规修复，Agent 必须明确告知用户这是**切换到路径 A**，不再是路径 B 的一部分。确认后执行路径 A 的 `check → optimize → check` 流程。
 
 ### 表格和图片处理
 
@@ -330,12 +331,16 @@ python ../gongwen.py optimize-content 文件.docx --changes changes.json --apply
 
 ```
 用户: 帮我优化这个公文的表达
-Agent: [确认是格式优化还是内容优化]
+Agent: [先确认是格式优化还是内容优化]
 用户: 内容优化
 Agent: [读取原文档格式 → LLM 分析生成 changes.json → 执行 optimize-content]
 Agent: 已生成对比版 v5.docx，共 6 处变更，字体/行距均继承原文档。
-      文件路径：C:\...\对比版_v5.docx
+      文件路径：C:\...\修订对比_v5.docx
       文档末尾已标注 AI 生成声明。
+Agent: 是否需要对此对比文档走格式优化，生成排版合规的无标记成品？
+用户: 要 / 不用
+      → "要" → 独立执行路径 A，生成 -格式优化 后缀的无标记成品
+      → "不用" → 流程结束
 ```
 
 ---
@@ -394,6 +399,6 @@ Agent: 已生成对比版 v5.docx，共 6 处变更，字体/行距均继承原�
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
-| v2.1 | 2026-07-25 | `_build_diff_runs` 从句子级匹配升级为 `SequenceMatcher` 字符级行内 diff（v10 样式：灰#999+删除线=删除，红#E00000=新增，黑=不变）；合并连续同类型碎片避免过度碎片化；修正 `create_diff_document` 中 `Paragraph.text` 与 runs 文本一致性 |
+| v2.2 | 2026-07-25 | 路径 B 完全隔离：移除「第3步 optimize 生成无标记成品」，路径 B 交付差异对比文档后必须主动询问是否走路径 A；更新对话流程示例 |
 | v2.0 | 2026-07-25 | 新增交互指引、格式继承原则、表格/图片处理说明 |
 | v1.0 | 2026-07-24 | 初始版本，支持路径 A/B/C |
