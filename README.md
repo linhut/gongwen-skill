@@ -126,7 +126,22 @@ python gongwen.py rule-export notice -o notice_rules.yaml
 - **涉密、敏感材料应先脱敏** — 勿将涉密文件直接输入本工具
 - **字体版权** — 方正小标宋简体、仿宋_GB2312、楷体_GB2312 等字体可能受版权约束，缺少字体时 Word 会回退显示，不影响排版属性正确性
 
-## 🤖 作为 AI Skill 使用
+## 🤖 在 AI 对话中使用（DeepSeek / 豆包 / 千问 / ChatGPT 等）
+
+即使对方不运行本地命令，你也可以通过以下方式让它学会公文处理：
+
+**方式一（推荐）—— 发 GitHub 链接让它自己读**
+
+把仓库链接 `https://github.com/linhut/gongwen-skill` 发给任意 AI，它会自动抓取仓库顶部的 [`prompt.txt`](./prompt.txt)。该文件是全套规则的"文字纯享版"——格式规范、内容润色准则、提纲编号规则、段落角色识别，AI 读完就能直接用在工作。
+
+**方式二 —— 复制粘贴提示词**
+
+打开 [`prompt.txt`](./prompt.txt)，复制全文发给 AI 作为第一条消息，后续对话即可按国标处理公文。
+
+**能做什么（纯文字）**：格式检查清单、内容润色、结构建议、公文类型识别。
+**不能做什么（需本地运行）**：排版 .docx、注入版头版记页码。此类需求需用下方命令行。
+
+## 🤖 作为 Agent Skill 使用
 
 将本仓库放入 Agent 的 skills 目录（如 Claude Code 的 `~/.claude/skills/`），Agent 读取 `SKILL.md` 后即可自动调用上述命令。`SKILL.md` 的 frontmatter 已声明触发场景。
 
