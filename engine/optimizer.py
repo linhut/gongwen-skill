@@ -95,18 +95,45 @@ def _apply_bold_from_source(runs_data: list[dict], para) -> None:
                 ri += 1
 
 
+def _find_first_sentence_end(text: str) -> int:
+    """找到文本中第一个句号或分号的位置，用于首句截断。"""
+    positions = []
+    for ch in ['。', '；']:
+        pos = text.find(ch)
+        if pos >= 0:
+            positions.append(pos)
+    return min(positions) if positions else -1
+
+
 def _auto_bold_outline_items(runs_data: list[dict]) -> None:
     """
     自动加粗提纲编号词（一是/二是/三是/四是/五是/六是）。
 
-    检测 runs_data 中以"X是"开头的 run，设置 bold=True。
+    检测 runs_data 中以"X是"开头的 run，仅首句（到第一个。或；）设为 bold=True，
+    剩余内容拆到新 run 设为 bold=False，避免加粗跨界到后续句子。
     """
     import re
     pattern = re.compile(r'^([一二三四五六七八九十])是')
+    result = []
     for rd in runs_data:
         text = rd.get("text", "")
         if pattern.match(text.strip()):
-            rd["bold"] = True
+            cutoff = _find_first_sentence_end(text)
+            if cutoff > 0 and cutoff < len(text) - 1:
+                first = text[:cutoff + 1]
+                rest = text[cutoff + 1:]
+                rd["text"] = first
+                rd["bold"] = True
+                result.append(rd)
+                new_rd = dict(rd)
+                new_rd["text"] = rest
+                new_rd["bold"] = False
+                result.append(new_rd)
+                continue
+            else:
+                rd["bold"] = True
+        result.append(rd)
+    runs_data[:] = result
 
 
 def _post_apply_font_protection(paragraphs: list[Paragraph]) -> None:
@@ -174,8 +201,32 @@ def _post_apply_bold_rules(paragraphs: list[Paragraph]) -> None:
                     new_runs.append(run)
             para.runs = new_runs
         else:
-            # 单个编号词：该 run 整句 bold
-            para.runs[outline_indices[0]].format.bold = True
+            # 单个编号词：仅首句（到第一个。或；）bold，避免加粗跨界
+            outline_run = para.runs[outline_indices[0]]
+            text = outline_run.text
+            cutoff = _find_first_sentence_end(text)
+            if cutoff > 0 and cutoff < len(text) - 1:
+                first = text[:cutoff + 1]
+                rest = text[cutoff + 1:]
+                outline_run.text = first
+                outline_run.format.bold = True
+                new_run = Run(
+                    index=len(para.runs),
+                    text=rest,
+                    format=RunFormat(
+                        font_name=outline_run.format.font_name,
+                        font_size_pt=outline_run.format.font_size_pt,
+                        bold=False,
+                        color=outline_run.format.color,
+                        strikethrough=outline_run.format.strikethrough,
+                    ),
+                )
+                insert_pos = outline_indices[0] + 1
+                para.runs.insert(insert_pos, new_run)
+                for i, r in enumerate(para.runs):
+                    r.index = i
+            else:
+                outline_run.format.bold = True
 
 
 def _build_diff_runs(
@@ -435,11 +486,17 @@ def create_diff_document(
                 ))
             # text 使用 runs 拼接的完整文本（含删除+保留+新增），确保与渲染一致
             run_text = "".join(r.text for r in new_runs)
+            # 校验 heading 样式合理性：body 段落不应被标记为 heading（原文档样式错误传递）
+            _is_heading = para.is_heading
+            _heading_level = para.heading_level
+            if _is_heading and para.role == "body" and (len(para.text) > 30 or "。" in para.text):
+                _is_heading = False
+                _heading_level = None
             new_para = Paragraph(
                 index=idx, text=run_text,
                 style_name=para.style_name,
-                is_heading=para.is_heading,
-                heading_level=para.heading_level,
+                is_heading=_is_heading,
+                heading_level=_heading_level,
                 role=para.role,
                 runs=new_runs,
                 format=ParagraphFormat(
