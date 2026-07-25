@@ -484,10 +484,13 @@ def cmd_optimize_content(args):
         orig = c.get("original_text", "")[:40]
         opt = c.get("optimized_text", "")[:40]
         reason = c.get("reason", "")[:30]
+        style = c.get("style", "")
         print(f"  #{pi} 原文: {orig}...")
         print(f"     → {opt}...")
         if reason:
             print(f"     说明: {reason}")
+        if style:
+            print(f"     风格: {style}")
     if len(changes) > 5:
         print(f"  ... 还有 {len(changes) - 5} 处变更未列出")
 

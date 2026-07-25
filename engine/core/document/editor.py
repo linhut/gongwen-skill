@@ -348,10 +348,10 @@ def make_revision_model(
                 note_parts = []
                 if diff.note:
                     note_parts.append(f"【修改说明】{diff.note}")
+                if perspective:
+                    note_parts.append(f"【风格】{perspective}")
                 if background:
                     note_parts.append(f"【依据】{background}")
-                if perspective:
-                    note_parts.append(f"【行文风格】{perspective}")
                 if note_parts:
                     pending_notes.append((matched_idx, " ".join(note_parts)))
 

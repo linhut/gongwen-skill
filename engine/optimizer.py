@@ -275,16 +275,27 @@ def _build_diff_runs(
 def _build_reason_para(
     reason: str,
     reference: str = "",
+    style: str = "",
     base_font: str = "仿宋_GB2312",
 ) -> dict:
     """
     构建修改说明段落（五号字，灰色，楷体_GB2312）。
-    返回 Paragraph 描述 dict。
+
+    格式：与正文仿宋 16pt 形成字体/字号/颜色三重区分。
+    说明文本按【修改说明】→【风格】→【依据】三段式排列。
+
+    Args:
+        reason: 修改说明（具体修改点描述）
+        reference: 公文写作规范依据
+        style: 行文风格标签（如"庄重严谨""简洁明快"）
+        base_font: 底字体（保留参数兼容性，实际使用楷体_GB2312）
     """
     text_parts = [f"【修改说明】{reason}"]
+    if style:
+        text_parts.append(f"【风格】{style}")
     if reference:
         text_parts.append(f"【依据】{reference}")
-    full_text = "（" + " ".join(text_parts) + "）"
+    full_text = " ".join(text_parts)
 
     # 说明文字使用楷体_GB2312 小四号 12pt，灰色 #888888，与正文仿宋 16pt 形成明显区分
     return {
@@ -323,7 +334,8 @@ def create_diff_document(
             - original_text: str（原文）
             - optimized_text: str（优化后）
             - reason: str（修改说明）
-            - reference: str（背景资料依据，可选）
+            - reference: str（公文写作规范依据，可选）
+            - style: str（行文风格标签，如"庄重严谨"，可选）
         keep_format: 是否保持原文段落格式（不触发格式优化）
 
     Returns:
@@ -442,8 +454,9 @@ def create_diff_document(
             # 追加修改说明段
             reason = c.get("reason", "")
             reference = c.get("reference", "")
+            style = c.get("style", "")
             if reason:
-                reason_para_data = _build_reason_para(reason, reference)
+                reason_para_data = _build_reason_para(reason, reference, style)
                 rr = []
                 for i, rd in enumerate(reason_para_data["runs"]):
                     rr.append(Run(
