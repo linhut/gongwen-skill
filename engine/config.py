@@ -51,9 +51,12 @@ LOG_DIR = APP_DATA_DIR / "logs"
 # ---------------------------------------------------------------------------
 #  自动创建可写目录
 # ---------------------------------------------------------------------------
+import logging
+
+_log = logging.getLogger(__name__)
+
 for _d in (APP_DATA_DIR, CUSTOM_RULES_DIR, USER_RULES_DIR, LOG_DIR):
     try:
         _d.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        # 极端只读环境下不阻断导入；日志/自定义规则功能自动降级
-        pass
+    except OSError as exc:
+        _log.warning("无法创建目录 %s: %s，功能将自动降级", _d, exc)

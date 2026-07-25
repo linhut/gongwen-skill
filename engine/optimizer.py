@@ -43,11 +43,12 @@ def _apply_bold_from_source(runs_data: list[dict], para) -> None:
 
     遍历源段落的 runs，找到所有 bold=True 的文本段，
     在 runs_data 中查找匹配位置并设置 bold=True。
+    使用双指针归并扫描，时间复杂度 O(N+M)。
     """
     if not para.runs:
         return
 
-    # 收集源段落的 bold 文本段：[(start_pos_in_plain_text, length), ...]
+    # 收集源段落的 bold 文本段：[(start, end), ...]
     bold_spans = []
     plain_pos = 0
     for r in para.runs:
@@ -55,31 +56,43 @@ def _apply_bold_from_source(runs_data: list[dict], para) -> None:
         if not rt:
             continue
         if r.format and r.format.bold:
-            bold_spans.append((plain_pos, len(rt)))
+            bold_spans.append((plain_pos, plain_pos + len(rt)))
         plain_pos += len(rt)
 
     if not bold_spans:
         return
 
-    # 构建 runs_data 中每段的文本位置映射
-    # runs_data 的文本拼接后的字符偏移 → (run_idx, local_offset)
-    rd_pos = 0
+    # 构建 runs_data 中每段的文本区间：[(start, end, idx), ...]
     rd_spans: list[tuple[int, int, int]] = []  # (start, end, run_idx)
+    rd_pos = 0
     for i, rd in enumerate(runs_data):
         text = rd["text"]
         if text:
             rd_spans.append((rd_pos, rd_pos + len(text), i))
             rd_pos += len(text)
 
-    # 对每个 bold 段，找出 runs_data 中与之重叠的 run，设 bold
-    for b_start, b_len in bold_spans:
-        b_end = b_start + b_len
-        for rs_start, rs_end, rd_idx in rd_spans:
-            # 有重叠
-            overlap_start = max(b_start, rs_start)
-            overlap_end = min(b_end, rs_end)
-            if overlap_start < overlap_end:
-                runs_data[rd_idx]["bold"] = True
+    # 双指针归并扫描
+    bi = 0  # bold_spans 指针
+    ri = 0  # rd_spans 指针
+    while bi < len(bold_spans) and ri < len(rd_spans):
+        bs, be = bold_spans[bi]
+        rs, re, rd_idx = rd_spans[ri]
+
+        if be <= rs:
+            # bold span 完全在 rd span 之前 → 移到下一个 bold span
+            bi += 1
+        elif re <= bs:
+            # rd span 完全在 bold span 之前 → 移到下一个 rd span
+            ri += 1
+        else:
+            # 有重叠 → 标记 bold
+            runs_data[rd_idx]["bold"] = True
+            # 如果 bold span 结束在 rd span 内 → 移到下一个 bold span
+            # 否则 rd span 结束在 bold span 内 → 移到下一个 rd span
+            if be <= re:
+                bi += 1
+            else:
+                ri += 1
 
 
 def _auto_bold_outline_items(runs_data: list[dict]) -> None:
@@ -172,85 +185,89 @@ def _build_diff_runs(
     base_size: float = 16.0,
 ) -> list[dict]:
     """
-    在句子级别做 diff，返回 run 描述列表。
+    使用 difflib.SequenceMatcher 做字符级行内 diff，返回 v10 行内 diff 样式 run 列表。
+
+    v10 行内 diff 样式规则（单一段落内）：
+      - equal（共享不变）： 黑色，无颜色，无删除线
+      - delete（原文删除）： 灰色 #999999 + 删除线
+      - insert（修订新增）： 红色 #E00000，无删除线
+      - replace → 拆为 delete + insert
 
     每个 run 结构：
       {"text": str, "bold": bool, "font_name": str, "font_size_pt": float,
        "color": str | None, "strikethrough": bool, "highlight": bool}
+
+    后处理：合并连续的同类型碎片（避免过度碎片化）。
     """
+    # 空文本边界
     if not original_text.strip():
-        # 纯新增内容：全部红色
         return [{
             "text": optimized_text, "bold": False,
             "font_name": base_font, "font_size_pt": base_size,
             "color": "E00000", "strikethrough": False, "highlight": False,
         }]
     if not optimized_text.strip():
-        # 纯删除内容：全部灰色+删除线
         return [{
             "text": original_text, "bold": False,
             "font_name": base_font, "font_size_pt": base_size,
             "color": "999999", "strikethrough": True, "highlight": False,
         }]
 
-    orig_sentences = _split_sentences(original_text)
-    opt_sentences = _split_sentences(optimized_text)
-    runs: list[dict] = []
+    import difflib
 
-    # 简单句子级 diff：保留匹配的句子，标记新增/删除
-    orig_set = set(s.strip() for s in orig_sentences)
+    # ---- 字符级行内 diff ----
+    matcher = difflib.SequenceMatcher(None, original_text, optimized_text)
+    raw_runs: list[dict] = []
 
-    for t in [s.strip() for s in opt_sentences if s.strip()]:
-        if t in orig_set:
-            # 完全匹配 → 黑色正常
-            runs.append({
-                "text": t, "bold": False,
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            raw_runs.append({
+                "text": original_text[i1:i2], "bold": False,
                 "font_name": base_font, "font_size_pt": base_size,
                 "color": None, "strikethrough": False, "highlight": False,
             })
-            orig_set.discard(t)
-        else:
-            # 匹配开头一部分
-            matched = False
-            for orig_s in list(orig_set):
-                # 检查是否部分匹配（修改后句子保留了原文开头几个字）
-                common_prefix_len = 0
-                for i in range(min(len(t), len(orig_s))):
-                    if t[i] == orig_s[i]:
-                        common_prefix_len += 1
-                    else:
-                        break
-                if common_prefix_len >= 4:
-                    # 有共同前缀 → 原文部分灰色删除线，修改部分红色
-                    if common_prefix_len < len(orig_s):
-                        runs.append({
-                            "text": orig_s, "bold": False,
-                            "font_name": base_font, "font_size_pt": base_size,
-                            "color": "999999", "strikethrough": True, "highlight": False,
-                        })
-                    runs.append({
-                        "text": t, "bold": False,
-                        "font_name": base_font, "font_size_pt": base_size,
-                        "color": "E00000", "strikethrough": False, "highlight": False,
-                    })
-                    orig_set.discard(orig_s)
-                    matched = True
-                    break
-            if not matched:
-                # 完全新增 → 红色高亮
-                runs.append({
-                    "text": t, "bold": False,
-                    "font_name": base_font, "font_size_pt": base_size,
-                    "color": "E00000", "strikethrough": False, "highlight": False,
-                })
+        elif tag == "replace":
+            raw_runs.append({
+                "text": original_text[i1:i2], "bold": False,
+                "font_name": base_font, "font_size_pt": base_size,
+                "color": "999999", "strikethrough": True, "highlight": False,
+            })
+            raw_runs.append({
+                "text": optimized_text[j1:j2], "bold": False,
+                "font_name": base_font, "font_size_pt": base_size,
+                "color": "E00000", "strikethrough": False, "highlight": False,
+            })
+        elif tag == "delete":
+            raw_runs.append({
+                "text": original_text[i1:i2], "bold": False,
+                "font_name": base_font, "font_size_pt": base_size,
+                "color": "999999", "strikethrough": True, "highlight": False,
+            })
+        elif tag == "insert":
+            raw_runs.append({
+                "text": optimized_text[j1:j2], "bold": False,
+                "font_name": base_font, "font_size_pt": base_size,
+                "color": "E00000", "strikethrough": False, "highlight": False,
+            })
 
-    # 剩余未匹配的原文句子 → 灰色删除线
-    for leftover in orig_set:
-        runs.append({
-            "text": leftover, "bold": False,
-            "font_name": base_font, "font_size_pt": base_size,
-            "color": "999999", "strikethrough": True, "highlight": False,
-        })
+    # ---- 合并连续同类型碎片 ----
+    runs: list[dict] = []
+    for rd in raw_runs:
+        if rd["text"] == "":
+            continue
+        if runs:
+            prev = runs[-1]
+            if (prev["color"] == rd["color"]
+                    and prev["strikethrough"] == rd["strikethrough"]
+                    and prev["font_name"] == rd["font_name"]
+                    and prev["font_size_pt"] == rd["font_size_pt"]
+                    and prev["bold"] == rd["bold"]):
+                prev["text"] += rd["text"]
+                continue
+        runs.append(rd)
+
+    # ---- 最终清理：移除空文本碎片 ----
+    runs = [r for r in runs if r["text"] != ""]
 
     return runs
 
@@ -269,12 +286,12 @@ def _build_reason_para(
         text_parts.append(f"【依据】{reference}")
     full_text = "（" + " ".join(text_parts) + "）"
 
-    # 说明文字使用楷体_GB2312 五号 10.5pt
+    # 说明文字使用楷体_GB2312 小四号 12pt，灰色 #888888，与正文仿宋 16pt 形成明显区分
     return {
         "text": full_text,
         "runs": [{
             "text": full_text, "bold": False,
-            "font_name": "楷体_GB2312", "font_size_pt": 10.5,
+            "font_name": "楷体_GB2312", "font_size_pt": 12.0,
             "color": "888888", "strikethrough": False, "highlight": False,
         }],
         "format": {
@@ -404,8 +421,10 @@ def create_diff_document(
                         color=rd.get("color"),
                     ),
                 ))
+            # text 使用 runs 拼接的完整文本（含删除+保留+新增），确保与渲染一致
+            run_text = "".join(r.text for r in new_runs)
             new_para = Paragraph(
-                index=idx, text=opt_text,
+                index=idx, text=run_text,
                 style_name=para.style_name,
                 is_heading=para.is_heading,
                 heading_level=para.heading_level,
@@ -437,7 +456,10 @@ def create_diff_document(
                     ))
                 rfmt = reason_para_data["format"]
                 reason_para = Paragraph(
-                    index=idx + 1000,  # 用大偏移确保排序在原文段落之后
+                    # 修改说明段用大偏移 index（+1000）确保按 index 排序时，
+                    # 说明段落排在对应原文段落之后、文档末尾之前。
+                    # 1000 为任意大于最大可能段落数的安全值，最终重建索引时会归一化。
+                    index=idx + 1000,
                     text=reason_para_data["text"],
                     runs=rr,
                     format=ParagraphFormat(

@@ -237,9 +237,9 @@ def make_revision_model(
                 for tag, text in word_diffs:
                     fmt_kw = dict(font_name=fmt_base.font_name, font_size_pt=fmt_base.font_size_pt)
                     if tag == "delete":
-                        fmt_kw.update(color="FF0000", strikethrough=True)
+                        fmt_kw.update(color="999999", strikethrough=True)
                     elif tag == "insert":
-                        fmt_kw.update(color="FF0000")
+                        fmt_kw.update(color="E00000")
                     if tag in ("same",):
                         pass  # 保持 fmt_kw 不变（无 color/strikethrough）
                     inline_runs.append(Run(index=len(inline_runs), text=text,
@@ -275,7 +275,7 @@ def make_revision_model(
                 fmt = orig_para.runs[0].format if orig_para.runs else RunFormat()
                 del_run = Run(index=0, text=diff.original,
                     format=RunFormat(font_name=fmt.font_name, font_size_pt=fmt.font_size_pt,
-                                     color="FF0000", strikethrough=True))
+                                     color="999999", strikethrough=True))
                 if matched_idx < len(result.paragraphs):
                     result.paragraphs[matched_idx] = Paragraph(
                         index=matched_idx, text=diff.original, role="annotation",
@@ -285,7 +285,7 @@ def make_revision_model(
 
             elif diff.type == "added":
                 add_run = Run(index=0, text=diff.revised,
-                    format=RunFormat(font_name="仿宋_GB2312", font_size_pt=16.0, color="FF0000"))
+                    format=RunFormat(font_name="仿宋_GB2312", font_size_pt=16.0, color="E00000"))
                 result.paragraphs.append(Paragraph(
                     index=len(result.paragraphs), text=diff.revised, role="body",
                     runs=[add_run], format=ParagraphFormat(alignment="justify"),
@@ -297,7 +297,7 @@ def make_revision_model(
         result.paragraphs.append(Paragraph(
             index=len(result.paragraphs), text=note_text, role="annotation",
             runs=[Run(index=0, text=note_text,
-                      format=RunFormat(font_name="楷体", font_size_pt=12.0, color="555555"))],
+                      format=RunFormat(font_name="楷体_GB2312", font_size_pt=12.0, color="888888"))],
             format=ParagraphFormat(alignment="justify", line_spacing_pt=22.0),
         ))
 
@@ -314,91 +314,8 @@ def _find_para_by_text(paragraphs: list, text: str, excluded: set[int]) -> int |
     return None
 
 
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
 
 
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
-# 已废弃
 
 def _get_bold_prefix(text: str) -> str:
     """返回公文段落应加粗的前缀，用于讲话稿/讨论稿视觉锚点。
@@ -414,8 +331,8 @@ def _get_bold_prefix(text: str) -> str:
 
     # 序号标记：一是 二是 三是  六是 / 一要 二要  六要
     markers = [
-        "一是", "二是", "三是", "四是", "五是", "六是",
-        "一要", "二要", "三要", "四要", "五要", "六要",
+        "一是", "二是", "三是", "四是", "五是", "六是", "七是", "八是", "九是", "十是",
+        "一要", "二要", "三要", "四要", "五要", "六要", "七要", "八要", "九要", "十要",
     ]
     for m in markers:
         if text.startswith(m):

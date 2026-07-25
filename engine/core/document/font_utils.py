@@ -91,12 +91,26 @@ _CJK_RANGES = [
 
 
 def _contains_cjk(text: str) -> bool:
-    """检查文本是否包含 CJK 字符（中日韩文字）。"""
-    for ch in text:
-        code = ord(ch)
-        for lo, hi in _CJK_RANGES:
+    """检查文本是否包含 CJK 字符（中日韩文字）。使用二分查找优化区间扫描。"""
+    # 预排序区间，二分查找 O(log n) per char, n=16
+    _sorted_ranges = sorted(_CJK_RANGES, key=lambda x: x[0])
+
+    def _in_range(code: int) -> bool:
+        lo_idx, hi_idx = 0, len(_sorted_ranges) - 1
+        while lo_idx <= hi_idx:
+            mid = (lo_idx + hi_idx) // 2
+            lo, hi = _sorted_ranges[mid]
             if lo <= code <= hi:
                 return True
+            if code < lo:
+                hi_idx = mid - 1
+            else:
+                lo_idx = mid + 1
+        return False
+
+    for ch in text:
+        if _in_range(ord(ch)):
+            return True
     return False
 
 
@@ -251,18 +265,27 @@ def detect_font_from_run(run) -> dict[str, str | None]:
 def get_effective_font(run) -> str | None:
     """
     获取 run 的有效字体。
-    优先级：eastAsia > font.name
+    优先级：eastAsia > font.name，但自动检测 CJK 文字与 Latin 字体不匹配的异常情况。
 
+    如果 eastAsia 或 font.name 是 Latin 字体且 run 文本包含 CJK 字符，
+    回退到 BODY_FONT（仿宋_GB2312）以避免后续字体/行距不一致。
     这是解析文档时应该使用的函数，因为 Word 用 eastAsia 渲染中文。
     """
     font_info = detect_font_from_run(run)
 
     # eastAsia 是实际渲染中文的字体
-    if font_info["eastAsia"]:
-        return font_info["eastAsia"]
+    eaf = font_info["eastAsia"]
+    if eaf:
+        if eaf in _LATIN_FONTS and run.text and _contains_cjk(run.text):
+            # CJK 文本被设了 Latin eastAsia → 回退到 BODY_FONT
+            return BODY_FONT
+        return eaf
 
-    # 回退到 font.name
-    return font_info["font_name"]
+    # 回退到 font.name，同样做 CJK+Latin 异常检测
+    fn = font_info["font_name"]
+    if fn and fn in _LATIN_FONTS and run.text and _contains_cjk(run.text):
+        return BODY_FONT
+    return fn
 
 
 def get_font_fallback(font_name: str) -> str:
