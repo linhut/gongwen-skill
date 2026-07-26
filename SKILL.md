@@ -689,13 +689,13 @@ python gongwen.py optimize-content 原文档.docx -o 对比文档.docx --changes
 - 新增/修改后：红色（#E00000）高亮
 - 未改动：黑色正常格式
 - 每段末尾：楷体_GB2312 五号（10.5pt）灰色 `【修改说明】xxx 【风格】xxx 【依据】xxx`
-- 文档末尾：自动追加 `（内容由GongWen-skills AI生成，仅供参考）` 灰色小字
+- 文档末尾：自动追加 `（内容由GongWen-skill-AI生成，仅供参考）` 灰色小字
 
 **自定义声明文字**（可选）：
 
 ```bash
 # 覆盖默认声明
-python gongwen.py optimize-content 原文.docx --changes changes.json --apply --disclaimer "（本稿经GongWen-skills AI辅助生成，请人工复核）"
+python gongwen.py optimize-content 原文.docx --changes changes.json --apply --disclaimer "（本稿经GongWen-skill-AI辅助生成，请人工复核）"
 
 # 不使用声明
 python gongwen.py optimize-content 原文.docx --changes changes.json --apply --disclaimer ""

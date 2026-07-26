@@ -370,7 +370,7 @@ def create_diff_document(
     output_path: str,
     changes: list[dict],
     keep_format: bool = True,
-    disclaimer: str | None = "（内容由GongWen-skills AI生成，仅供参考）",
+    disclaimer: str | None = "（内容由GongWen-skill-AI生成，仅供参考）",
 ) -> None:
     """
     从原文 .docx 和优化变更列表，生成带差异标注的 .docx。

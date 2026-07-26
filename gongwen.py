@@ -730,7 +730,7 @@ def main():
     p.add_argument("--changes", required=True, help="变更 JSON 文件路径（含 paragraph_index/original_text/optimized_text/reason/reference）")
     p.add_argument("--optimize-format", action="store_true", help="同时优化格式（默认仅做差异标注，不改格式）")
     p.add_argument("--apply", action="store_true", help="确认生成差异对比文档（默认预览）")
-    p.add_argument("--disclaimer", default=None, help="文档末尾 AI 声明文字（默认：内容由GongWen-skills AI生成，仅供参考）")
+    p.add_argument("--disclaimer", default=None, help="文档末尾 AI 声明文字（默认：内容由GongWen-skill-AI生成，仅供参考）")
     p.set_defaults(func=cmd_optimize_content)
 
     p = sub.add_parser("bold-first", help="正文段落首句加粗（符合公文规范：点题第一句话默认加粗）")
