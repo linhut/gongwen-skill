@@ -747,11 +747,12 @@ python gongwen.py template <类型> -o 模板.docx
 # 方法二：从 Markdown 草稿生成（有内容，格式化）
 python gongwen.py md2docx 草稿.md -o 初稿.docx -t <类型> --signer 落款单位 --date 日期
 python gongwen.py optimize 初稿.docx -o 成品.docx -t <类型> --apply
+python gongwen.py check 成品.docx -t <类型> --json    # 验证格式合规
 ```
 
 两次都要指定同一 `-t` 类型。
 
-> **推荐做法**：Agent 先根据用户需求在对话中生成 Markdown 草稿（使用下方段落模板），再走 `md2docx → optimize` 生成格式化成品。
+> **推荐做法**：Agent 先根据用户需求在对话中生成 Markdown 草稿（使用下方段落模板），再走 `md2docx → optimize → check` 生成格式化成品并验证合规。
 
 ---
 
