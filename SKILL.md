@@ -49,7 +49,7 @@ Licensed under the MIT License. See the LICENSE file for details.
 
 - **路径 A - 格式修复**：用户有文档，只需排版标准化（GB/T 9704），不改文字内容
 - **路径 B - 内容优化**：用户有文档，需要润色文字并生成修订对比版（原稿 vs 优化稿，红色标注修改处）
-- **路径 C - 生成公文**：用户没有文档，根据背景和要求从零生成新的公文
+- **路径 C - 生成公文**：用户没有文档，根据背景和要求从零生成新的公文。四步流程：编写 Markdown 草稿 → md2docx 转换 → 引用路径 A optimize 套国标格式 → check 验证交付。
 
 ### 路径判断规则
 
@@ -62,7 +62,7 @@ Licensed under the MIT License. See the LICENSE file for details.
 ```
 我有文档文件           → 路径 A：格式修复（排版标准化）
 我要润色文字看到改动     → 路径 B：内容优化（出对比版）
-我还没有文档             → 路径 C：由零生成新的公文（直接填空）
+我还没有文档             → 路径 C：由零生成新的公文（四步：草稿→转换→套格式→验证）
 ```
 
 若用户说「帮我优化一下」，必须追问是改格式还是改内容。
@@ -738,21 +738,39 @@ python gongwen.py optimize-content 原文.docx --changes changes.json --apply --
 
 **没有现有文档，根据背景和要求从零生成新公文。** 输出符合 GB/T 9704 格式标准的全新公文文档。
 
-### 完整流程
+### 完整流程（四步）
+
+**第一步：编写生成 Markdown 草稿**
+
+LLM 根据用户背景和要求，参考下方段落结构模板和惯用语库，编写完整的公文 Markdown 草稿。使用 `[]` 占位符标记待用户确认的信息（如日期、具体数据等）。
+
+**第二步：md2docx 转换为初稿**
+
+执行 `python gongwen.py md2docx 草稿.md -t <类型>` 生成初稿 .docx。
 
 ```bash
-# 方法一：生成空白模板（纯骨架，填内容）
-python gongwen.py template <类型> -o 模板.docx
-
-# 方法二：从 Markdown 草稿生成（有内容，格式化）
 python gongwen.py md2docx 草稿.md -o 初稿.docx -t <类型> --signer 落款单位 --date 日期
+```
+
+**第三步：调用路径 A 的 optimize 套国标格式生成成品**
+
+对初稿执行路径 A 的 `python gongwen.py optimize 初稿.docx -t <类型>`，套用 GB/T 9704 国标格式（版头、版记、页码、字体、字号、行距等）。这一步是纯格式处理，不改文字内容。
+
+```bash
 python gongwen.py optimize 初稿.docx -o 成品.docx -t <类型> --apply
-python gongwen.py check 成品.docx -t <类型> --json    # 验证格式合规
+```
+
+**第四步：验证产物并交付**
+
+执行 `python gongwen.py check 成品.docx -t <类型> --json` 进行格式合规检查。向用户报告格式合规情况和最终产物路径，提醒用户确认 `[]` 占位符处的内容。
+
+```bash
+python gongwen.py check 成品.docx -t <类型> --json
 ```
 
 两次都要指定同一 `-t` 类型。
 
-> **推荐做法**：Agent 先根据用户需求在对话中生成 Markdown 草稿（使用下方段落模板），再走 `md2docx → optimize → check` 生成格式化成品并验证合规。
+> **推荐做法**：Agent 先根据用户需求在对话中生成 Markdown 草稿（使用下方段落模板），再走上述四步流程生成格式化成品并验证合规。
 
 ---
 
