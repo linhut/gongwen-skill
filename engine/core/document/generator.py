@@ -4,7 +4,7 @@
 """
 Document generator: converts DocumentModel back into a .docx file.
 
-核心设计变更 (v1.4.0-rc3):
+核心设计变更 (v1.7.1):
 - 基于源文档原地修改，不再创建空 Document()
 - 正确保留表格、图片、嵌入对象、分节符等 DocumentModel 未建模的内容
 - 所有字体设置必须经过 font_utils 统一入口
