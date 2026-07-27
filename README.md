@@ -41,6 +41,12 @@ Licensed under the MIT License. See the LICENSE file for details.
 | ⚙️ 规则化 | `rule-export/rule-import/rule-list` | 导出/导入/列出规则，支持三层定制 |
 | ✍️ 语言风格 | `prompts/style-prompts.md` | 通用底座 + 6 套公文语言风格改写提示词 |
 
+## 使用示例
+
+![GongWen-skill 使用示例](docs/example.png)
+
+> 在 WorkBuddy 中调用 gongwen-skill，输入自然语言指令，自动生成符合 GB/T 9704 国标格式的正式公文。
+
 ## 🚀 快速开始
 
 ```bash
