@@ -744,31 +744,31 @@ python gongwen.py optimize-content 原文.docx --changes changes.json --apply --
 
 LLM 根据用户背景和要求，参考下方段落结构模板和惯用语库，编写完整的公文 Markdown 草稿。使用 `[]` 占位符标记待用户确认的信息（如日期、具体数据等）。
 
-**第二步：md2docx 转换为初稿**
+**第二步：md2docx 转换（管线内步骤）**
 
-执行 `python gongwen.py md2docx 草稿.md -t <类型>` 生成初稿 .docx。
+执行 `python gongwen.py md2docx 草稿.md -t <类型>`，输出为管线内临时文件（如 `_temp_draft.docx`），**不单独作为产物交付**。
 
 ```bash
-python gongwen.py md2docx 草稿.md -o 初稿.docx -t <类型> --signer 落款单位 --date 日期
+python gongwen.py md2docx 草稿.md -o _temp_draft.docx -t <类型> --signer 落款单位 --date 日期
 ```
 
 **第三步：调用路径 A 的 optimize 套国标格式生成成品**
 
-对初稿执行路径 A 的 `python gongwen.py optimize 初稿.docx -t <类型>`，套用 GB/T 9704 国标格式（版头、版记、页码、字体、字号、行距等）。这一步是纯格式处理，不改文字内容。
+对第二步的临时文件执行 `python gongwen.py optimize _temp_draft.docx -t <类型>`，套用 GB/T 9704 国标格式（版头、版记、页码、字体、字号、行距等）。这一步是纯格式处理，不改文字内容。
 
 ```bash
-python gongwen.py optimize 初稿.docx -o 成品.docx -t <类型> --apply
+python gongwen.py optimize _temp_draft.docx -o 成品.docx -t <类型> --apply
 ```
 
 **第四步：验证产物并交付**
 
-执行 `python gongwen.py check 成品.docx -t <类型> --json` 进行格式合规检查。向用户报告格式合规情况和最终产物路径，提醒用户确认 `[]` 占位符处的内容。
+执行 `python gongwen.py check 成品.docx -t <类型> --json` 进行格式合规检查。向用户报告格式合规情况和最终产物路径，提醒用户确认 `[]` 占位符处的内容。最终交付的只有第四步验证通过后的成品文档。
 
 ```bash
 python gongwen.py check 成品.docx -t <类型> --json
 ```
 
-两次都要指定同一 `-t` 类型。
+第二步至第四步使用同一 `-t` 类型。
 
 > **推荐做法**：Agent 先根据用户需求在对话中生成 Markdown 草稿（使用下方段落模板），再走上述四步流程生成格式化成品并验证合规。
 
