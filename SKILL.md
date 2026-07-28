@@ -1,6 +1,6 @@
 ---
 name: gongwen-skill
-description: 中文公文全流程处理助手。支持 .docx 公文按 GB/T 9704 国家标准做格式检查（check）、自动修复（optimize）、行内内容修订（revise，红色标注+删除线+修改说明）、模板生成（template）、Markdown 转公文（md2docx），以及版头/版记/页码注入。覆盖通知/请示/报告/函/会议纪要等 22 类公文。完全自包含，克隆即用，无需数据库或后端服务。
+description: 中文公文全流程处理助手。支持 .docx 公文按 GB/T 9704 国家标准做格式检查（check）、自动修复（optimize）、行内内容修订（optimize-content，红色标注+删除线+修改说明）、模板生成（template）、Markdown 转公文（md2docx），以及版头/版记/页码注入。覆盖通知/请示/报告/函/会议纪要等 22 类公文。完全自包含，克隆即用，无需数据库或后端服务。
 ---
 
 <!--
@@ -105,7 +105,7 @@ Licensed under the MIT License. See the LICENSE file for details.
 | **C**（生成公文） | 新公文文档 | 无 | 无 | 无 | `修订版+{公文类型}+日期+版本号.docx` |
 
 **路径 B 的绝对禁令**：
-- ❌ 严禁在 `revise` 之后调用 `optimize`——`optimize` 会覆盖 annotation 段的字体/字号/颜色，破坏修订标记
+- ❌ 严禁在 `optimize-content` 之后调用 `optimize`——`optimize` 会覆盖 annotation 段的字体/字号/颜色，破坏修订标记
 - ❌ 严禁在路径 B 产物中生成无标记「成品版」替代修订版作为交付物
 - ✅ 路径 B 的唯一交付物是行内修订文档（红色标注 + 删除线 + 楷体修改说明）
 - ✅ 用户确认修订版无误后，可走路径 A 对修订版做格式修复得到无标记成品（此为独立操作，非路径 B 的一部分）
@@ -263,8 +263,8 @@ Licensed under the MIT License. See the LICENSE file for details.
 
 第3步：实施修改（走对应路径）
   ├─ 结构问题 → 回到路径 C 第一步：重写 Markdown 草稿，确认后再生成
-  ├─ 内容优化 → 走路径 B：revise 做行内修订（红色标注变更）
-  ├─ 语气/措辞调整 → 走路径 B：revise，提供具体的 background/context/perspective
+  ├─ 内容优化 → 走路径 B：optimize-content 做行内修订（红色标注变更）
+  ├─ 语气/措辞调整 → 走路径 B：optimize-content，提供具体的 background/context/perspective
   └─ 格式问题 → 走路径 A：optimize，不做内容修改
 
 第4步：验证交付
@@ -278,11 +278,11 @@ Licensed under the MIT License. See the LICENSE file for details.
 | 用户原话 | 实际含义 | 应走路径 | 操作要点 |
 |----------|---------|---------|---------|
 | "理顺一下内容" | 逻辑不连贯、段间跳跃 | 路径 C 重写 | 先出提纲确认，再逐段生成 |
-| "这段有点乱" | 段落内论据顺序不当 | 路径 B revise | 在该段后附【修改说明】说明重组理由 |
-| "太啰嗦了" | 套话/重复/空泛 | 路径 B revise | 逐句压缩，标注删除内容 |
+| "这段有点乱" | 段落内论据顺序不当 | 路径 B optimize-content | 在该段后附【修改说明】说明重组理由 |
+| "太啰嗦了" | 套话/重复/空泛 | 路径 B optimize-content | 逐句压缩，标注删除内容 |
 | "再改改" | 不满意但说不清问题 | 综合 | 先追问具体方向，不做盲目修改 |
-| "力度不够" | 缺少强制性动词 | 路径 B revise | 补充"须""应""不得"，收紧措辞 |
-| "差不多，再微调" | 大方向OK，局部优化 | 路径 B revise | 只改具体指出的段落，不动其他 |
+| "力度不够" | 缺少强制性动词 | 路径 B optimize-content | 补充"须""应""不得"，收紧措辞 |
+| "差不多，再微调" | 大方向OK，局部优化 | 路径 B optimize-content | 只改具体指出的段落，不动其他 |
 
 ### 五、五角色审稿机制（分层把关 / 人机协同）
 
@@ -392,14 +392,14 @@ python gongwen.py pagenum 文件.docx --alignment center
 
 ## 路径 B：内容优化
 
-**润色文字，保留格式。** 使用 `revise` 命令做行内修订，输出带红色标注+删除线的修改文档。
+**润色文字，保留格式。** 使用 `optimize-content` 命令做行内修订，输出带红色标注+删除线的修改文档。
 
 ### 完整流程
 
 ```
 第0步：确认背景/语境/角度（提供 background/context/perspective）
 第1步：LLM 逐段分析 → 确认修订后的文本内容
-第2步：python gongwen.py revise 原文.docx -o 修订版.docx -f 修订后.md --background "..." --perspective "..."
+第2步：python gongwen.py optimize-content 原文.docx -o 修订版.docx -f 修订后.md --background "..." --perspective "..."
       → 行内修订文档（自动继承原文档格式 + 红色标注 + 删除线 + 楷体修改说明）
 ```
 
@@ -422,7 +422,7 @@ doc = docx.Document("原文档.docx")
 # 读取：页边距
 ```
 
-这些数据仅供 LLM 参考，`revise` 内部会自动从原文档继承格式，Agent 无需手动传递。
+这些数据仅供 LLM 参考，`optimize-content` 内部会自动从原文档继承格式，Agent 无需手动传递。
 
 ---
 
@@ -865,7 +865,7 @@ doc = docx.Document("原文档.docx")
   - `deleted_paragraphs`：被删除的段落索引列表
   - `retained_counterpart`：保留的对应段落索引（若多段合并到一个则取主段）
   - `verified_pairs`：每对去重关系的原文段索引配对（[已删除的, 保留的]）
-  - 此字段仅供 Agent 审计，不会影响 `revise` 运行
+  - 此字段仅供 Agent 审计，不会影响 `optimize-content` 运行
 
 ### 路径 B / 强制审计清单（路径 B 完成后必查）
 
@@ -887,10 +887,10 @@ Agent 在路径 B 交付产品前，必须逐项审计以下五点并汇报结�
 
 ```bash
 # 自动命名：{原文档名}+{内容风格}+{日期}+v1.docx（如 工作报告+庄重严谨+20260725+v1.docx）
-python gongwen.py revise 原文档.docx --changes 修订内容
+python gongwen.py optimize-content 原文档.docx --changes 修订内容
 
 # 也可显式指定输出文件名
-python gongwen.py revise 原文档.docx -o 对比文档.docx --changes 修订内容
+python gongwen.py optimize-content 原文档.docx -o 对比文档.docx --changes 修订内容
 ```
 
 **标记规则**：
@@ -904,10 +904,10 @@ python gongwen.py revise 原文档.docx -o 对比文档.docx --changes 修订内
 
 ```bash
 # 覆盖默认声明
-python gongwen.py revise 原文.docx --changes 修订内容 --disclaimer "（本稿经GongWen-skill-AI辅助生成，请人工复核）"
+python gongwen.py optimize-content 原文.docx --changes 修订内容 --disclaimer "（本稿经GongWen-skill-AI辅助生成，请人工复核）"
 
 # 不使用声明
-python gongwen.py revise 原文.docx --changes 修订内容 --disclaimer ""
+python gongwen.py optimize-content 原文.docx --changes 修订内容 --disclaimer ""
 ```
 
 ### 路径 B / 如需格式修复：走路径 A
@@ -918,7 +918,7 @@ python gongwen.py revise 原文.docx --changes 修订内容 --disclaimer ""
 
 当原文档包含表格或图片时：
 
-- **表格**：`revise` 在生成差异文档时会自动保留表格在原位置，不参与 diff 标注；表格内的段落不会被内容优化处理
+- **表格**：`optimize-content` 在生成差异文档时会自动保留表格在原位置，不参与 diff 标注；表格内的段落不会被内容优化处理
 - **图片**：`_replace_paragraph_content` 自动保留含图片（w:drawing / w:pict）的 run，不参与 diff
 - **定位**：表格和图片均通过 `insert_after_index` 机制保持在原文档中的相对位置
 
@@ -928,7 +928,7 @@ python gongwen.py revise 原文.docx --changes 修订内容 --disclaimer ""
 
 **只改文字，不改格式。** 差异对比文档必须完整继承原文档的字体、字号、行距、缩进、对齐、页边距。
 
-`revise` 内部自动从原文档段落读取格式并继承。Agent **不可**在路径 B 前后跑 `optimize`（格式修复），会覆盖原文档格式。
+`optimize-content` 内部自动从原文档段落读取格式并继承。Agent **不可**在路径 B 前后跑 `optimize`（格式修复），会覆盖原文档格式。
 
 **引擎级保护**：`_select_paragraphs` 中 `target="all"` 已排除 `role='annotation'` 的段落；`fix_bold_range` / `bold_first_sentence_of_body` 也排除 `annotation`。Agent 侧的责任是确保不走 `optimize` 落盘路径。
 
@@ -1042,7 +1042,7 @@ python gongwen.py check 成品.docx -t <类型> --json
 > 路径 C 产出 → check 验证 → 进入五角色审稿机制生成高质量内容 → 交付
 
 #### 情况二：内容措辞修改
-> 用户说"改个措辞""润色一下""太啰嗦了" → **走路径 B `revise`**
+> 用户说"改个措辞""润色一下""太啰嗦了" → **走路径 B `optimize-content`**
 > 属于内容优化，不走 docx 打补丁，直接走行内修订保留标注痕迹
 
 #### 情况三：调整结构/重写
@@ -1070,7 +1070,7 @@ python gongwen.py check 成品.docx -t <类型> --json
     ▼
 用户反馈
     ├─ 满意 → 交付（进入审稿机制做质量控制）
-    ├─ 改措辞 → 路径 B revise
+    ├─ 改措辞 → 路径 B optimize-content
     ├─ 改结构 → 回 C 第一步重写草稿
     ├─ 改格式 → 路径 A optimize
     ├─ 模糊意见 → 先追问分类
@@ -1087,7 +1087,7 @@ python gongwen.py check 成品.docx -t <类型> --json
 >
 > 人机协同：文字校对环节嵌入 gongwen-skill 自动化预检（格式/用语/序号），把重复性工作交给工具，人工只做判断和决策。
 
-**关键原则**：结构类修改必须回路径 C 第一步在 Markdown 层完成。内容措辞类优化直接走路径 B revise。格式类走路径 A optimize。各类修改路径不可混用。
+**关键原则**：结构类修改必须回路径 C 第一步在 Markdown 层完成。内容措辞类优化直接走路径 B optimize-content。格式类走路径 A optimize。各类修改路径不可混用。
 
 ---
 
@@ -1859,7 +1859,7 @@ XX处                                                 ← 华文楷体 16pt 居�
 ```bash
 cd engine
 python ../gongwen.py optimize 文件.docx -o 成品.docx -t report
-python ../gongwen.py revise 文件.docx --changes 修订内容
+python ../gongwen.py optimize-content 文件.docx --changes 修订内容
 ```
 
 ### 方式二：Agent 对话调用，无执行权限
@@ -1868,7 +1868,7 @@ python ../gongwen.py revise 文件.docx --changes 修订内容
 
 1. 先走「用户交互指引」三步确认路径
 2. 用 `shell_executor` 执行 CLI 命令（路径 A/C）或按路径 B 流程逐步处理
-3. 路径 B 时：先用 python-docx 读格式 → LLM 分析 → 写 修订内容 → 调 `revise` → 告知用户产物路径
+3. 路径 B 时：先用 python-docx 读格式 → LLM 分析 → 写 修订内容 → 调 `optimize-content` → 告知用户产物路径
 4. 执行后验证产物并展示关键指标（修复数、变更数、格式问题）
 
 ### 路径 B 对话流程示例
@@ -1877,7 +1877,7 @@ python ../gongwen.py revise 文件.docx --changes 修订内容
 用户: 帮我优化这个公文的表达
 Agent: [先确认是格式优化还是内容优化]
 用户: 内容优化
-Agent: [读取原文档格式 → LLM 分析生成 修订内容 → 执行 revise]
+Agent: [读取原文档格式 → LLM 分析生成 修订内容 → 执行 optimize-content]
 Agent: 已生成对比版，共 6 处变更，字体/行距均继承原文档。
       文件路径：C:\...\关于XX的通知+庄重严谨+2026-07-25+v1.docx
       文档末尾已标注 AI 生成声明。
