@@ -297,7 +297,7 @@ def cmd_md2docx(args):
     - doc_type: 公文类型（默认 notice）
     """
     import io
-    from core.document.parser import _parse_paragraph_format, _parse_run
+    from core.document.parser_format import parse_paragraph_format, parse_run
     from core.document.generator import generate_docx
     from core.document.models import (
         DocumentModel, DocumentMetadata, PageSetup,
