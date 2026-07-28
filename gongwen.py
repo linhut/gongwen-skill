@@ -58,10 +58,6 @@ try:
 except Exception:
     pass
 
-# 模块级：加载即创建使用级会话（跨命令持久化）
-from session import get_session as _get_session, print_session_summary
-_ = _get_session()  # 首次调用即创建全局会话实例
-
 
 # ---------------------------------------------------------------------------
 #  共享辅助
@@ -928,20 +924,7 @@ def main():
         print(f"错误：{e}", file=sys.stderr)
         sys.exit(1)
     finally:
-        # 使用级会话追踪：记录本次命令
-        out_files = []
-        for i, a in enumerate(sys.argv):
-            if a in ('-o', '--output') and i + 1 < len(sys.argv):
-                out_files.append(sys.argv[i + 1])
-        sess = _get_session()
-        sess.record_command(
-            command=getattr(args, "command", "?"),
-            args=sys.argv[1:] if len(sys.argv) > 1 else [],
-            out_files=out_files,
-        )
-        sess.save()  # 立即持久化到磁盘
-
-        print(f"\n会话ID: {sess.session_id[:8]} ｜ 回溯记忆命令: gongwen --resume {sess.session_id[:8]} |")
+        pass
 
 
 if __name__ == "__main__":
