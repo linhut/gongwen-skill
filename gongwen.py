@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.11.0"
+__version__ = "1.12.0"
 """
 公文文档格式化 Skill —— 基于 GB/T 9704 国家标准的公文 .docx 处理引擎。
 
@@ -42,6 +42,8 @@ __version__ = "1.11.0"
 import argparse
 import json
 import sys
+import uuid
+from datetime import datetime
 from pathlib import Path
 
 # 将 engine/ 加入模块搜索路径，使内部 `from core... / from utils... / from config`
@@ -55,6 +57,10 @@ try:
     sys.stderr.reconfigure(encoding="utf-8")
 except Exception:
     pass
+
+# 模块级：加载即创建使用级会话（跨命令持久化）
+from session import get_session as _get_session, print_session_summary
+_ = _get_session()  # 首次调用即创建全局会话实例
 
 
 # ---------------------------------------------------------------------------
@@ -390,9 +396,6 @@ def cmd_md2docx(args):
     for i, line in enumerate(lines):
         stripped = line.strip()
         if not stripped:
-            model.paragraphs.append(Paragraph(
-                index=para_offset + i, text="", format=ParagraphFormat(), runs=[],
-            ))
             continue
         model.paragraphs.append(Paragraph(
             index=para_offset + i, text=stripped, role="body",
@@ -402,6 +405,48 @@ def cmd_md2docx(args):
 
     # 执行 Markdown 转换（#标题 → 标题样式，**加粗** → bold，|表格| → Word 表格）
     changes = convert_markdown(model)
+
+    # 若 Markdown 未用 # 标记标题，自动将首个正文段落设为标题
+    has_title = any(getattr(p, 'is_heading', False) and p.heading_level == 0 for p in model.paragraphs)
+    if not has_title:
+        for para in model.paragraphs:
+            if para.text.strip() and getattr(para, 'role', None) == 'body':
+                para.role = 'title'
+                para.is_heading = True
+                para.heading_level = 0
+                # 设置物理格式，确保 round-trip 后能被解析器正确识别
+                para.format.alignment = 'center'
+                for r in para.runs:
+                    r.format.font_name = '方正小标宋简体'
+                    r.format.font_size_pt = 22.0
+                break
+
+    # 领句加粗（路径 C 生成公文时，Markdown 中的"一是/二是/第一/第二"等领句自动加粗）
+    _BOLD_LEADIN = {
+        '一是': '楷体_GB2312', '二是': '楷体_GB2312', '三是': '楷体_GB2312',
+        '四是': '楷体_GB2312', '五是': '楷体_GB2312',
+        '第一，': '仿宋_GB2312', '第二，': '仿宋_GB2312', '第三，': '仿宋_GB2312',
+        '一要': '仿宋_GB2312', '二要': '仿宋_GB2312', '三要': '仿宋_GB2312',
+    }
+    for para in model.paragraphs:
+        txt = para.text.strip()
+        matched = next((p for p in _BOLD_LEADIN if txt.startswith(p)), None)
+        if not matched or not para.runs:
+            continue
+        pi = txt.find('。')
+        if pi == -1:
+            continue
+        lead_in, remaining = txt[:pi + 1], txt[pi + 1:]
+        if not remaining:
+            continue
+        para.runs[0].text = lead_in
+        para.runs[0].format.bold = True
+        para.runs[0].format.font_name = _BOLD_LEADIN[matched]
+        para.runs[0].format.font_size_pt = 16.0
+        para.runs.append(Run(
+            index=len(para.runs), text=remaining,
+            format=RunFormat(font_name='仿宋_GB2312', font_size_pt=16.0),
+        ))
 
     # 落款与日期
     if signer:
@@ -708,6 +753,10 @@ def main():
     )
     parser.add_argument("--version", action="version", version=f"gongwen-skill v{__version__}",
                         help="显示版本号并退出")
+    parser.add_argument("--resume", metavar="SESSION_ID",
+                        help="回溯到指定会话（通过会话ID恢复上下文）")
+    parser.add_argument("--session", metavar="SESSION_ID",
+                        help=argparse.SUPPRESS)  # 隐藏别名，与 --resume 等价
     sub = parser.add_subparsers(dest="command", help="子命令")
 
     p = sub.add_parser("list-types", help="列出支持的公文类型")
@@ -832,6 +881,40 @@ def main():
     p.set_defaults(func=cmd_review)
 
     args = parser.parse_args()
+
+    # --resume / --session 优先：回溯历史会话，不执行子命令
+    resume_id = getattr(args, 'resume', None) or getattr(args, 'session', None)
+    if resume_id:
+        from session import USAGE_SESSION_DIR as _sess_dir
+        sess_path = _sess_dir / f"{resume_id.strip()}.json"
+        if not sess_path.exists():
+            matches = list(_sess_dir.glob(f"{resume_id.strip().upper()}*.json"))
+            if not matches:
+                matches = list(_sess_dir.glob(f"{resume_id.strip()}*.json"))
+            sess_path = matches[0] if matches else sess_path
+        if sess_path and sess_path.exists():
+            data = json.loads(sess_path.read_text(encoding="utf-8"))
+            sid = data.get('session_id', data.get('session_id', '?'))
+            ts = data.get('end_time', data.get('timestamp', '?'))
+            cmds = data.get('commands', [])
+            cmd = cmds[0].get('command', data.get('command', '?')) if cmds else data.get('command', '?')
+            args_str = ' '.join(data.get('args', cmds[0].get('args', []))) if cmds else ' '.join(data.get('args', []))
+            files = data.get('files', [])
+            duration = data.get('duration_seconds', None)
+            print(f"📋 回溯会话 {sid}")
+            print(f"  时间:     {ts}")
+            print(f"  命令:     {cmd}")
+            print(f"  参数:     {args_str}")
+            if duration:
+                print(f"  耗时:     {duration}s")
+            if files:
+                print(f"  产出文件:")
+                for f in files:
+                    print(f"    - {f}")
+        else:
+            print(f"未找到会话: {resume_id}", file=sys.stderr)
+        return
+
     if not args.command:
         parser.print_help()
         sys.exit(1)
@@ -844,6 +927,21 @@ def main():
     except Exception as e:
         print(f"错误：{e}", file=sys.stderr)
         sys.exit(1)
+    finally:
+        # 使用级会话追踪：记录本次命令
+        out_files = []
+        for i, a in enumerate(sys.argv):
+            if a in ('-o', '--output') and i + 1 < len(sys.argv):
+                out_files.append(sys.argv[i + 1])
+        sess = _get_session()
+        sess.record_command(
+            command=getattr(args, "command", "?"),
+            args=sys.argv[1:] if len(sys.argv) > 1 else [],
+            out_files=out_files,
+        )
+        sess.save()  # 立即持久化到磁盘
+
+        print(f"\n会话ID: {sess.session_id[:8]} ｜ 回溯记忆命令: gongwen --resume {sess.session_id[:8]} |")
 
 
 if __name__ == "__main__":

@@ -114,6 +114,17 @@ def generate_docx(model: DocumentModel, output_path: Path | str) -> Path:
     if existing_ai_para:
         # 修正已有声明的字体格式
         existing_ai_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        # 标记为 AI 注释段落，避免 check 误判为标题
+        p_elem = existing_ai_para._element
+        from lxml import etree
+        pPr = p_elem.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
+        if pPr is None:
+            pPr = etree.SubElement(p_elem, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
+        # 添加 pStyle 标记段落样式（不依赖 role，仅用于 check 时跳过）
+        pStyle = pPr.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pStyle')
+        if pStyle is None:
+            pStyle = etree.SubElement(pPr, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pStyle')
+        pStyle.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', 'Annotation')
         for r in existing_ai_para.runs:
             set_run_font(r, '楷体_GB2312')
             r.font.size = Pt(9)
@@ -121,6 +132,14 @@ def generate_docx(model: DocumentModel, output_path: Path | str) -> Path:
     else:
         ai_para = doc.add_paragraph()
         ai_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        # 通过 pStyle 标记为注释，避免 check 误判
+        p_elem = ai_para._element
+        from lxml import etree
+        pPr = p_elem.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
+        if pPr is None:
+            pPr = etree.SubElement(p_elem, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
+        pStyle = etree.SubElement(pPr, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pStyle')
+        pStyle.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', 'Annotation')
         ai_run = ai_para.add_run(ai_text)
         set_run_font(ai_run, '楷体_GB2312')
         ai_run.font.size = Pt(9)

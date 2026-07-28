@@ -365,6 +365,10 @@ def _detect_heading_heuristic(
     if not text_stripped or len(text_stripped) > 80:
         return False, None  # 空文本或超长文本不作为标题
 
+    # 跳过 AI 声明段落（如"（内容由GongWen-skill-AI生成，仅供参考）"）
+    if text_stripped.startswith("（内容由") or text_stripped.startswith("(内容由"):
+        return False, None
+
     # 获取主run的字体信息（取第一个非空run）
     main_font = None
     main_size = None

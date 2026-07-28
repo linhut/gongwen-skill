@@ -47,6 +47,7 @@ CUSTOM_RULES_DIR = APP_DATA_DIR / "custom_rules"
 USER_RULES_DIR = APP_DATA_DIR / "user_rules"
 
 LOG_DIR = APP_DATA_DIR / "logs"
+SESSION_DIR = APP_DATA_DIR / "sessions"
 
 # ---------------------------------------------------------------------------
 #  自动创建可写目录
@@ -55,7 +56,7 @@ import logging
 
 _log = logging.getLogger(__name__)
 
-for _d in (APP_DATA_DIR, CUSTOM_RULES_DIR, USER_RULES_DIR, LOG_DIR):
+for _d in (APP_DATA_DIR, CUSTOM_RULES_DIR, USER_RULES_DIR, LOG_DIR, SESSION_DIR):
     try:
         _d.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
