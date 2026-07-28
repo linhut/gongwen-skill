@@ -44,6 +44,7 @@ def _select_paragraphs(model: DocumentModel, target: str) -> list[Paragraph]:
     - "heading_3"  → 三级标题 (heading_level=3)
     - "body"       → 所有非标题、非空、非签名段落
     - "signature"  → 最后2个非空段落（落款+日期）
+    - "date"       → 同 signature 的处理逻辑
     - "all"        → 所有段落
     """
     if target == "title":
@@ -73,6 +74,13 @@ def _select_paragraphs(model: DocumentModel, target: str) -> list[Paragraph]:
             return role_sig
         non_empty = [p for p in model.paragraphs if p.text.strip()]
         return non_empty[-2:] if len(non_empty) >= 2 else non_empty
+    elif target == "date":
+        # 同 signature 的处理逻辑
+        role_date = [p for p in model.paragraphs if p.role == 'date']
+        if role_date:
+            return role_date
+        non_empty = [p for p in model.paragraphs if p.text.strip()]
+        return non_empty[-1:] if non_empty else []
     elif target == "all":
         # 排除注释段落（annotation），禁止格式化覆盖修订说明段
         return [p for p in model.paragraphs if p.role != "annotation"]
