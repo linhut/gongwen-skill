@@ -87,7 +87,15 @@ def generate_docx(model: DocumentModel, output_path: Path | str) -> Path:
         logger.warning(f"Found {len(font_issues)} font issues, auto-fixing...")
         _auto_fix_fonts(doc, font_issues)
 
-    # 7. Save
+    # 7. AI 声明（所有路径产出的文档末尾统一添加）
+    ai_para = doc.add_paragraph()
+    ai_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    ai_run = ai_para.add_run("本文档由 AI 辅助生成，仅供参考，正式使用前请审核确认。")
+    ai_run.font.name = '仿宋_GB2312'
+    ai_run.font.size = Pt(12)
+    ai_run.font.color.rgb = RGBColor(0x99, 0x99, 0x99)
+
+    # 8. Save
     doc.save(str(output_path))
     # 清除段落索引缓存（文档已保存，doc 对象可能被 GC）
     _clear_paragraph_index(doc)
