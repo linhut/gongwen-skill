@@ -87,12 +87,15 @@ def generate_docx(model: DocumentModel, output_path: Path | str) -> Path:
         logger.warning(f"Found {len(font_issues)} font issues, auto-fixing...")
         _auto_fix_fonts(doc, font_issues)
 
-    # 7. AI 声明（所有路径产出的文档末尾统一添加）
-    ai_para = doc.add_paragraph()
-    ai_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    ai_run = ai_para.add_run("（内容由GongWen-skill-AI生成，仅供参考）")
-    ai_run.font.name = '楷体'
-    ai_run.font.size = Pt(9)
+    # 7. AI 声明（所有路径产出的文档末尾统一添加，防重复）
+    ai_text = "（内容由GongWen-skill-AI生成，仅供参考）"
+    already_has_ai = any(ai_text in (p.text or "") for p in doc.paragraphs)
+    if not already_has_ai:
+        ai_para = doc.add_paragraph()
+        ai_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        ai_run = ai_para.add_run(ai_text)
+        ai_run.font.name = '楷体'
+        ai_run.font.size = Pt(9)
 
     # 8. Save
     doc.save(str(output_path))
