@@ -87,14 +87,42 @@ def generate_docx(model: DocumentModel, output_path: Path | str) -> Path:
         logger.warning(f"Found {len(font_issues)} font issues, auto-fixing...")
         _auto_fix_fonts(doc, font_issues)
 
-    # 7. AI 声明（所有路径产出的文档末尾统一添加，防重复）
-    ai_text = "（内容由GongWen-skill-AI生成，仅供参考）"
-    already_has_ai = any(ai_text in (p.text or "") for p in model.paragraphs)
-    if not already_has_ai:
+    # 7. AI 声明（去重+添加，所有路径产出文档末尾统一）
+    ai_variants = [
+        "（内容由GongWen-skill-AI生成，仅供参考）",
+        "（内容由AI生成，仅供参考）",
+    ]
+    ai_text = ai_variants[0]
+
+    # 去重：在 doc 中移除多余声明段落（从后往前删避免索引偏移）
+    ai_doc_indices = [i for i, p in enumerate(doc.paragraphs)
+                      if any(v in (p.text or "") for v in ai_variants)]
+    if len(ai_doc_indices) > 1:
+        body = doc.element.body
+        for idx in reversed(ai_doc_indices[:-1]):
+            p_elem = doc.paragraphs[idx]._element
+            body.remove(p_elem)
+
+    # 检查是否已有声明；如有则修正其格式，无则添加
+    from core.document.font_utils import set_run_font
+    existing_ai_para = None
+    for p in doc.paragraphs:
+        if any(v in (p.text or "") for v in ai_variants):
+            existing_ai_para = p
+            break
+
+    if existing_ai_para:
+        # 修正已有声明的字体格式
+        existing_ai_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for r in existing_ai_para.runs:
+            set_run_font(r, '楷体_GB2312')
+            r.font.size = Pt(9)
+            r.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
+    else:
         ai_para = doc.add_paragraph()
         ai_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         ai_run = ai_para.add_run(ai_text)
-        ai_run.font.name = '楷体_GB2312'
+        set_run_font(ai_run, '楷体_GB2312')
         ai_run.font.size = Pt(9)
         ai_run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
 
