@@ -150,6 +150,15 @@ https://github.com/linhut/gongwen-skill
 
 将本仓库放入 Agent 的 skills 目录（如 Claude Code 的 `~/.claude/skills/`），Agent 读取 `SKILL.md` 后即可自动调用上述命令。`SKILL.md` 的 frontmatter 已声明触发场景。
 
+## 📚 文档索引
+
+| 文档 | 用途 | 适合读者 |
+|------|------|---------|
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | 项目全流梳理：业务流、数据流、逻辑流、代码流 | 开发/维护者 |
+| [WORKFLOW.md](./WORKFLOW.md) | 快速工作流概览：管道、CLI、规则加载、开发流程 | 日常使用者 |
+| [REFERENCE.md](./REFERENCE.md) | 编程调用 API 参考、规则 YAML 结构 | 深度定制开发者 |
+| [SKILL.md](./SKILL.md) | AI Agent 路由手册：三条路径、质量评审、10 种公文骨架 | AI Agent 框架 |
+
 ## 🏗️ 架构
 
 ```

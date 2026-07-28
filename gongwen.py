@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.9.3"
+__version__ = "1.10.0"
 """
 公文文档格式化 Skill —— 基于 GB/T 9704 国家标准的公文 .docx 处理引擎。
 
@@ -638,6 +638,41 @@ def cmd_rule_import(args):
         sys.exit(1)
 
 
+def cmd_table_signs(args):
+    """从名单批量生成双面桌签。"""
+    from table_sign_generator import parse_name_list, generate_table_signs, generate_table_signs_combined
+
+    # 读取名单
+    if args.input == "-":
+        raw = sys.stdin.buffer.read().decode("utf-8")
+        source_desc = "stdin"
+    else:
+        raw = Path(args.input).read_text(encoding="utf-8")
+        source_desc = args.input
+    names = parse_name_list(raw)
+    if not names:
+        print("⚠️  名单为空，请提供人员名单", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"📋 名单: {source_desc}")
+    print(f"👤 人数: {len(names)}")
+    for n in names:
+        print(f"   - {n}")
+
+    if args.combined:
+        # 合并模式
+        out = Path(args.output) if args.output else Path(f"桌签-合并-{len(names)}人.docx")
+        generate_table_signs_combined(names, out)
+        print(f"✅ 合并桌签已生成: {out}")
+    else:
+        # 每人独立文件
+        out_dir = Path(args.output) if args.output else Path("./桌签")
+        files = generate_table_signs(names, out_dir, prefix=args.prefix)
+        print(f"✅ 共生成 {len(files)} 份桌签:")
+        for f in files:
+            print(f"   - {f}")
+
+
 # ---------------------------------------------------------------------------
 #  参数解析
 # ---------------------------------------------------------------------------
@@ -649,6 +684,8 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
+    parser.add_argument("--version", action="version", version=f"gongwen-skill v{__version__}",
+                        help="显示版本号并退出")
     sub = parser.add_subparsers(dest="command", help="子命令")
 
     p = sub.add_parser("list-types", help="列出支持的公文类型")
@@ -754,6 +791,14 @@ def main():
     p.add_argument("--text", help="YAML 文本内容（内联）")
     p.add_argument("--source", default="user", choices=["user", "custom"], help="保存层级")
     p.set_defaults(func=cmd_rule_import)
+
+    # ---- 桌签批量生成 ----
+    p = sub.add_parser("table-signs", help="从名单批量生成双面桌签（A5横版，黑体130pt），每人一份或合并多页")
+    p.add_argument("input", help="名单文件路径（每行一人，支持逗号/空格/顿号分隔），或 '-' 从标准输入读取")
+    p.add_argument("-o", "--output", help="输出目录（默认 ./桌签/；每人单独文件）或输出 .docx 路径（配合 --combined）")
+    p.add_argument("--combined", action="store_true", help="合并为一个多页文档（默认每人一个独立文件）")
+    p.add_argument('--prefix', default='桌签', help='独立文件时文件名前缀（默认"桌签"）')
+    p.set_defaults(func=cmd_table_signs)
 
     args = parser.parse_args()
     if not args.command:

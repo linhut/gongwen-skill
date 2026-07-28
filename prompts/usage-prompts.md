@@ -14,7 +14,7 @@
 python gongwen.py check 文件.docx
 
 # 2️⃣ 用户说"修改一下内容" → ✏️ 只改内容，不改格式
-python gongwen.py revise 原文.docx -f 修订后.md -o 修订版.docx
+python gongwen.py optimize-content 原文.docx --changes 修订内容.json --apply
 
 # 3️⃣ 用户确认要改格式 → 🔧 先 check 展示问题，用户确认后再执行
 python gongwen.py optimize 文件.docx -o 优化版.docx
@@ -31,7 +31,7 @@ python gongwen.py optimize 文件.docx -o 优化版.docx
   → 用什么？ → check（只读，安全）
 
 用户说"帮我改改内容" / "润色一下"
-  → 用什么？ → revise（只改内容不改格式）
+  → 用什么？ → optimize-content（只改内容不改格式）
 
 用户说"修复格式" / "优化排版"
   → 注意！这是改格式的命令，必须先 check 展示问题 → 问用户确认 → 再 optimize
@@ -210,9 +210,8 @@ python gongwen.py optimize 文件.docx -o 文件_优化版.docx --selected-rules
 python gongwen.py optimize 文件.docx -o 文件_优化版.docx --content-only
 
 # 内容修订对比（✏️ 只改内容不改格式！）
-python gongwen.py revise 原文.docx -o 修订对比.docx -f 修订后.md
-python gongwen.py revise 原文.docx -o 修订对比.docx --text "修订后内容"
-cat 修订后.txt | python gongwen.py revise 原文.docx -o 修订对比.docx
+# 先准备 修订内容.json（格式见 SKILL.md 路径B 变更JSON格式章节）
+python gongwen.py optimize-content 原文.docx --changes 修订内容.json --apply -o 修订对比.docx
 
 # 生成模板（🔧 生成新文件，含标准排版）
 python gongwen.py template notice -o 通知模板.docx

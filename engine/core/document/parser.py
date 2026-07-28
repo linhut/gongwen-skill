@@ -120,14 +120,19 @@ def parse_docx(file_path: Path | str) -> DocumentModel:
     logger.info(f"Parsed: {len(paragraphs)} paragraphs, {len(tables)} tables, "
                 f"{len(headers)} headers, {len(footers)} footers")
 
-    # 6. AI辅助结构分析（当启发式检测不足时尝试）
+    # 6. AI辅助结构分析（独立发行版默认不可用，静默降级为纯启发式检测）
     try:
-        from core.document.ai_structure_analyzer import should_use_ai_analysis, classify_with_ai
-        if should_use_ai_analysis(model):
-            logger.info("Heading detection insufficient, attempting AI structure analysis...")
-            if classify_with_ai(model):
-                headings = [p for p in model.paragraphs if p.is_heading]
-                logger.info(f"AI analysis complete, total headings now: {len(headings)}")
+        # 先探测 AI 依赖是否存在（父项目特有模块），避免深层 ImportError
+        import importlib
+        if importlib.util.find_spec("ai") is None:
+            logger.debug("AI module not available — skipping AI structure analysis (standalone mode)")
+        else:
+            from core.document.ai_structure_analyzer import should_use_ai_analysis, classify_with_ai
+            if should_use_ai_analysis(model):
+                logger.info("Heading detection insufficient, attempting AI structure analysis...")
+                if classify_with_ai(model):
+                    headings = [p for p in model.paragraphs if p.is_heading]
+                    logger.info(f"AI analysis complete, total headings now: {len(headings)}")
     except Exception as e:
         logger.debug(f"AI structure analysis skipped: {e}")
 
