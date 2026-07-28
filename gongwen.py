@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.10.0"
+__version__ = "1.11.0"
 """
 公文文档格式化 Skill —— 基于 GB/T 9704 国家标准的公文 .docx 处理引擎。
 
@@ -673,6 +673,28 @@ def cmd_table_signs(args):
             print(f"   - {f}")
 
 
+def cmd_review(args):
+    """生成审稿流转单。"""
+    from review_generator import generate_review_template
+
+    out = args.output or f"审稿流转单-{args.doc_type}.docx"
+    scheme_label = "完整版（5角色）" if args.scheme == "full" else "精简版（3角色）"
+    result = generate_review_template(
+        doc_type=args.doc_type,
+        output_path=out,
+        scheme=args.scheme,
+        doc_title=args.title,
+    )
+    print(f"✅ 审稿流转单已生成: {result}")
+    print(f"  公文类型: {args.doc_type}")
+    print(f"  审核方案: {scheme_label}")
+    print(f"  待审文稿: {args.title or '（未填写）'}")
+    if args.scheme == "full":
+        print(f"  流转路径: 撰稿人→业务审核→文字校对→综合核稿→领导签发")
+    else:
+        print(f"  流转路径: 撰稿人→业务+文字复合审核→综合负责人终审")
+
+
 # ---------------------------------------------------------------------------
 #  参数解析
 # ---------------------------------------------------------------------------
@@ -799,6 +821,15 @@ def main():
     p.add_argument("--combined", action="store_true", help="合并为一个多页文档（默认每人一个独立文件）")
     p.add_argument('--prefix', default='桌签', help='独立文件时文件名前缀（默认"桌签"）')
     p.set_defaults(func=cmd_table_signs)
+
+    # ---- 审稿流转单生成 ----
+    p = sub.add_parser("review", help="生成公文审稿流转单（五角色/三角色审核模板）")
+    p.add_argument("doc_type", help="公文类型，如 通知/请示/报告/函")
+    p.add_argument("-o", "--output", help="输出 .docx 路径（默认 审稿流转单-{type}.docx）")
+    p.add_argument("--scheme", default="full", choices=["full", "compact"],
+                   help="审稿方案：full=完整五角色（默认）, compact=精简三角色")
+    p.add_argument("--title", default="", help="待审文稿标题")
+    p.set_defaults(func=cmd_review)
 
     args = parser.parse_args()
     if not args.command:

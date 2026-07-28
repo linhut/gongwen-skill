@@ -54,7 +54,7 @@ def generate_docx(model: DocumentModel, output_path: Path | str) -> Path:
             doc = Document(str(source_path))
             logger.debug(f"Loaded source document: {source_path}")
         except Exception as e:
-            logger.warning(f"Failed to load source doc, creating new: {e}")
+            logger.warning(f"Failed to load source doc, creating new", exc_info=True)
             doc = Document()
     else:
         doc = Document()
@@ -667,7 +667,7 @@ def _add_table(doc: Document, table_model: TableModel):
 
         logger.debug(f"Added table: {rows}x{cols}")
     except Exception as e:
-        logger.error(f"Failed to add table: {e}")
+        logger.exception(f"Failed to add table")
 
 
 # ---------------------------------------------------------------------------

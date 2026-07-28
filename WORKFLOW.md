@@ -157,7 +157,7 @@ python gongwen.py optimize /tmp/test.docx -o /tmp/out.docx --apply
 make clean
 ```
 
-### 测试体系（新增于 v1.10.0）
+### 测试体系（新增于 v1.11.0）
 ```
 tests/
 ├── test_models.py      # Pydantic 模型创建、序列化/反序列化
@@ -214,6 +214,7 @@ python -m pytest tests/ --tb=short
 | v1.0 | 2026-07-24 | 初始版本 |
 | v1.9.3 | 2026-07-28 | 修复命令名、添加测试框架、添加 --version、添加 Makefile |
 | v1.10.0 | 2026-07-28 | 桌签模板对齐、字号自适应、全面架构文档、清理父项目残留 |
+| v1.11.0 | 2026-07-29 | 审稿机制融入路径B/C流程、ARCHITECTURE.md 审稿增强JSON格式 |
 
 ---
 
