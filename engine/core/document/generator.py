@@ -92,7 +92,7 @@ def generate_docx(model: DocumentModel, output_path: Path | str) -> Path:
     already_has_ai = any(ai_text in (p.text or "") for p in doc.paragraphs)
     if not already_has_ai:
         ai_para = doc.add_paragraph()
-        ai_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        ai_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         ai_run = ai_para.add_run(ai_text)
         ai_run.font.name = '楷体_GB2312'
         ai_run.font.size = Pt(9)
