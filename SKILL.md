@@ -39,7 +39,15 @@ Licensed under the MIT License. See the LICENSE file for details.
 
 1. 读取 `gongwen.py` 顶部的 `__version__` 常量，获取本地版本号
 2. 在首次加载提示中告知用户：`当前加载 gongwen-skill v{__version__}`
-3. 如有 git 环境，可运行 `git -C <项目目录> describe --tags --abbrev=0` 获取最新 tag；若本地版本 ≠ 最新 tag，提示用户"有更新可用，最新版 {tag}，当前 {version}，请 git pull 更新"
+3. 如有 git 环境，运行 `git -C <项目目录> describe --tags --abbrev=0` 获取最新 tag；若本地版本 ≠ 最新 tag，提示用户：
+   ```
+   有更新可用：最新版 {tag}，当前 {version}
+   拉取地址：
+     GitHub：https://github.com/linhut/gongwen-skill
+     GitCode：https://gitcode.com/linhut/gongwen-skill
+     AtomGit：https://atomgit.com/linhut/gongwen-skill
+   更新命令：git pull
+   ```
 
 ---
 
