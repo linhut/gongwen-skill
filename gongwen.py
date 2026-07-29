@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.3"
+__version__ = "1.12.4"
 """
 公文文档格式化 Skill —— 基于 GB/T 9704 国家标准的公文 .docx 处理引擎。
 
@@ -572,9 +572,29 @@ def cmd_optimize_content(args):
     默认预览模式：列出变更摘要 → 提示下一步。
     加 --apply 才真正生成差异对比文档。
     """
-    from optimizer import load_changes_from_json, create_diff_document
+    from optimizer import load_changes_from_json, create_diff_document, load_changes_from_json
 
     changes = load_changes_from_json(args.changes)
+
+    # --paragraphs 范围过滤
+    if hasattr(args, 'paragraphs') and args.paragraphs:
+        indices = set()
+        for part in args.paragraphs.split(','):
+            part = part.strip()
+            if '-' in part:
+                try:
+                    a, b = part.split('-', 1)
+                    indices.update(range(int(a.strip()), int(b.strip()) + 1))
+                except ValueError:
+                    print(f"⚠️ 无效段落范围: {part}", file=sys.stderr)
+            else:
+                try:
+                    indices.add(int(part))
+                except ValueError:
+                    print(f"⚠️ 无效段落号: {part}", file=sys.stderr)
+        before = len(changes)
+        changes = [c for c in changes if c.get('paragraph_index', -1) in indices]
+        print(f"📌 --paragraphs {args.paragraphs}: 过滤 {before}→{len(changes)} 处变更")
 
     # 预览：列出变更摘要
     print(f"📄 文件: {Path(args.input).name}")
@@ -608,6 +628,8 @@ def cmd_optimize_content(args):
     kwargs = {}
     if hasattr(args, 'disclaimer') and args.disclaimer is not None:
         kwargs['disclaimer'] = args.disclaimer
+    if hasattr(args, 'force') and args.force:
+        kwargs['force'] = True
     create_diff_document(
         args.input,
         out_name,
@@ -735,10 +757,80 @@ def cmd_table_signs(args):
             print(f"   - {f}")
 
 
+def cmd_audit(args):
+    """审计文档处理链：检查文档格式合规性、删除线问题、bold-first 影响。"""
+    from lxml import etree
+    from docx.oxml.ns import qn
+    from core.document.parser import parse_docx
+    from pathlib import Path
+
+    model = parse_docx(args.input)
+    print(f"📄 文件: {Path(args.input).name}")
+    print(f"📊 段落数: {len(model.paragraphs)}")
+    print(f"📊 总 run 数: {sum(len(p.runs) for p in model.paragraphs)}")
+
+    # AI 声明
+    has_ai = any('GongWen-skill' in p.text for p in model.paragraphs)
+    print(f"🤖 AI声明: {'有' if has_ai else '无'}")
+
+    # 删除线
+    ns = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+    strike_true = 0
+    strike_false = 0
+    for p in model.paragraphs:
+        for r in p.runs:
+            if not r.text.strip():
+                continue
+            rPr = r._element.find(f'{ns}rPr') if hasattr(r, '_element') else None
+            if rPr is None:
+                continue
+            strike = rPr.find(f'{ns}strike')
+            if strike is not None:
+                val = strike.get(f'{ns}val')
+                if val in (None, 'true', '1', 'on'):
+                    strike_true += 1
+                else:
+                    strike_false += 1
+    print(f" 删除线: 真删除线={strike_true}, val=false伏笔={strike_false}")
+
+    # 加粗
+    all_bold = 0
+    partial_bold = 0
+    for p in model.paragraphs:
+        if not p.text.strip():
+            continue
+        runs_with_text = [r for r in p.runs if r.text.strip()]
+        if not runs_with_text:
+            continue
+        bold_count = sum(1 for r in runs_with_text if r.format.bold)
+        if bold_count == len(runs_with_text) and bold_count > 0:
+            all_bold += 1
+        elif bold_count > 0:
+            partial_bold += 1
+    print(f" 加粗: 整段加粗={all_bold}段, 首句加粗={partial_bold}段")
+
+    # 修订标记
+    has_annotation = any(getattr(p, 'role', None) == 'annotation' for p in model.paragraphs)
+    print(f"📝 修订标记: {'有（路径B产物）' if has_annotation else '无（路径A/C产物）'}")
+
+    # 综合结论
+    print(f"\n{'='*50}")
+    if strike_true > 0:
+        print(f"  ⛔ 发现 {strike_true} 个真删除线 run — 文档不可直接使用")
+    elif strike_false > 0:
+        print(f"  ⚠️ 发现 {strike_false} 个 strike val=false 伏笔 — 建议清除")
+    else:
+        print(f"  ✅ 删除线检查通过")
+
+    if all_bold > 3:
+        print(f"  ⚠️ {all_bold} 段整段加粗 — 检查是否为 bold-first bug")
+    else:
+        print(f"  ✅ 加粗检查通过")
+
+
 def cmd_review(args):
     """生成审稿流转单。"""
     from review_generator import generate_review_template
-
     out = args.output or f"审稿流转单-{args.doc_type}.docx"
     scheme_label = "完整版（5角色）" if args.scheme == "full" else "精简版（3角色）"
     result = generate_review_template(
@@ -856,6 +948,8 @@ def main():
     p.add_argument("--optimize-format", action="store_true", help="同时优化格式（默认仅做差异标注，不改格式）")
     p.add_argument("--apply", action="store_true", help="确认生成差异对比文档（默认预览）")
     p.add_argument("--disclaimer", default=None, help="文档末尾 AI 声明文字（默认：内容由GongWen-skill-AI生成，仅供参考）")
+    p.add_argument("--force", action="store_true", help="强制替换：文本匹配失败时直接替换段落全部内容（可能丢失加粗等格式）")
+    p.add_argument("--paragraphs", type=str, default=None, help='只处理指定段落范围，如 "11-15" 或 "5,7,9"')
     p.set_defaults(func=cmd_optimize_content)
 
     p = sub.add_parser("bold-first", help="正文段落首句加粗（符合公文规范：点题第一句话默认加粗）")
@@ -887,6 +981,11 @@ def main():
     p.add_argument("--combined", action="store_true", help="合并为一个多页文档（默认每人一个独立文件）")
     p.add_argument('--prefix', default='桌签', help='独立文件时文件名前缀（默认"桌签"）')
     p.set_defaults(func=cmd_table_signs)
+
+    # ---- 文档审计 ----
+    p = sub.add_parser("audit", help="审计文档处理链：检查删除线、加粗、AI声明等合规性问题")
+    p.add_argument("input", help="输入 .docx 路径")
+    p.set_defaults(func=cmd_audit)
 
     # ---- 审稿流转单生成 ----
     p = sub.add_parser("review", help="生成公文审稿流转单（五角色/三角色审核模板）")

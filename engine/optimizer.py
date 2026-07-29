@@ -30,6 +30,30 @@ from core.document.models import Paragraph, Run, RunFormat
 from utils.logger import logger
 
 
+def _normalize_text(text: str) -> str:
+    """归一化文本：去除首尾空格、全角空格转半角、合并连续空格。"""
+    text = text.strip()
+    text = text.replace('\u3000', ' ')   # 全角空格 → 半角
+    text = text.replace('\xa0', ' ')     # 不间断空格 → 普通空格
+    import re
+    text = re.sub(r'\s+', ' ', text)     # 合并连续空格
+    return text
+
+
+def _text_matches(original_text: str, para_text: str) -> bool:
+    """多级文本匹配：精确 → 归一化 → 去空格。"""
+    # Level 1: 精确匹配
+    if original_text == para_text:
+        return True
+    # Level 2: 归一化匹配（处理空格差异、全角空格等）
+    if _normalize_text(original_text) == _normalize_text(para_text):
+        return True
+    # Level 3: 去除所有空格后匹配
+    if original_text.replace(' ', '') == para_text.replace(' ', ''):
+        return True
+    return False
+
+
 def _split_sentences(text: str) -> list[str]:
     """将文本拆分为句子列表（按 。！？：； 断句，保留标点）。"""
     if not text:
@@ -370,7 +394,8 @@ def create_diff_document(
     output_path: str,
     changes: list[dict],
     keep_format: bool = True,
-    disclaimer: str | None = "（内容由GongWen-skill-AI生成，仅供参考）",
+    disclaimer: str | None = None,
+    force: bool = False,
 ) -> None:
     """
     从原文 .docx 和优化变更列表，生成带差异标注的 .docx。
@@ -448,8 +473,8 @@ def create_diff_document(
         if idx in change_map:
             fragments = change_map[idx]
 
-            if len(fragments) == 1 and fragments[0].get("original_text", "") == para.text:
-                # 单片段且覆盖整段：保持原有逻辑
+            if len(fragments) == 1 and _text_matches(fragments[0].get("original_text", ""), para.text):
+                # 单片段且覆盖整段（归一化匹配）：保持原有逻辑
                 c = fragments[0]
                 orig_text = c.get("original_text", para.text)
                 opt_text = c.get("optimized_text", para.text)
@@ -459,11 +484,12 @@ def create_diff_document(
                 full_orig = para.text
                 full_opt = full_orig
 
-                # 按 original_text 在原段落中的出现顺序排序
-                sorted_fragments = sorted(
-                    fragments,
-                    key=lambda f: full_orig.find(f.get("original_text", ""))
-                )
+                # 按 original_text 在原段落中的首次出现位置排序
+                def _sort_key(f):
+                    t = f.get("original_text", "")
+                    n = _normalize_text(t)
+                    return _normalize_text(full_orig).find(n) if n else -1
+                sorted_fragments = sorted(fragments, key=_sort_key)
 
                 for frag in sorted_fragments:
                     frag_orig = frag.get("original_text", "")
@@ -471,16 +497,41 @@ def create_diff_document(
                     if not frag_orig:
                         logger.warning(f"段落 {idx}: fragment original_text 为空，跳过")
                         continue
-                    count = full_opt.count(frag_orig)
+                    count = _normalize_text(full_opt).count(_normalize_text(frag_orig))
                     if count == 0:
+                        # 尝试精确匹配 fallback（处理归一化后文本不同的边界情况）
+                        count = full_opt.count(frag_orig)
+                    if count == 0:
+                        # 精确匹配也失败 → 输出诊断信息
+                        para_text = para.text
+                        ratio = difflib.SequenceMatcher(None, frag_orig, para_text).ratio()
+                        diff_chars = []
+                        for i, (a, b) in enumerate(zip(frag_orig[:50], para_text[:50])):
+                            if a != b:
+                                diff_chars.append(f"位置{i}: JSON='{a}' vs DOCX='{b}'")
                         logger.warning(
-                            f"段落 {idx}: original_text 在基底文本中未找到，"
-                            f"跳过片段: {frag_orig[:60]}..."
+                            f"段落 {idx}: original_text 匹配失败\n"
+                            f"  JSON文本长度: {len(frag_orig)}\n"
+                            f"  DOCX段落长度: {len(para_text)}\n"
+                            f"  相似度: {ratio:.1%}\n"
+                            f"  差异点(前5): {diff_chars[:5]}\n"
+                            f"  建议: 检查 JSON 中 original_text 是否与文档段落文本完全一致\n"
+                            f"  跳过此片段: {frag_orig[:60]}..."
                         )
+                        if force:
+                            logger.warning(f"段落 {idx}: --force 模式，强制替换整段")
+                            orig_text = para.text
+                            opt_text = frag_opt
+                            break
                         continue
                     if count > 1:
+                        # 归一化后歧义，尝试精确匹配
+                        exact_count = full_opt.count(frag_orig)
+                        if exact_count == 1:
+                            full_opt = full_opt.replace(frag_orig, frag_opt, 1)
+                            continue
                         logger.warning(
-                            f"段落 {idx}: original_text 出现 {count} 次，歧义，"
+                            f"段落 {idx}: original_text 出现 {count} 次（归一化后），歧义，"
                             f"跳过片段: {frag_orig[:60]}..."
                         )
                         continue
