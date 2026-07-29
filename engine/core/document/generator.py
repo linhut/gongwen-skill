@@ -951,8 +951,11 @@ def _apply_run_format(run, run_model: Run):
         run.font.italic = fmt.italic
     if fmt.underline is not None:
         run.font.underline = fmt.underline
-    if fmt.strikethrough is not None:
-        run.font.strike = fmt.strikethrough
+    if fmt.strikethrough is True:
+        run.font.strike = True
+    # 注意：strikethrough=False 时不写入 strike 元素
+    # 否则 python-docx 会生成 <w:strike w:val="false"/>，
+    # 被 parser_format.py 误判为有删除线
 
     # === 颜色 ===
     if fmt.color:

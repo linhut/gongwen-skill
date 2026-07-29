@@ -998,6 +998,7 @@ def bold_first_sentence_of_body(model: DocumentModel) -> int:
         修改的段落数
     """
     import re
+    from copy import deepcopy
     changes = 0
     exclude_roles = {'signature', 'date', 'title', 'recipient', 'annotation'}
     for para in model.paragraphs:
@@ -1013,25 +1014,54 @@ def bold_first_sentence_of_body(model: DocumentModel) -> int:
         m = re.search(r'[。！？：；]', text)
         if not m:
             continue
-        first_sentence = text[:m.end()]
+        first_end = m.end()
 
         # 遍历 runs，将首句所在的 run 加粗
+        # 若 run 跨越首句边界，则拆分该 run
         pos = 0
+        new_runs = []
+        split_happened = False
         for run in para.runs:
             run_text = run.text or ""
             run_start = pos
             run_end = pos + len(run_text)
-            if run_start <= m.end() < run_end:
-                # 该 run 包含首句结尾处 → 整个 run 加粗
-                if not run.format.bold:
-                    run.format.bold = True
-                    changes += 1
-                break
-            elif run_end <= m.end():
+
+            if run_start < first_end <= run_end:
+                # 该 run 跨越首句边界 → 拆分为两个 run
+                split_pos = first_end - run_start
+                first_part = run_text[:split_pos]
+                rest_part = run_text[split_pos:]
+
+                # 首句部分：加粗
+                new_runs.append(Run(
+                    index=len(new_runs),
+                    text=first_part,
+                    format=deepcopy(run.format),
+                ))
+                new_runs[-1].format.bold = True
+                changes += 1
+
+                # 剩余部分：保持原样
+                if rest_part:
+                    new_runs.append(Run(
+                        index=len(new_runs),
+                        text=rest_part,
+                        format=deepcopy(run.format),
+                    ))
+                split_happened = True
+            elif run_end <= first_end:
                 # 该 run 完全在首句内 → 加粗
-                if not run.format.bold:
-                    run.format.bold = True
+                new_run = deepcopy(run)
+                if not new_run.format.bold:
+                    new_run.format.bold = True
                     changes += 1
+                new_runs.append(new_run)
+            else:
+                # 该 run 完全在首句后 → 保持原样
+                new_runs.append(deepcopy(run))
             pos = run_end
+
+        if split_happened:
+            para.runs = new_runs
 
     return changes

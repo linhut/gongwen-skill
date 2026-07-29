@@ -113,12 +113,15 @@ def parse_run(run, index: int) -> Run:
         color_rgb = str(font.color.rgb)
 
     # 通过 XML 检测删除线（python-docx 1.2.0 无 font.strikethrough）
+    # 注意：必须检查 w:val 属性——<w:strike w:val="false"/> 表示无删除线
     _strikethrough = False
     ns = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
     rPr = run._element.find(f'{ns}rPr')
     if rPr is not None:
-        if rPr.find(f'{ns}strike') is not None:
-            _strikethrough = True
+        strike_elem = rPr.find(f'{ns}strike')
+        if strike_elem is not None:
+            val = strike_elem.get(f'{ns}val', 'true')
+            _strikethrough = val.lower() != 'false'
 
     return Run(
         text=run.text,

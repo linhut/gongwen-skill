@@ -1100,15 +1100,25 @@ LLM 根据用户背景和要求，参考下方段落结构模板和惯用语库�
 python gongwen.py md2docx 草稿.md -o _temp_draft.docx -t <类型> --signer 落款单位 --date 日期
 ```
 
-**第三步：调用路径 A 的 optimize 套国标格式生成成品**
+**第三步（可选）：正文段落首句加粗**
 
-对第二步的临时文件执行 `python gongwen.py optimize _temp_draft.docx -t <类型>`，套用 GB/T 9704 国标格式（版头、版记、页码、字体、字号、行距等）。这一步是纯格式处理，不改文字内容。
+若需要按公文规范将正文段落的首句加粗，在 optimize 之前执行 `bold-first`：
+
+```bash
+python gongwen.py bold-first _temp_draft.docx -o _temp_draft.docx
+```
+
+> **注意**：`bold-first` 必须在 `optimize` 之前执行，以便 optimize 内的 `fix_bold_range` 规则能正确处理边界情况。若先 optimize 再 bold-first，会导致整段加粗问题。
+
+**第四步：调用路径 A 的 optimize 套国标格式生成成品**
+
+对第二步/第三步的临时文件执行 `python gongwen.py optimize _temp_draft.docx -t <类型>`，套用 GB/T 9704 国标格式（版头、版记、页码、字体、字号、行距等）。这一步是纯格式处理，不改文字内容。
 
 ```bash
 python gongwen.py optimize _temp_draft.docx -o 成品.docx -t <类型>
 ```
 
-**第四步：验证产物并交付**
+**第五步：验证产物并交付**
 
 执行 `python gongwen.py check 成品.docx -t <类型> --json` 进行格式合规检查。向用户报告格式合规情况和最终产物路径，提醒用户确认 `[]` 占位符处的内容。
 
