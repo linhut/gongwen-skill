@@ -18,8 +18,11 @@ Licensed under the MIT License. See the LICENSE file for details.
 本 Skill 源自开源桌面项目 [AI 公文智能优化助手](https://github.com/linhut/document-ai-assistant)，将其核心格式引擎抽取、剥离桌面端/数据库依赖后独立发行，支持公文的**模板建立、解析、规则检查、自动修复、内容优化、Markdown 转公文**全流程能力。
 
 ---
-
 ## ✨ 能力一览
+
+<p align="center">
+  <img src="logo/A_vertical_promotional_2026-07-23T02-25-30.png" alt="公文技能工作流：输入 .docx → 检查 → 修复 → 合规公文" width="420">
+</p>
 
 | 能力 | 命令 | 说明 |
 |------|------|------|
@@ -38,6 +41,12 @@ Licensed under the MIT License. See the LICENSE file for details.
 | 📋 桌签生成 | `table-signs` | 批量生成 A5 横版会议桌签 |
 | 🔍 审稿生成 | `review` | 按五角色审稿机制生成审稿意见 |
 | ⚙️ 规则管理 | `rule-export/import/list` | YAML 规则三层定制（官方/单位/用户） |
+
+## 使用示例
+
+![GongWen-skill 使用示例](docs/example.png)
+
+> 在 AI 对话中调用 gongwen-skill，输入自然语言指令，自动生成符合 GB/T 9704 国标格式的正式公文。
 
 ## 🚀 快速开始
 
