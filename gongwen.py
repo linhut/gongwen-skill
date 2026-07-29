@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.2"
+__version__ = "1.12.3"
 """
 公文文档格式化 Skill —— 基于 GB/T 9704 国家标准的公文 .docx 处理引擎。
 
@@ -55,6 +55,13 @@ sys.path.insert(0, str(_ENGINE_DIR))
 try:
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
+# 注册 tmp 目录进程退出自动清理
+try:
+    from tmp import register_cleanup
+    register_cleanup()
 except Exception:
     pass
 
@@ -144,6 +151,7 @@ def cmd_list_types(args):
 
 def cmd_template(args):
     """生成标准公文模板。"""
+    from datetime import date as _dt
     from core.rules.manager import load_rules_merged
     from core.document.generator import generate_docx
     from template_builder import create_template_document
@@ -152,7 +160,11 @@ def cmd_template(args):
     rules = load_rules_merged(doc_type)
     model = create_template_document(doc_type, rules)
 
-    out = Path(args.output) if args.output else Path(f"{doc_type}_template.docx")
+    if args.output:
+        out = Path(args.output)
+    else:
+        today = _dt.today().strftime("%Y-%m-%d")
+        out = Path(f"修订版+{doc_type}-模板+{today}+v1.docx")
     generate_docx(model, out)
     print(f"模板已生成: {out} (类型: {doc_type})")
 
@@ -281,7 +293,11 @@ def cmd_generate(args):
 
     data = json.loads(Path(args.input).read_text(encoding="utf-8"))
     model = DocumentModel(**data)
-    out = Path(args.output) if args.output else Path("generated.docx")
+    if args.output:
+        out = Path(args.output)
+    else:
+        stem = Path(args.input).stem.replace(".model", "").replace("_model", "")
+        out = Path(f"修订版+{stem}+生成.docx")
     generate_docx(model, out)
     print(f"文档已生成: {out}")
 
@@ -299,6 +315,7 @@ def cmd_md2docx(args):
     - doc_type: 公文类型（默认 notice）
     """
     import io
+    from datetime import date as _dt
     from core.document.parser_format import parse_paragraph_format, parse_run
     from core.document.generator import generate_docx
     from core.document.models import (
@@ -474,7 +491,11 @@ def cmd_md2docx(args):
         ))
 
     # 生成 docx
-    out = Path(args.output) if args.output else Path("output.docx")
+    if args.output:
+        out = Path(args.output)
+    else:
+        today = _dt.today().strftime("%Y-%m-%d")
+        out = Path(f"修订版+{doc_type}-草稿+{today}+v1.docx")
     generate_docx(model, str(out))
 
     print(f"公文已生成: {out}")
@@ -924,7 +945,23 @@ def main():
         print(f"错误：{e}", file=sys.stderr)
         sys.exit(1)
     finally:
-        pass
+        # 会话追踪：记录本次命令（不阻塞、不抛异常）
+        try:
+            from session import get_session as _gs
+            out_files = []
+            for i, a in enumerate(sys.argv):
+                if a in ('-o', '--output') and i + 1 < len(sys.argv):
+                    out_files.append(sys.argv[i + 1])
+            _s = _gs()
+            _s.record_command(
+                command=getattr(args, "command", "?"),
+                args=sys.argv[1:] if len(sys.argv) > 1 else [],
+                out_files=out_files,
+            )
+            _s.save()
+            print(f"\n会话ID: {_s.prefix} ｜ 命令: {getattr(args, 'command', '?')} |")
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

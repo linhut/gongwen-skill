@@ -43,7 +43,11 @@ _ACTION_MAP = {
     "set_margins": lambda model, target, value, _rules: modify_margins(model, value),
     "set_page_margins": lambda model, target, value, _rules: modify_margins(model, value),
     "remove_extra_spaces": lambda model, _target, _value, _rules: remove_extra_spaces(model),
-    "remove_extra_blank_lines": lambda model, _target, _value, _rules: remove_extra_blank_lines(model),
+    "remove_extra_blank_lines": lambda model, _target, value, _rules: remove_extra_blank_lines(
+        model,
+        mode=value.get("mode", "delete_single") if isinstance(value, dict) else "delete_single",
+        protected_roles=set(value.get("protected_roles", [])) if isinstance(value, dict) and value.get("protected_roles") else None,
+    ),
     "strip_markdown": lambda model, _target, _value, _rules: convert_markdown(model),
     "convert_markdown": lambda model, _target, _value, _rules: convert_markdown(model),
     "fix_bold_range": lambda model, _target, _value, _rules: fix_bold_range(model),

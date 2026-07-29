@@ -35,6 +35,12 @@ def generate_docx(model: DocumentModel, output_path: Path | str) -> Path:
     策略：加载源文档 → 替换段落内容（保留表格在原文位置）→ 更新表格 → 更新页眉页脚 → 保存。
     这样可以保留 DocumentModel 未建模的内容（图片、嵌入对象、分节符等）。
 
+    图片处理说明：
+    - 内联图片（<w:drawing>）：随所在 <w:p> 段落一起保留。
+    - 浮动图片（锚定）：不受段落替换影响。
+    - 前提：源文档保留策略生效（model.source_path 指向原 .docx）。
+    - 若无源文档（如 md2docx 创建新文档），图片无法保留。
+
     Args:
         model: The document model to generate from
         output_path: Path where the .docx file should be saved
@@ -258,12 +264,17 @@ def _apply_page_setup(doc: Document, model: DocumentModel):
 
 def _replace_paragraphs(doc: Document, model: DocumentModel):
     """
-    替换文档中的段落内容，同时保留表格在原始位置。
+    替换文档中的段落内容，同时保留表格和图片在原始位置。
 
     策略：
     1. 找到 body 直接子元素中的 <w:p> 元素（排除表格内的段落）
-    2. 按顺序替换为 model.paragraphs 的内容
+    2. 按顺序一一替换为 model.paragraphs 的内容（索引对齐，不重排）
     3. 表格 <w:tbl> 元素保持不动
+    4. 图片：内联图片（<w:drawing> 在 <w:p> 内）通过段落内容替换间接保留，
+       浮动图片（锚定）不受影响。前提是源文档保留策略生效。
+
+    注意：段落索引必须与模型中的 index 字段严格对齐。
+    索引错位会导致内联图片跟随错误的段落移位。
     """
     body = doc.element.body
     p_tag = qn('w:p')

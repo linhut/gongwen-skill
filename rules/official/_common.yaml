@@ -81,6 +81,26 @@ date:
   align: right
   right_indent: 4em
 
+# --- 表格格式 ---
+table:
+  header:
+    font: "黑体"
+    size: 12pt
+    bold: true
+    align: center
+    border: "single"
+    fill: "D9E2F3"       # 浅蓝灰底色
+  body:
+    font: "仿宋_GB2312"
+    size: 12pt
+    bold: false
+    align: left           # 默认左对齐，智能对齐规则覆盖
+  cell_margin:
+    top: 0
+    left: 80              # 单元格左右边距（twips）
+    bottom: 0
+    right: 80
+
 # ============================================================
 #  通用检查规则（共29条）
 # ============================================================
@@ -562,6 +582,9 @@ fix_rules:
   - id: FIX-C005
     action: remove_extra_blank_lines
     target: all
+    value:
+      mode: delete_single
+      protected_roles: ['signature', 'date', 'cc', 'attachment']
 
   - id: FIX-C019
     action: normalize_punctuation

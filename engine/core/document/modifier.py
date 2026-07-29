@@ -174,7 +174,8 @@ def remove_extra_spaces(model: DocumentModel) -> None:
                 run.text = re.sub(r' {2,}', ' ', run.text)
 
 
-def remove_extra_blank_lines(model: DocumentModel, mode: str = 'delete_single') -> None:
+def remove_extra_blank_lines(model: DocumentModel, mode: str = 'delete_single',
+                               protected_roles: set | None = None) -> None:
     """处理空行（支持三种模式）。
 
     Args:
@@ -183,18 +184,35 @@ def remove_extra_blank_lines(model: DocumentModel, mode: str = 'delete_single') 
             - 'keep_all': 不改动任何空行
             - 'delete_single': 删除单个空行，多个空行保留至1个
             - 'keep_single': 保留单个空行，多个空行保留至1个
+        protected_roles: 受保护角色集合，这些角色前的空行不被删除。
+                         由 YAML 规则中的 value.protected_roles 传入。
+                         默认为空（不保护任何角色）。
     """
+    protected = protected_roles or set()
+
+    def _has_protected_role_after(paragraphs: list, start_idx: int) -> bool:
+        """检查从 start_idx 开始的后续非空段落是否包含受保护角色。"""
+        for j in range(start_idx + 1, min(start_idx + 4, len(paragraphs))):
+            p = paragraphs[j]
+            if p.text.strip() and p.role in protected:
+                return True
+            if p.text.strip() and p.role not in protected:
+                return False
+        return False
+
     if mode == 'keep_all':
         return
 
     if mode == 'keep_single':
-        # 保留单个空行，多个连续空行合并为1个
         to_remove: set[int] = set()
         blank_count = 0
         for i, para in enumerate(model.paragraphs):
             if not para.text.strip():
                 blank_count += 1
                 if blank_count > 1:
+                    if protected and _has_protected_role_after(model.paragraphs, i):
+                        blank_count = 1
+                        continue
                     to_remove.add(i)
             else:
                 blank_count = 0
@@ -202,18 +220,18 @@ def remove_extra_blank_lines(model: DocumentModel, mode: str = 'delete_single') 
         for idx in sorted(to_remove, reverse=True):
             model.paragraphs.pop(idx)
     else:
-        # delete_single: 删除单个空行，多个空行保留至1个
         to_remove: set[int] = set()
         for i, para in enumerate(model.paragraphs):
             if not para.text.strip() and i > 0:
                 prev = model.paragraphs[i - 1]
                 if not prev.text.strip():
+                    if protected and _has_protected_role_after(model.paragraphs, i):
+                        continue
                     to_remove.add(i)
 
         for idx in sorted(to_remove, reverse=True):
             model.paragraphs.pop(idx)
 
-    # 重新编号段落索引，保证连续性
     for i, p in enumerate(model.paragraphs):
         p.index = i
 
