@@ -3,10 +3,10 @@
 Licensed under the MIT License. See the LICENSE file for details.
 -->
 
-# 公文文档格式化 Skill · gongwen-skill
+# 中文公文全流程工具 · gongwen-skill
 
 <p align="center">
-  <img src="./logo/A_professional_skill_cover_2026-07-23T02-25-30.png" alt="gongwen-skill 公文文档格式化引擎" width="560">
+  <img src="./logo/A_professional_skill_cover_2026-07-23T02-25-30.png" alt="gongwen-skill 中文公文全流程处理" width="560">
 </p>
 
 > 中文公文全流程处理工具——基于 **GB/T 9704《党政机关公文格式》** 国家标准，支持 **格式检查与修复、内容润色（红色标注对比版）、模板生成、Markdown 转公文、版头版记页码注入** 等完整能力。打包为可被 AI Agent 直接调用的 Skill，完全自包含，克隆即用。
