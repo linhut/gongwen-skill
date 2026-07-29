@@ -485,7 +485,7 @@ Agent 在交付任何文档前，必须逐项检查并在回复中汇报：
 
 ```
 📋 合规自检报告
-Skill 版本: v1.12.3
+Skill 版本: 填写当前版本号（运行 gongwen.py --version）
 路径判定: B（内容优化）
 依据: 用户说"优化第二章节"且指定了已有文档
 命令调用: 1. gongwen.py optimize-content input.docx --changes changes.json --apply

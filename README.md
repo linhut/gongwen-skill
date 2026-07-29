@@ -140,6 +140,59 @@ python gongwen.py rule-import my_company -f 公司规范.yaml
 - **路径 B**：内容优化（润色文字，红色标注对比版）
 - **路径 C**：生成公文（从零创建，四步流水线）
 
+## 🤖 通过 Agent 调用
+
+本 Skill 可直接被 AI Agent（如 AtomCode、Claude Code 等）加载并调用，无需手动操作。
+
+### 安装方式
+
+**方式一：克隆到 Skills 目录（推荐）**
+```bash
+# AtomCode
+git clone https://github.com/linhut/gongwen-skill.git ~/.atomcode/skills/gongwen-skill/
+
+# Claude Code
+git clone https://github.com/linhut/gongwen-skill.git ~/.claude/skills/gongwen-skill/
+
+# 其他 Agent — 将仓库克隆到对应的 skills 目录即可
+```
+
+**方式二：任何工作目录下直接使用**
+```bash
+git clone https://github.com/linhut/gongwen-skill.git
+cd gongwen-skill
+pip install -r requirements.txt
+# 之后 Agent 可直接调用 python gongwen.py <命令>
+```
+
+### 对话中使用示例
+
+用户只需在对话中提出需求，Agent 会自动识别路径并执行：
+
+| 用户说 | Agent 行为 | 路径 |
+|--------|-----------|------|
+| "帮我检查这份通知的格式" | 自动执行 `check` 并展示问题清单 | A |
+| "帮我排版这份红头文件" | 自动执行 `optimize --apply` 修复格式 | A |
+| "润色一下这份报告的措辞" | 先确认路径B，生成 `changes.json`，执行 `optimize-content` | B |
+| "帮我写一份关于XX的通知" | 追问细节后走草稿→`md2docx`→`optimize`→`check` | C |
+| "给这份会议通知生成桌签" | 询问名单后执行 `table-signs` | 独立 |
+| "看看这份文档有没有问题" | 执行 `audit` 检查删除线/加粗/AI声明 | 独立 |
+
+### Agent 调用示例（对话式）
+
+```
+用户：帮我优化这份会议通知的第二章节措辞
+
+Agent：📋 合规自检报告
+Skill 版本: v1.12.4
+路径判定: B（内容优化）
+依据: 用户指定了已有文档，且要求"优化措辞"
+命令调用: 1. python gongwen.py optimize-content 会议通知.docx --changes changes.json --apply --paragraphs "5-8"
+是否绕过: 否
+交付物: 会议通知+庄重严谨+2026-07-29+v1.docx（差异对比版）
+质量验证: check 通过
+```
+
 ## 📦 依赖
 
 仅 3 个纯 Python 包：`python-docx`、`pydantic`、`pyyaml`。无数据库、无 Web 框架、无桌面端。

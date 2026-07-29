@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.4"
+__version__ = "1.12.5"
 """
 公文文档格式化 Skill —— 基于 GB/T 9704 国家标准的公文 .docx 处理引擎。
 
@@ -572,7 +572,7 @@ def cmd_optimize_content(args):
     默认预览模式：列出变更摘要 → 提示下一步。
     加 --apply 才真正生成差异对比文档。
     """
-    from optimizer import load_changes_from_json, create_diff_document, load_changes_from_json
+    from optimizer import load_changes_from_json, create_diff_document
 
     changes = load_changes_from_json(args.changes)
 

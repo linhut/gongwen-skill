@@ -19,6 +19,7 @@
 """
 from __future__ import annotations
 
+import difflib
 import json
 import re
 from collections import defaultdict
@@ -35,7 +36,6 @@ def _normalize_text(text: str) -> str:
     text = text.strip()
     text = text.replace('\u3000', ' ')   # 全角空格 → 半角
     text = text.replace('\xa0', ' ')     # 不间断空格 → 普通空格
-    import re
     text = re.sub(r'\s+', ' ', text)     # 合并连续空格
     return text
 
@@ -491,6 +491,7 @@ def create_diff_document(
                     return _normalize_text(full_orig).find(n) if n else -1
                 sorted_fragments = sorted(fragments, key=_sort_key)
 
+                force_applied = False
                 for frag in sorted_fragments:
                     frag_orig = frag.get("original_text", "")
                     frag_opt = frag.get("optimized_text", "")
@@ -522,6 +523,7 @@ def create_diff_document(
                             logger.warning(f"段落 {idx}: --force 模式，强制替换整段")
                             orig_text = para.text
                             opt_text = frag_opt
+                            force_applied = True
                             break
                         continue
                     if count > 1:
@@ -539,8 +541,9 @@ def create_diff_document(
 
                 if len(fragments) == 1:
                     c = fragments[0]
-                orig_text = full_orig
-                opt_text = full_opt
+                if not force_applied:
+                    orig_text = full_orig
+                    opt_text = full_opt
 
             # === 从原文段落读取字体/字号，绝不使用硬编码模板值 ===
             para_font, para_size = _get_para_font(para)
