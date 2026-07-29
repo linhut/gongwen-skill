@@ -498,6 +498,30 @@ def _post_detect_headings(paragraphs: list[Paragraph]) -> None:
                     p.heading_level = 3
                     logger.info(f"[后处理] 统计+模式补充检测三级标题: {t[:30]!r}")
 
+    # --- 清除误标：标题后连续格式信号段落 ---
+    # 修复场景：署名（"林彰良"）和日期（"（2026年7月30日）"）与标题同字体字号，
+    # 被 _detect_heading_heuristic 误标为 heading_level=0。
+    # 规则：若某段落 is_heading=True 且 heading_level=0，但无编号内容信号
+    # （即非"一、""（一）""1."等模式），且前一段也是同级别标题，则降级为正文。
+    for i in range(1, len(paragraphs)):
+        p = paragraphs[i]
+        if not (p.is_heading and p.heading_level == 0):
+            continue
+        t = p.text.strip()
+        if not t:
+            continue
+        # 有内容信号的标题（"关于...的通知"等模式）跳过
+        if '关于' in t or '通知' in t or '请示' in t or '报告' in t or '函' in t:
+            continue
+        if _H1_PATTERN.match(t) or _H2_PATTERN.match(t) or _H3_PATTERN.match(t):
+            continue
+        prev = paragraphs[i - 1]
+        if prev.is_heading and prev.heading_level == 0:
+            # 前一段是同级标题，当前段无标题内容信号 → 署名/日期，降级
+            p.is_heading = False
+            p.heading_level = None
+            logger.info(f"[后处理] 连续标题降级（署名/日期）: {t[:30]!r}")
+
 
 # ---------------------------------------------------------------------------
 #  Paragraph Role Assignment (段落角色标注)
@@ -538,6 +562,25 @@ def _assign_paragraph_roles(paragraphs: list[Paragraph]) -> None:
         first_para.role = 'title'
     elif not first_para.is_heading and len(first_para.text.strip()) < 30:
         first_para.role = 'title'
+
+    # 标题后的署名/日期（会议主持词模式：标题→署名→日期）
+    # 当文档以"标题→短文本（姓名）→短文本（日期）"开头时，
+    # 第二段为署名（speaker/author），第三段为日期。
+    signature_idx = -1
+    if first_para.role == 'title' and len(non_empty) >= 2:
+        second_idx, second_para = non_empty[1]
+        st = second_para.text.strip()
+        # 第二段是署名的条件：非recipient（不以冒号结尾）、短文本、不含标题信号
+        if not second_para.role and len(st) < 20 and not st.endswith(('：', ':')):
+            if not (second_para.is_heading and second_para.heading_level is not None):
+                second_para.role = 'signature'
+                signature_idx = second_idx
+        if len(non_empty) >= 3 and signature_idx >= 0:
+            third_idx, third_para = non_empty[2]
+            thd = third_para.text.strip()
+            # 第三段是日期的条件：匹配日期格式，且前一段已被标为署名
+            if not third_para.role and (_DATE_RE.match(thd) or _DATE_ALT_RE.match(thd)):
+                third_para.role = 'date'
 
     # 最后几段：日期、落款、抄送、印发
     for i in range(len(non_empty) - 1, max(len(non_empty) - 6, 0), -1):

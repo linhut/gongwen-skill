@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
-# 公文文档格式化 Skill —— 独立命令行入口
+# 公文文档格式化 Skill —— 中文公文全流程处理工具
 #
 # (c) 2026 Jose AI (https://www.linhut.cn)
 # 项目出处：AI 公文智能优化助手 (https://www.linhut.cn)
@@ -10,9 +10,13 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.9"
+__version__ = "1.12.10"
 """
-公文文档格式化 Skill —— 基于 GB/T 9704 国家标准的公文 .docx 处理引擎。
+中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
+
+支持格式检查与修复、内容润色（红色标注对比版）、模板生成、Markdown 转公文、
+版头版记页码注入等完整能力。打包为可被 AI Agent 直接调用的 Skill，
+完全自包含，克隆即用。
 
 子命令：
   list-types                   列出所有支持的公文类型
@@ -880,7 +884,7 @@ def cmd_review(args):
 def main():
     parser = argparse.ArgumentParser(
         prog="gongwen",
-        description="公文文档格式化 Skill（GB/T 9704）—— (c) 2026 Jose AI  https://www.linhut.cn",
+        description="中文公文全流程处理工具（GB/T 9704）—— 格式检查/内容优化/模板生成/版式注入  (c) 2026 Jose AI  https://www.linhut.cn",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
