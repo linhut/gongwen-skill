@@ -154,9 +154,6 @@ https://github.com/linhut/gongwen-skill
 
 | 文档 | 用途 | 适合读者 |
 |------|------|---------|
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | 项目全流梳理：业务流、数据流、逻辑流、代码流 | 开发/维护者 |
-| [WORKFLOW.md](./WORKFLOW.md) | 快速工作流概览：管道、CLI、规则加载、开发流程 | 日常使用者 |
-| [REFERENCE.md](./REFERENCE.md) | 编程调用 API 参考、规则 YAML 结构 | 深度定制开发者 |
 | [SKILL.md](./SKILL.md) | AI Agent 路由手册：三条路径、质量评审、10 种公文骨架 | AI Agent 框架 |
 
 ## 🏗️ 架构
@@ -167,7 +164,7 @@ https://github.com/linhut/gongwen-skill
                   Pydantic 中间表示     YAML 规则（三层合并）
 ```
 
-所有处理都经过 `DocumentModel` 中间表示，任何模块都不直接操作 python-docx 对象。详见 [REFERENCE.md](./REFERENCE.md)。
+所有处理都经过 `DocumentModel` 中间表示，任何模块都不直接操作 python-docx 对象。
 
 ## 📦 依赖
 
