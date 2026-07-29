@@ -55,17 +55,37 @@ python gongwen.py check 公文.docx -t notice --json
 # 自动修复格式（--apply 确认执行，默认预览）
 python gongwen.py optimize 公文.docx -o 成品.docx -t notice --apply
 
-# Markdown 草稿 → 正式公文
+# 一步到位：检查 + 修复 + 版头/版记/页码全注入（--layout 指向 JSON 配置）
+python gongwen.py optimize 公文.docx -o 成品.docx --layout 版式.json
+
+# Markdown 草稿 → 正式公文（支持管道输入和 Front Matter 元数据）
 python gongwen.py md2docx 草稿.md -o 正式公文.docx -t report --signer "XX单位" --date "2026年7月29日"
 
-# 内容润色（差异对比版）
+# 管道输入：cat 草稿.md | python gongwen.py md2docx - -o 正式公文.docx
+
+# 内容润色（差异对比版：原文灰色删除线 + 优化后红色高亮 + 修改说明）
 python gongwen.py optimize-content 原文.docx -o 修订版.docx --changes 修订内容.json --apply
 
-# 注入版头
+# 注入版头（发文机关标志 + 发文字号 + 签发人 + 红色反线）
 python gongwen.py header 公文.docx -o 红头公文.docx --org-name "XX单位" --doc-number "〔2026〕1号"
 
-# 注入页码
+# 注入版记（抄送 + 印发机关 + 印发日期）
+python gongwen.py footer 红头公文.docx --cc "各单位" --printer "XX办公室" --print-date "2026年7月29日"
+
+# 注入页码（Word PAGE 域动态页码）
 python gongwen.py pagenum 红头公文.docx --alignment center
+
+# 正文段落首句自动加粗
+python gongwen.py bold-first 公文.docx
+
+# 桌签批量生成（名单每行一人）
+python gongwen.py table-signs 名单.txt -o ./桌签/
+
+# 导入自定义规则
+python gongwen.py rule-import my_company -f 公司规范.yaml
+
+# 审稿生成
+python gongwen.py review report -o 审稿意见.md
 ```
 
 ## 📐 GB/T 9704 标准格式
