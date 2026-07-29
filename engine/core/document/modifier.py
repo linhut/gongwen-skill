@@ -166,6 +166,37 @@ def modify_margins(model: DocumentModel, margins: dict[str, str | float]) -> Non
                 setattr(ps, attr, parsed)
 
 
+def clean_path_b_markers(model: DocumentModel) -> int:
+    """清理路径 B 遗留的修改说明段落和删除线标记。
+
+    路径 A 格式修复前调用，确保产出无标记的干净成品。
+    - 删除 role='annotation' 的修改说明段落
+    - 删除含 strikethrough=True 的 run（灰色删除线标记）
+    - 清理后重新编号段落索引
+
+    Returns:
+        移除的段落数 + 清除的删除线 run 数
+    """
+    # 1. 删除修改说明段落
+    before = len(model.paragraphs)
+    model.paragraphs = [p for p in model.paragraphs if p.role != 'annotation']
+    removed_paras = before - len(model.paragraphs)
+
+    # 2. 删除 strikethrough run（路径 B 的灰色删除线标记）
+    removed_runs = 0
+    for para in model.paragraphs:
+        original_runs = para.runs[:]
+        para.runs = [r for r in para.runs if not r.format.strikethrough]
+        removed_runs += len(original_runs) - len(para.runs)
+
+    # 3. 重新编号
+    for i, p in enumerate(model.paragraphs):
+        p.index = i
+
+    logger.info(f"路径B标记清理: 移除 {removed_paras} 个说明段落, 清除 {removed_runs} 个删除线 run")
+    return removed_paras + removed_runs
+
+
 def remove_extra_spaces(model: DocumentModel) -> None:
     """清除段落中的多余空格（连续2个以上空格压缩为1个）。"""
     for para in model.paragraphs:

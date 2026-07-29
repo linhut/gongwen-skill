@@ -111,8 +111,10 @@ def _build_output_name(input_path: "str | Path", convention: str, style: str | N
     """根据命名规范构造输出文件名（不含路径，仅文件名）。
 
     规范：
-    - 路径 A / C（格式优化 / 模板生成）：修订版+{原文档名}+{日期}+v1.docx
-    - 路径 B（内容优化对比文档）：{原文档名}+{内容风格}+{日期}+v1.docx
+    - 路径 A / C（格式优化 / 模板生成）：修订版+{原文档名}+{日期}+v{版本号}.docx
+    - 路径 B（内容优化对比文档）：{原文档名}+{内容风格}+{日期}+v{版本号}.docx
+
+    版本叠加：若输入文件名含 +v{数字}，自动检测并 +1 作为输出版本号。
 
     Args:
         input_path: 原文档路径
@@ -120,18 +122,35 @@ def _build_output_name(input_path: "str | Path", convention: str, style: str | N
         style: 路径 B 的内容风格标签（如"庄重严谨"）
 
     Returns:
-        符合命名规范的文件名，如 "工作报告+庄重严谨+20260725+v1.docx"
+        符合命名规范的文件名，如 "工作报告+庄重严谨+20260725+v2.docx"
     """
     from datetime import date
+    import re
 
     stem = Path(input_path).stem
     today = date.today().strftime("%Y%m%d")
 
+    # 检测文件名中已有的版本号（如 +v1、+v2、v1 等）
+    version = 1
+    v_match = re.search(r'\+v(\d+)$', stem)
+    if v_match:
+        version = int(v_match.group(1)) + 1  # 叠加：+1
+        stem = stem[:v_match.start()]  # 去掉版本后缀
+    else:
+        # 也检测末尾的 "v1""v2" 模式（不带 +）
+        v2 = re.search(r'v(\d+)$', stem)
+        if v2:
+            version = int(v2.group(1)) + 1
+            stem = stem[:v2.start()]
+
+    # 去除尾部可能残留的分隔符
+    stem = stem.rstrip('+ _-')
+
     if convention == "B":
         style_part = f"+{style}" if style else ""
-        return f"{stem}{style_part}+{today}+v1.docx"
+        return f"{stem}{style_part}+{today}+v{version}.docx"
     else:  # A / C
-        return f"修订版+{stem}+{today}+v1.docx"
+        return f"修订版+{stem}+{today}+v{version}.docx"
 
 
 # ---------------------------------------------------------------------------
@@ -268,9 +287,14 @@ def cmd_optimize(args):
     # === 执行模式 ===
     selected = args.selected_rules.split(",") if args.selected_rules else None
     _, fixed = engine.check_and_fix(model, doc_type, selected)
+    # 清理路径 B 遗留的修改说明段落和删除线标记（确保干净成品）
+    from core.document.modifier import clean_path_b_markers
+    cleaned = clean_path_b_markers(fixed)
     generate_docx(fixed, str(out))
     print(f"✅ 优化完成: {out}")
     print(f"  修复 {len(issues)} 项 (P0:{len(p0)}, P1:{len(p1)}, P2:{len(p2)})")
+    if cleaned:
+        print(f"  清理 {cleaned} 处路径B标记")
 
     if getattr(args, "layout", None):
         layout = json.loads(Path(args.layout).read_text(encoding="utf-8"))
