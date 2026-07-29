@@ -154,4 +154,4 @@ MIT License · **(c) 2026 Jose AI** · https://www.linhut.cn
 
 - GitHub：https://github.com/linhut/gongwen-skill
 - GitCode：https://gitcode.com/linhut/gongwen-skill
-- AtomGit：https://atomgit.com/gcw_5fI2soiE/gongwen-skill
+- AtomGit：https://atomgit.com/linhut/gongwen-skill
