@@ -1,0 +1,88 @@
+template_name: 讲话稿/主持词
+document_type: speech
+
+# --- 讲话稿/主持词特有格式覆盖 ---
+# 主持词/讲话稿是台前朗读件（read-aloud document），非印发公文。
+# 正文字号比 GB/T 9704 标准公文大 2pt + 加粗，便于远距离阅读。
+
+title:
+  size: 24pt
+  line_spacing: 35pt
+  bold: false
+
+body:
+  size: 18pt
+  bold: true
+  line_spacing: 28.95pt
+
+signature:
+  size: 18pt
+
+date:
+  size: 18pt
+
+check_rules:
+  - id: CHK-S001
+    name: 标题字号检查（讲话稿）
+    severity: P0
+    field: title.size
+    expected: 24pt
+    message: 讲话稿标题应使用二号(24pt)，比标准公文(22pt)大2pt
+    category: format
+
+  - id: CHK-S002
+    name: 正文字号检查（讲话稿）
+    severity: P0
+    field: body.size
+    expected: 18pt
+    message: 讲话稿正文字号应使用小三(18pt)，比标准公文(16pt)大2pt
+    category: format
+
+  - id: CHK-S003
+    name: 正文加粗检查（讲话稿）
+    severity: P1
+    field: body.bold
+    expected: true
+    message: 讲话稿正文应加粗，便于台前朗读
+    category: format
+
+  - id: CHK-S004
+    name: 标题行距检查（讲话稿）
+    severity: P1
+    field: title.line_spacing
+    expected: 35pt
+    message: 讲话稿标题行距建议35pt，略大于正文以提升视觉份量
+    category: format
+
+  - id: CHK-S005
+    name: 主持人信息字号检查
+    severity: P1
+    field: signature.size
+    expected: 18pt
+    message: 主持人信息应使用小三(18pt)
+    category: format
+
+fix_rules:
+  - id: FIX-S001
+    ref_check: CHK-S001
+    action: set_size
+    target: doc_title
+    value: 24pt
+
+  - id: FIX-S002
+    ref_check: CHK-S002
+    action: set_size
+    target: body
+    value: 18pt
+
+  - id: FIX-S003
+    ref_check: CHK-S003
+    action: set_bold
+    target: body
+    value: true
+
+  - id: FIX-S004
+    ref_check: CHK-S004
+    action: set_line_spacing
+    target: doc_title
+    value: 35pt

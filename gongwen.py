@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.11"
+__version__ = "1.12.12"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -84,6 +84,7 @@ _TYPE_KEYWORDS = {
     "指示": "instruction", "制度": "regulation", "公报": "communique",
     "意见": "opinion", "总结": "summary", "方案": "work_plan",
     "计划": "work_plan", "桌签": "table_sign", "决议": "resolution",
+    "讲话稿": "speech", "主持词": "speech",
 }
 
 
