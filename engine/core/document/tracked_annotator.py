@@ -15,7 +15,7 @@ from __future__ import annotations
 import copy
 import re
 import zipfile
-from datetime import datetime
+from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import List, Optional
@@ -41,6 +41,60 @@ def _next_rev_id() -> str:
 
 def _reset_rev_counter() -> None:
     _rev_id_counter[0] = 0
+
+
+def _append_ai_disclaimer(root, skill_name: str = "GongWen-Skill") -> bool:
+    """在 document.xml 的 w:body 末尾追加 AI 声明段落（tracked 模式 AI 声明修复）。
+
+    与 generate_docx 中 inline 模式的声明格式对齐：楷体_GB2312 / 9pt / 黑色 / 居中，
+    段落样式 Annotation（避免被 check 误判为标题）。带去重：已有声明时跳过。
+
+    Args:
+        root: document.xml 的 lxml 根节点
+        skill_name: skill 名称（默认 GongWen-Skill）
+
+    Returns:
+        是否追加了声明段落
+    """
+    body = root.find(f'{{{W}}}body')
+    if body is None:
+        return False
+
+    # 去重：检查文档文本中是否已有声明变体
+    doc_text = ''.join(t.text or '' for t in root.iter(f'{{{W}}}t'))
+    ai_variants = ["GongWen-skill-AI", "GongWen-Skill-AI", "内容由AI生成",
+                   "内容由gongwen-skill-AI生成", "内容由GongWen-Skill-AI生成"]
+    if any(v in doc_text for v in ai_variants):
+        return False
+
+    ai_text = f"（内容由{skill_name}-AI生成，仅供参考）"
+
+    # 构建声明段落（插入到 body 末尾、sectPr 之前）
+    ai_para = etree.Element(f'{{{W}}}p')
+    pPr = etree.SubElement(ai_para, f'{{{W}}}pPr')
+    jc = etree.SubElement(pPr, f'{{{W}}}jc')
+    jc.set(f'{{{W}}}val', 'center')
+    pStyle = etree.SubElement(pPr, f'{{{W}}}pStyle')
+    pStyle.set(f'{{{W}}}val', 'Annotation')
+
+    r = etree.SubElement(ai_para, f'{{{W}}}r')
+    rPr = etree.SubElement(r, f'{{{W}}}rPr')
+    rFonts = etree.SubElement(rPr, f'{{{W}}}rFonts')
+    rFonts.set(f'{{{W}}}eastAsia', '楷体_GB2312')
+    sz = etree.SubElement(rPr, f'{{{W}}}sz')
+    sz.set(f'{{{W}}}val', '18')  # 9pt = 18 半磅
+    color = etree.SubElement(rPr, f'{{{W}}}color')
+    color.set(f'{{{W}}}val', '000000')
+    t = etree.SubElement(r, f'{{{W}}}t')
+    t.text = ai_text
+
+    # 插入到 sectPr 之前（保证位于文档最后一段）
+    sectPr = body.find(f'{{{W}}}sectPr')
+    if sectPr is not None:
+        body.insert(list(body).index(sectPr), ai_para)
+    else:
+        body.append(ai_para)
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +176,7 @@ def inject_tracked_change_granular(para_node, old_text: str, new_text: str,
     if old_text == new_text:
         return True  # 无修改
 
-    now = datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
     # 收集 run 文本
     runs = []
@@ -262,7 +316,7 @@ def _build_comments_xml(suggestions: list, id_offset: int = 0) -> etree._Element
         c = etree.SubElement(root, f'{{{W}}}comment')
         c.set(f'{{{W}}}id', str(cid))
         c.set(f'{{{W}}}author', sug.author)
-        c.set(f'{{{W}}}date', datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))
+        c.set(f'{{{W}}}date', datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))
         p = etree.SubElement(c, f'{{{W}}}p')
         p.set(f'{{{W15}}}paraId', f'{cid:08X}')
         p.set(f'{{{W15}}}textId', '77777777')
@@ -380,7 +434,12 @@ def inject_tracked_with_comments(
         except Exception:
             pass
 
-    # 7. 一次打包
+    # 7. AI 声明追加（tracked 模式 AI 声明缺失修复）——打包前追加，一次 ZIP 完成
+    _append_ai_disclaimer(root, skill_name="GongWen-Skill")
+    entries['word/document.xml'] = etree.tostring(
+        root, xml_declaration=True, encoding='UTF-8', standalone=True)
+
+    # 8. 一次打包
     out.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
         for name, data in entries.items():
