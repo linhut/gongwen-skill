@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.28"
+__version__ = "1.12.29"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -916,16 +916,17 @@ def cmd_optimize_content(args):
                 category="事实核验",
                 author=fc_author,
             ))
-        # D5: 已确认实体也生成批注（标注"已确认"），让用户看到核验覆盖范围
-        for e in fc_report.confirmed:
-            suggestions.append(CommentSuggestion(
-                para_index=e.paragraph_index,
-                start_offset=0,
-                end_offset=0,
-                comment_text=f"【事实核验✅】{e.entity_name}：{e.note}",
-                category="事实核验",
-                author=fc_author,
-            ))
+        # P7 修复：已确认实体默认不生成批注（避免噪音），仅 --show-confirmed 时可选生成
+        if getattr(args, 'show_confirmed', False):
+            for e in fc_report.confirmed:
+                suggestions.append(CommentSuggestion(
+                    para_index=e.paragraph_index,
+                    start_offset=0,
+                    end_offset=0,
+                    comment_text=f"【事实核验✅】{e.entity_name}：{e.note}",
+                    category="事实核验",
+                    author=fc_author,
+                ))
 
         # N3 修复：所有批注（内容优化 + 事实核验）统一经 tracked 路径一次注入
         result = safe_write_output(Path(out_name), lambda p: inject_tracked_with_comments(
@@ -935,11 +936,22 @@ def cmd_optimize_content(args):
         ))
         # L1 修复：tracked 路径补调 persons.xml + comments 三文件注册（7 色方案生效）
         from core.document.reviewer_comments import _register_persons_xml, _register_comments_infrastructure
+        # P4 修复：注册失败不得静默吞异常——升级为 logger.error + traceback，便于排查
         try:
             _register_persons_xml(result)
             _register_comments_infrastructure(result, len(suggestions))
+            # P4：注册后验证关键文件确实存在
+            import zipfile as _zip_verify
+            with _zip_verify.ZipFile(result) as z:
+                _names = z.namelist()
+            if 'word/people.xml' in _names:
+                print("  ✅ 批注颜色已注册（word/people.xml）")
+            else:
+                print("  ⚠️ word/people.xml 未生成，7 色方案可能未生效")
         except Exception as e:
-            print(f"  ⚠️ 批注颜色/扩展注册失败: {e}")
+            import traceback as _tb
+            _tb.print_exc()
+            print(f"  ⚠️ 批注颜色/扩展注册失败: {e}（详见上方 traceback）")
 
         # 校验：comments.xml 与修订标记存在
         ok = False
@@ -1409,6 +1421,8 @@ def main():
                    help="审稿角色数：6 完整版（默认，含事实核验员）/ 5 完整版（历史兼容，同6）/ 3 精简版，意见作为独立批注按审阅者写入")
     p.add_argument("--background", nargs="*", default=None,
                    help="背景资料路径（事实核验用，支持多个）：.docx / .pdf / .md / .txt / URL，与 --mode tracked 配合对存疑人事信息生成批注提醒")
+    p.add_argument("--show-confirmed", action="store_true",
+                   help="P7 修复：对已确认实体也生成「✅已确认」批注（默认不生成，避免噪音）")
     p.add_argument("--quiet", action="store_true", help="安静模式：仅输出最终结果，不显示分步进度")
     p.add_argument("--verbose", action="store_true", help="详细模式：输出每个 run 的匹配细节")
     p.set_defaults(func=cmd_optimize_content)

@@ -95,8 +95,9 @@ class FactCheckReport:
 # 职务后缀（用于人名+职务识别）
 _TITLE_SUFFIXES = [
     "主任", "副主任", "书记", "副书记", "部长", "副部长", "厅长", "副厅长",
-    "局长", "副局长", "处长", "副处长", "秘书长", "副秘书长", "部长助理",
-    "董事长", "总经理", "总工程师", "党组成员",
+    "局长", "副局长", "处长", "副处长", "秘书长", "副秘书长", "执行副秘书长",
+    "部长助理", "董事长", "总经理", "总工程师", "党组成员", "常务副部长",
+    "常务副部长", "一级调研员", "机关党委书记",
 ]
 
 # 机构常见后缀
@@ -124,6 +125,14 @@ _SENTENCE_INDICATORS = [
     "赋能", "保障", "贴合", "服务", "构建", "坚持", "推动", "深化",
     "既", "又", "实现", "围绕", "聚焦", "促进", "确保", "凝聚",
 ]
+# P1 修复：不完整职务/机构后缀黑名单（"常务副部""副部""各部"等残片）
+# 注意："限公司"不放此处——合法"XX有限公司"以"限公司"结尾，应用 ^ 开头检测拦截独立残片
+_INCOMPLETE_SUFFIX_BLACKLIST = ["常务副部", "副部", "各部", "部的"]
+# P1 修复：动词/系词开头（"是服务全省大局""构建政企学研…"等句子片段）
+_VERB_LEADING_PATTERNS = [
+    r'^是', r'^构建', r'^推动', r'^服务', r'^打造', r'^建设',
+    r'^强化', r'^深化', r'^实现', r'^确保', r'^凝聚', r'^激发',
+]
 
 
 def _looks_like_sentence(text: str) -> bool:
@@ -132,7 +141,7 @@ def _looks_like_sentence(text: str) -> bool:
 
 
 def _is_valid_entity_name(e_type: str, name: str, context: str = "") -> bool:
-    """N2 + M3 修复：实体名有效性过滤（长度/动词片段/截断残片/右边界/长句）。"""
+    """N2 + M3 + P1 修复：实体名有效性过滤（长度/动词片段/截断残片/右边界/长句/不完整后缀）。"""
     if not name:
         return False
     if e_type in ('person', 'org'):
@@ -140,10 +149,22 @@ def _is_valid_entity_name(e_type: str, name: str, context: str = "") -> bool:
             return False
     if e_type == 'org' and len(name) < _ORG_MIN_LEN:
         return False
+    # P1：不完整后缀黑名单（"常务副部""副部"等残片）
+    for bad in _INCOMPLETE_SUFFIX_BLACKLIST:
+        if name.endswith(bad):
+            return False
+    # P1：重复尾字检测（"信息技术部部"= 右边界扩展重复）——机构名最后两字相同且同后缀
+    if e_type == 'org' and len(name) >= 2:
+        if name[-2] == name[-1]:
+            return False
+    # P1：动词/系词开头 → 句子片段，非实体
+    for vpat in _VERB_LEADING_PATTERNS:
+        if re.match(vpat, name):
+            return False
     # M3：长度 > 10 的候选做句子检测（含 2+ 动词/连词 → 短句非实体）
     if len(name) > 10 and _looks_like_sentence(name):
         return False
-    # M3：右边界截断检测——机构名以单字后缀结尾，且原文紧跟扩展字（"部"+"门/长"）
+    # M3 + P1：右边界检测——机构名以单字后缀结尾且原文紧跟扩展字（"部"+"门/长"）
     if e_type == 'org':
         for suffix, extensions in _ORG_SUFFIX_EXTENSIONS.items():
             if name.endswith(suffix):
@@ -300,23 +321,34 @@ def _web_verify(entity_name: str, entity_type: str) -> Optional[str]:
     Step 3：对关键实体做互联网交叉核验（尽力而为，网络不可用返回 None）。
 
     N4 修复：对"姓名+职务"组合一并搜索，比对文档中的职务描述与检索结果。
+    P2 修复：环境变量控制（GONGWEN_WEB_VERIFY=1 开启/0 关闭）+ 多搜索引擎降级
+    （百度→必应）+ 失败日志升级为 warning。
 
     Returns:
         核验说明（找到官方来源）或 None（无法核验）
     """
-    try:
-        import urllib.parse, urllib.request, json as _json
-        query = urllib.parse.quote(f"{entity_name} {'职务' if entity_type == 'person' else ''}")
-        url = f"https://www.baidu.com/s?wd={query}"
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            html = resp.read().decode('utf-8', errors='ignore')
-        if entity_name in html:
-            return f"互联网检索到 {entity_name} 相关信息（请人工核对来源权威性）"
-        return "互联网检索未直接命中"
-    except Exception as e:
-        logger.debug(f"web 核验失败 {entity_name}: {e}")
+    import os
+    # P2：环境变量控制——默认关闭（受限网络环境爬取易失败），显式开启才执行
+    if os.environ.get("GONGWEN_WEB_VERIFY", "0") != "1":
+        logger.info("互联网核验未启用（设置 GONGWEN_WEB_VERIFY=1 可开启）")
         return None
+
+    engines = [
+        ("baidu", "https://www.baidu.com/s?wd={q}"),
+        ("bing", "https://www.bing.com/search?q={q}"),
+    ]
+    query = urllib.parse.quote(f"{entity_name} {'职务' if entity_type == 'person' else ''}")
+    for engine_name, url_template in engines:
+        try:
+            url = url_template.format(q=query)
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                html = resp.read().decode('utf-8', errors='ignore')
+            if entity_name in html:
+                return f"互联网检索到 {entity_name} 相关信息（来源：{engine_name}，请人工核对权威性）"
+        except Exception as e:
+            logger.warning(f"web 核验失败（{engine_name}） {entity_name}: {e}")
+    return "互联网检索未直接命中"
 
 
 # N4 修复：人名+职务配对核验——识别"职务+姓名"组合（如"副主任覃万成"）
