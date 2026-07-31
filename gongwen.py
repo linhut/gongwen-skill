@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.30"
+__version__ = "1.12.31"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -606,6 +606,90 @@ def _echo_progress(args, step: int, total: int, label: str, detail: str = "") ->
     print(line)
 
 
+def _extract_content_rules(rules: dict) -> dict:
+    """改进 A：从合并规则中提取内容层字段（structure/focus_checks/skip_checks/title 等）。
+
+    Args:
+        rules: load_rules_merged 返回的合并规则字典
+
+    Returns:
+        内容层规则子集
+    """
+    return {
+        "doc_type_display": rules.get("display", ""),
+        "structure": rules.get("structure", []),
+        "focus_checks": rules.get("focus_checks", []),
+        "skip_checks": rules.get("skip_checks", []),
+        "title_patterns": rules.get("title", {}).get("patterns", []),
+        "title_max_length": rules.get("title", {}).get("max_length", None),
+    }
+
+
+# 改进 D：合法风格集合（style-prompts.md 6 套 + SKILL.md 风格词典兼容别名）
+_VALID_STYLES = {
+    "庄重严谨", "平实简洁", "宏观概括", "请示商洽", "法规条文",
+    "会议主持词", "严谨又活泼",
+    "简洁精炼", "庄重得体", "务实汇报", "请示恳切", "动员激励",
+    "总结回顾", "逻辑严密",
+}
+
+
+def _validate_style(style: str) -> str:
+    """改进 D：校验 style 字段是否为合法风格，非合法则模糊匹配或回退默认。
+
+    Args:
+        style: changes.json 中的 style 字段值
+
+    Returns:
+        归一化后的合法风格名
+    """
+    if not style:
+        return "庄重严谨"
+    if style in _VALID_STYLES:
+        return style
+    # 模糊匹配（包含关键词）
+    for valid in _VALID_STYLES:
+        if valid in style or style in valid:
+            return valid
+    return "庄重严谨"  # 默认
+
+
+def _load_style_prompt(style_name: str) -> str:
+    """改进 D：从 prompts/style-prompts.md 加载对应风格的提示词文本。
+
+    Args:
+        style_name: 风格名称（如"庄重严谨""平实简洁"）
+
+    Returns:
+        风格提示词文本（找到时）；空字符串（文件缺失/未找到）
+    """
+    prompts_path = Path(__file__).resolve().parent / "prompts" / "style-prompts.md"
+    if not prompts_path.exists():
+        return ""
+    content = prompts_path.read_text(encoding="utf-8")
+    # 按风格名定位段落（支持 "风格一：庄重严谨" 等标题格式）
+    lines = content.splitlines()
+    capture = False
+    collected: list[str] = []
+    for line in lines:
+        if line.startswith("#") and ("风格" in line):
+            # 新风格标题：若已在捕获且新标题含目标风格名则继续；否则切换
+            if capture and style_name in line:
+                capture = True
+                continue
+            if capture:
+                break
+            if style_name in line:
+                capture = True
+                continue
+        elif capture:
+            collected.append(line)
+    if collected:
+        return "\n".join(collected).strip()
+    # 兜底：全文截取风格相关段落
+    return content[:1000] if style_name in content else ""
+
+
 def safe_backup_input(input_path: Path) -> Path:
     """F5 修复：将输入文件备份到系统临时目录，返回备份路径。
 
@@ -780,7 +864,39 @@ def cmd_optimize_content(args):
     _t_start = time.time()
     from optimizer import load_changes_from_json, create_diff_document
 
-    changes = load_changes_from_json(args.changes)
+    # 改进 A：加载文档类型规则（structure/focus_checks/skip_checks/title 内容层定义）
+    doc_type, type_source = _detect_doc_type(
+        Path(args.input), getattr(args, 'doc_type', None) or '')
+    content_rules: dict = {}
+    try:
+        from core.rules.manager import load_rules_merged
+        rules = load_rules_merged(doc_type)
+        content_rules = _extract_content_rules(rules)
+        if getattr(args, 'show_rules', False):
+            print(f"📋 文档类型: {content_rules.get('doc_type_display') or doc_type}（{type_source}）")
+            if content_rules.get("structure"):
+                print(f"  段落结构: {len(content_rules['structure'])} 段")
+            if content_rules.get("focus_checks"):
+                print(f"  重点检查: {len(content_rules['focus_checks'])} 项")
+    except Exception as e:
+        print(f"  ⚠️ 规则加载失败（{e}），继续使用默认流程")
+
+    # 改进 E：无 changes.json 时，基于内置规则 + 风格提示词自动生成优化建议
+    if not getattr(args, 'changes', None) and getattr(args, 'auto_generate', False):
+        from auto_optimizer import auto_generate_changes, llm_configured
+        style_name_e = _validate_style(_extract_dominant_style(changes) or "") if 'changes' in dir() and changes else "庄重严谨"
+        style_prompt_e = _load_style_prompt(style_name_e)
+        if not llm_configured():
+            print("⚠️ LLM 未配置（设置 GONGWEN_LLM_API 或 GONGWEN_OPTIMIZE_LLM_API 可启用），仅生成规则级结构建议")
+        changes = auto_generate_changes(
+            input_path=str(args.input),
+            doc_type=doc_type,
+            content_rules=content_rules,
+            style_prompt=style_prompt_e,
+        )
+        print(f"🤖 基于内置规则自动生成 {len(changes)} 处优化建议")
+    else:
+        changes = load_changes_from_json(args.changes)
     _echo_progress(args, 1, 6, "加载变更", f"{len(changes)} 处变更已加载")
 
     # --paragraphs 范围过滤
@@ -832,6 +948,14 @@ def cmd_optimize_content(args):
 
     # 执行模式
     out_name = args.output or _build_output_name(args.input, "B", _extract_dominant_style(changes))
+
+    # 改进 D：加载风格提示词（供 Agent/LLM 生成建议时参考，输出风格信息）
+    style_name = _validate_style(_extract_dominant_style(changes) or "")
+    style_prompt = _load_style_prompt(style_name)
+    if style_prompt:
+        print(f"🎨 风格: {style_name}（已加载 style-prompts.md 对应提示词 {len(style_prompt)} 字）")
+    else:
+        print(f"🎨 风格: {style_name}（style-prompts.md 未找到对应段落）")
 
     # --comment-mode：Word 原生批注模式（可审阅→接受/拒绝）
     if getattr(args, 'comment_mode', False):
@@ -964,6 +1088,51 @@ def cmd_optimize_content(args):
                     category="事实核验",
                     author=fc_author,
                 ))
+
+        # 改进 B+C+F：结构完整性检查 + focus_checks 自动检查 → 批注注入
+        try:
+            from structure_checker import check_structure
+            from focus_checker import run_focus_checks
+            # F1：结构完整性检查批注
+            for issue in check_structure(_m.paragraphs, content_rules.get("structure", [])):
+                if issue.issue_type == "缺失":
+                    cat, role = "格式优化", "格式审校员"
+                elif issue.issue_type == "要素缺失":
+                    cat, role = "逻辑优化", "逻辑审校员"
+                else:
+                    cat, role = "内容优化", "综合审校员"
+                _rcat, _rauthor = resolve_role({"category": role})
+                suggestions.append(CommentSuggestion(
+                    para_index=issue.paragraph_index if issue.paragraph_index is not None else 0,
+                    start_offset=0,
+                    end_offset=0,
+                    comment_text=f"【结构检查{issue.severity}】{issue.message}（依据：{doc_type}规范）",
+                    category=cat,
+                    author=_rauthor,
+                ))
+            # F2：focus_checks 检查批注（事实核验类已在 fact_check 处理，跳过避免重复）
+            for issue in run_focus_checks(_m.paragraphs, content_rules.get("focus_checks", []), doc_type):
+                if "准确性" in issue.check_name:
+                    continue
+                if issue.check_name in ("逻辑闭环", "时间一致性"):
+                    cat, role = "逻辑优化", "逻辑审校员"
+                elif issue.check_name == "稿源/编辑信息完整性":
+                    cat, role = "格式优化", "格式审校员"
+                elif issue.check_name == "事实表述客观克制":
+                    cat, role = "内容优化", "综合审校员"
+                else:
+                    cat, role = "用语优化", "用语审校员"
+                _rcat2, _rauthor2 = resolve_role({"category": role})
+                suggestions.append(CommentSuggestion(
+                    para_index=issue.paragraph_index if issue.paragraph_index is not None else 0,
+                    start_offset=0,
+                    end_offset=0,
+                    comment_text=f"【{issue.check_name}{issue.severity}】{issue.message}",
+                    category=cat,
+                    author=_rauthor2,
+                ))
+        except Exception as e:
+            print(f"  ⚠️ 结构/焦点检查跳过（{e}）")
 
         # N3 修复：所有批注（内容优化 + 事实核验）统一经 tracked 路径一次注入
         result = safe_write_output(Path(out_name), lambda p: inject_tracked_with_comments(
@@ -1442,7 +1611,8 @@ def main():
     p = sub.add_parser("optimize-content", help="内容优化差异对比：原文灰色+删除线，修改后红色高亮，每段附修改说明与依据")
     p.add_argument("input", help="输入 .docx 路径")
     p.add_argument("-o", "--output", help="输出 .docx 路径（默认按规范自动命名：{原文档名}+{内容风格}+{日期}+v1.docx）")
-    p.add_argument("--changes", required=True, help="变更 JSON 文件路径（含 paragraph_index/original_text/optimized_text/reason/reference）")
+    p.add_argument("--changes", required=False, default="",
+                   help="变更 JSON 文件路径（含 paragraph_index/original_text/optimized_text/reason/reference）；不提供且加 --auto-generate 时基于内置规则自动生成")
     p.add_argument("--optimize-format", action="store_true", help="同时优化格式（默认仅做差异标注，不改格式）")
     p.add_argument("--apply", action="store_true", help="确认生成差异对比文档（默认预览）")
     p.add_argument("--disclaimer", default=None, help="文档末尾 AI 声明文字（默认：内容由GongWen-skill-AI生成，仅供参考）")
@@ -1460,6 +1630,11 @@ def main():
                    help="背景资料路径（事实核验用，支持多个）：.docx / .pdf / .md / .txt / URL，与 --mode tracked 配合对存疑人事信息生成批注提醒")
     p.add_argument("--show-confirmed", action="store_true",
                    help="P7 修复：对已确认实体也生成「✅已确认」批注（默认不生成，避免噪音）")
+    p.add_argument("-t", "--doc-type", default="", help="改进 A：显式指定公文类型（默认自动检测）")
+    p.add_argument("--show-rules", action="store_true",
+                   help="改进 A：输出当前文档类型的内容层规则摘要（structure/focus_checks）")
+    p.add_argument("--auto-generate", action="store_true",
+                   help="改进 E：无 --changes 时基于内置规则+风格提示词自动生成优化建议（需配置 GONGWEN_LLM_API）")
     p.add_argument("--quiet", action="store_true", help="安静模式：仅输出最终结果，不显示分步进度")
     p.add_argument("--verbose", action="store_true", help="详细模式：输出每个 run 的匹配细节")
     p.set_defaults(func=cmd_optimize_content)
