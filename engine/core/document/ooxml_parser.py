@@ -76,6 +76,9 @@ class OOXMLParser:
                 # 提取表格文本（首行作为摘要）
                 cell_texts = [t.text or '' for t in child.findall(f'{{{W}}}t')]
                 blocks.append(Block(type='table', index=len(blocks), text='｜'.join(cell_texts[:8]), element=child))
+            elif tag == 'sectPr':
+                # 节属性（分节符）— 单独归类，不影响段落/表格交替顺序
+                blocks.append(Block(type='section', index=len(blocks), element=child))
             else:
                 blocks.append(Block(type='other', index=len(blocks), element=child))
         return blocks
@@ -93,7 +96,8 @@ class OOXMLParser:
         for idx, txbx in enumerate(root.iter(f'{{{W}}}txbxContent')):
             paras = []
             for p in txbx.findall(f'{{{W}}}p'):
-                texts = [t.text or '' for t in p.findall(f'{{{W}}}t')]
+                # 注意：w:t 嵌套在 w:r 内（p > r > t），须用 iter 遍历后代
+                texts = [t.text or '' for t in p.iter(f'{{{W}}}t')]
                 paras.append(''.join(texts))
             full_text = ''.join(paras)
             if full_text.strip():

@@ -58,24 +58,33 @@ class GongwenAnnotator:
     #  对外主接口
     # ------------------------------------------------------------------
 
-    def inject_comments(self, input_path: str | Path, suggestions: List[CommentSuggestion],
+    def inject_comments(self, input_path: str | Path | "io.BytesIO",
+                        suggestions: List[CommentSuggestion],
                         output_path: str | Path | None = None) -> Path:
         """
         将优化建议以 Word 批注形式注入文档。
 
         Args:
-            input_path: 原始 .docx 文件路径
+            input_path: 原始 .docx 文件路径，或已打开的文件对象（BytesIO，支持内存中间稿）
             suggestions: 建议列表
             output_path: 输出路径（默认在原文件旁生成 *_批注版.docx）
 
         Returns:
             标注后的 .docx 文件路径
         """
-        src = Path(input_path)
-        out = Path(output_path) if output_path else src.with_stem(src.stem + "_批注版")
+        import io
+        is_fileobj = isinstance(input_path, io.BytesIO)
+
+        if is_fileobj:
+            src = input_path
+            out = Path(output_path) if output_path else Path("批注版.docx")
+        else:
+            src = Path(input_path)
+            out = Path(output_path) if output_path else src.with_stem(src.stem + "_批注版")
 
         if not suggestions:
-            shutil.copy2(str(src), str(out))
+            if not is_fileobj:
+                shutil.copy2(str(src), str(out))
             return out
 
         # 1. 解包读取全部条目到内存

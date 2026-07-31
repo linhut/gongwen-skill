@@ -28,7 +28,7 @@ from core.document.font_utils import (
 from utils.logger import logger
 
 
-def generate_docx(model: DocumentModel, output_path: Path | str) -> Path:
+def generate_docx(model: DocumentModel, output_path: Path | str | "io.BytesIO") -> Path | "io.BytesIO":
     """
     Generate a .docx file from a DocumentModel.
 
@@ -43,15 +43,22 @@ def generate_docx(model: DocumentModel, output_path: Path | str) -> Path:
 
     Args:
         model: The document model to generate from
-        output_path: Path where the .docx file should be saved
+        output_path: Path where the .docx file should be saved，或文件对象（BytesIO，内存输出）
 
     Returns:
-        Path to the generated file
+        Path to the generated file（或 BytesIO 对象）
     """
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    import io
+    is_fileobj = isinstance(output_path, io.BytesIO)
 
-    logger.info(f"Generating document: {output_path}")
+    if is_fileobj:
+        out_obj = output_path
+    else:
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        out_obj = str(output_path)
+
+    logger.info(f"Generating document: {out_obj if is_fileobj else output_path}")
 
     # 决定源文档：优先使用源文件，若不可用则创建新文档
     source_path = model.source_path
@@ -151,13 +158,13 @@ def generate_docx(model: DocumentModel, output_path: Path | str) -> Path:
         ai_run.font.size = Pt(9)
         ai_run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
 
-    # 8. Save
-    doc.save(str(output_path))
+    # 8. Save（支持路径或文件对象 BytesIO）
+    doc.save(out_obj)
     # 清除段落索引缓存（文档已保存，doc 对象可能被 GC）
     _clear_paragraph_index(doc)
-    logger.info(f"Document saved: {output_path} (font issues: {len(font_issues)})")
+    logger.info(f"Document saved: {out_obj if is_fileobj else output_path} (font issues: {len(font_issues)})")
 
-    return output_path
+    return output_path if not is_fileobj else out_obj
 
 
 # ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.15"
+__version__ = "1.12.16"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -709,17 +709,17 @@ def cmd_full_review(args):
     model = parse_docx(str(input_path))
     engine = RuleEngine()
     issues, fixed = engine.check_and_fix(model, doc_type)
-
-    # 格式修复后的中间稿
-    fixed_tmp = _get_tmp_path(input_path)
-    generate_docx(fixed, str(fixed_tmp))
     print(f"  ✓ 格式修复完成，修复 {len(issues)} 项")
 
     # 2. 路径 B：内容优化（加载变更）
     changes = load_changes_from_json(args.changes) if args.changes else []
     print(f"🔧 步骤2/3 内容优化（路径 B，{len(changes)} 处变更）...")
 
-    # 3. 批注输出
+    # 3. 批注输出（中间稿用内存 BytesIO，避免落盘 I/O）
+    import io
+    buf = io.BytesIO()
+    generate_docx(fixed, buf)  # 内存生成中间稿
+
     out_name = args.output or input_path.parent / _build_output_name(input_path, "B", "审校")
     suggestions = []
     for c in changes:
@@ -731,8 +731,8 @@ def cmd_full_review(args):
             category=c.get("style", "内容优化"),
         ))
     ann = GongwenAnnotator()
-    result = ann.inject_comments(fixed_tmp, suggestions, out_name)
-    _cleanup_tmp_path(fixed_tmp)
+    buf.seek(0)
+    result = ann.inject_comments(buf, suggestions, out_name)
 
     ok = ann.verify_comments(result)
     print(f"✅ 完整审校完成: {result}")
