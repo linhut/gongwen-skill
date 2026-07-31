@@ -150,6 +150,62 @@ class GongwenAnnotator:
                 t2.text = f' [{sug.category}]'
         return root
 
+    def _split_run_at(self, p, runs: list, char_offset: int) -> list:
+        """
+        在指定字符偏移处拆分 run（NB1/NI1 修复：复用同一拆分逻辑）。
+
+        若 char_offset 落在某个 run 内部（非边界），将该 run 拆为两个：
+          [偏移前文本] + [偏移后文本]（复制原 rPr 格式）。
+
+        Args:
+            p: <w:p> 节点
+            runs: [(r, rstart, rend, rtext), ...] 当前 run 列表
+            char_offset: 字符偏移
+
+        Returns:
+            拆分后的新 runs 列表（同结构）
+        """
+        for i, (r, rstart, rend, rtext) in enumerate(runs):
+            if rstart < char_offset < rend:
+                # 拆成 [偏移前] + [偏移后]
+                keep_text = rtext[:char_offset - rstart]
+                rest_text = rtext[char_offset - rstart:]
+                # 原 run 只保留前缀文本
+                for t in r.findall(f'{{{W}}}t'):
+                    t.text = None
+                if keep_text:
+                    ts = r.findall(f'{{{W}}}t')
+                    if ts:
+                        ts[0].text = keep_text
+                # 新建 run 承接剩余文本（复制 rPr 保持格式）
+                new_run = etree.Element(f'{{{W}}}r')
+                s_rPr = r.find(f'{{{W}}}rPr')
+                if s_rPr is not None:
+                    new_run.append(copy.deepcopy(s_rPr))
+                new_t = etree.SubElement(new_run, f'{{{W}}}t')
+                new_t.text = rest_text
+                # NS1 修复：保留空格
+                new_t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
+                r.addnext(new_run)
+                # 重新收集 runs
+                return self._collect_runs(p)
+        return runs
+
+    @staticmethod
+    def _collect_runs(p) -> list:
+        """收集段落的文本 run（含字符偏移）。"""
+        W_ = W
+        runs = []
+        offset = 0
+        for r in p.findall(f'{{{W_}}}r'):
+            texts = [t.text or '' for t in r.findall(f'{{{W_}}}t')]
+            run_text = ''.join(texts)
+            if not run_text:
+                continue
+            runs.append((r, offset, offset + len(run_text), run_text))
+            offset += len(run_text)
+        return runs
+
     def _anchor_comments(self, doc_xml: bytes, suggestions: List[CommentSuggestion]) -> bytes:
         """在 document.xml 的段落中锚定批注范围。"""
         root = etree.fromstring(doc_xml)
@@ -166,99 +222,51 @@ class GongwenAnnotator:
             if not (0 <= sug.para_index < len(para_nodes)):
                 continue
             p = para_nodes[sug.para_index]
-
-            # 收集该段落的文本 run（含字符偏移）
-            runs = []
-            offset = 0
-            for r in p.findall(f'{{{W}}}r'):
-                texts = [t.text or '' for t in r.findall(f'{{{W}}}t')]
-                run_text = ''.join(texts)
-                if not run_text:
-                    continue
-                runs.append((r, offset, offset + len(run_text), run_text))
-                offset += len(run_text)
-
+            runs = self._collect_runs(p)
             if not runs:
                 continue
 
             # 计算批注覆盖范围（clamp 到段落长度）
+            offset_total = runs[-1][2]
             start = max(0, sug.start_offset)
-            end = min(sug.end_offset if sug.end_offset > 0 else offset, offset)
+            end = min(sug.end_offset if sug.end_offset > 0 else offset_total, offset_total)
             if end <= start:
-                end = offset  # 未指定范围时覆盖整段
+                end = offset_total  # 未指定范围时覆盖整段
 
-            cid = str(sug_idx)  # 与 _create_comments_xml 的递增 ID 对齐（B2 修复）
+            cid = str(sug_idx)  # 与 _create_comments_xml 的递增 ID 对齐
 
-            # ---- 字符级锚定：拆分覆盖边界的 run（B1 修复）----
-            # 先定位 start/end 所在的 run
-            start_run_idx = None
-            end_run_idx = None
-            for i, (r, rstart, rend, rtext) in enumerate(runs):
-                if start_run_idx is None and start < rend:
-                    start_run_idx = i
+            # ---- 字符级锚定（NB1/NI1 修复）----
+            # 1. 拆分 start 边界（若在 run 内部）
+            runs = self._split_run_at(p, runs, start)
+            # 2. 拆分 end 边界（若在 run 内部；end==offset_total 时无需拆）
+            if end < offset_total:
+                runs = self._split_run_at(p, runs, end)
+
+            # 3. 定位 start/end 所在 run
+            start_run_el = None
+            end_run_el = None
+            for r, rstart, rend, rtext in runs:
+                if start_run_el is None and start < rend:
+                    start_run_el = r
                 if end <= rend:
-                    end_run_idx = i
+                    end_run_el = r
                     break
+            if start_run_el is None:
+                start_run_el = runs[0][0]
+            if end_run_el is None:
+                end_run_el = runs[-1][0]
 
-            if start_run_idx is None:
-                start_run_idx = 0
-            if end_run_idx is None:
-                end_run_idx = len(runs) - 1
-
-            # 拆分 start 所在 run：前缀（start 之前）保留原 run，锚点插入其后
-            s_run, s_start, s_end, s_text = runs[start_run_idx]
-            if start > s_start and start < s_end:
-                # 拆成 [start 之前] + [start 之后]
-                keep_text = s_text[:start - s_start]
-                rest_text = s_text[start - s_start:]
-                # 更新原 run 文本为前缀，新建 run 承接剩余
-                for t in s_run.findall(f'{{{W}}}t'):
-                    t.text = None
-                if keep_text:
-                    for t in s_run.findall(f'{{{W}}}t')[:1]:
-                        t.text = keep_text
-                new_run = etree.Element(f'{{{W}}}r')
-                # 复制 rPr
-                s_rPr = s_run.find(f'{{{W}}}rPr')
-                if s_rPr is not None:
-                    new_run.append(copy.deepcopy(s_rPr))
-                new_t = etree.SubElement(new_run, f'{{{W}}}t')
-                new_t.text = rest_text
-                s_run.addnext(new_run)
-                # 重新收集 runs（偏移已变化）
-                runs = []
-                offset = 0
-                for r in p.findall(f'{{{W}}}r'):
-                    texts = [t.text or '' for t in r.findall(f'{{{W}}}t')]
-                    rt = ''.join(texts)
-                    if not rt:
-                        continue
-                    runs.append((r, offset, offset + len(rt), rt))
-                    offset += len(rt)
-                # 重新定位
-                for i, (r, rstart, rend, rtext) in enumerate(runs):
-                    if start_run_idx is None or start < rend:
-                        start_run_idx = i
-                        break
-                for i, (r, rstart, rend, rtext) in enumerate(runs):
-                    if end <= rend:
-                        end_run_idx = i
-                        break
-
-            # 确定 commentRangeStart 插入位置：start 所在 run 之前
-            insert_run_el = runs[start_run_idx][0]
-            pPr = p.find(f'{{{W}}}pPr')
-            # commentRangeStart 插到目标 run 前面
+            # 4. commentRangeStart 插到 start run 之前
             crs = etree.Element(f'{{{W}}}commentRangeStart')
             crs.set(f'{{{W}}}id', cid)
-            insert_run_el.addprevious(crs)
+            start_run_el.addprevious(crs)
 
-            # commentRangeEnd 插到 end 所在 run 之后
+            # 5. commentRangeEnd 插到 end run 之后（end 已精确拆分到 run 边界）
             cre = etree.Element(f'{{{W}}}commentRangeEnd')
             cre.set(f'{{{W}}}id', cid)
-            runs[end_run_idx][0].addnext(cre)
+            end_run_el.addnext(cre)
 
-            # commentReference 追加到段落末尾
+            # 6. commentReference 追加到段落末尾
             cr = etree.Element(f'{{{W}}}r')
             crPr = etree.SubElement(cr, f'{{{W}}}rPr')
             rStyle = etree.SubElement(crPr, f'{{{W}}}rStyle')

@@ -13,6 +13,7 @@
   inject_tracked_change(para_node, "旧文本", "新文本", rsid, "公文审校")
 """
 from __future__ import annotations
+import copy
 import random
 import zipfile
 from datetime import datetime
@@ -28,12 +29,20 @@ NSMAP = {'w': W}
 _rev_id_counter = [0]
 # 已用 RSID 集合（S2 修复：避免冲突）
 _used_rsids: set = set()
+# NS3 修复：RSID 集合上限，防止无界增长
+_RSID_SET_MAX = 4096
 
 
 def _next_rev_id() -> str:
     """生成下一个全局唯一修订 ID。"""
     _rev_id_counter[0] += 1
     return str(_rev_id_counter[0])
+
+
+def _reset_rsid_tracking() -> None:
+    """NS3 修复：重置 RSID 追踪（新文档会话开始时调用）。"""
+    _used_rsids.clear()
+    _rev_id_counter[0] = 0
 
 
 class RSIDManager:
@@ -109,7 +118,8 @@ def inject_tracked_change(para_node, old_text: str, new_text: str,
     if para_node is None:
         return False
 
-    now = datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
+    # NI4 修复：使用 UTC 时间并正确标注
+    now = datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
     # 1. 收集现有 run 及其文本，寻找包含 old_text 的 run
     runs = []
@@ -128,15 +138,18 @@ def inject_tracked_change(para_node, old_text: str, new_text: str,
     if pos < 0:
         return False
 
-    # 3. 清空段落现有 run（重建）
+    # 3. 保留非 run 子元素（NI3 修复：bookmarkStart/bookmarkEnd 等）
+    non_run_children = [child for child in para_node if child.tag != f'{{{W}}}r']
+
+    # 4. 清空段落现有 run（重建）
     for r in para_node.findall(f'{{{W}}}r'):
         para_node.remove(r)
 
-    # 4. 重建：前缀 + del + ins + 后缀
+    # 5. 重建：前缀 + del + ins + 后缀
     prefix = full_text[:pos]
     suffix = full_text[pos + len(old_text):]
 
-    # 从原文中提取第一个 run 的 rPr 用于新 run（B4 修复：保留格式）
+    # 从原文中提取第一个 run 的 rPr 用于新 run（B4+NI2 修复：deepcopy 完整 rPr 保留全部格式）
     source_rPr = None
     for r, _, _, _ in runs:
         rPr = r.find(f'{{{W}}}rPr')
@@ -144,22 +157,40 @@ def inject_tracked_change(para_node, old_text: str, new_text: str,
             source_rPr = rPr
             break
 
+    def _cloned_run(text: str, is_deleted: bool = False) -> etree._Element:
+        """创建 run 并完整复制源 rPr（NI2 修复：保留 bold/italic/color/underline 等）。"""
+        r = etree.Element(f'{{{W}}}r')
+        r.set(f'{{{W}}}rsidR', rsid)
+        if source_rPr is not None:
+            r.append(copy.deepcopy(source_rPr))
+        t = etree.SubElement(r, f'{{{W}}}t')
+        if is_deleted:
+            t.tag = f'{{{W}}}delText'
+            t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
+        t.text = text
+        return r
+
+    # 前缀/后缀 run：完整复制源格式（NI2）
     if prefix:
-        para_node.append(_make_run(prefix, rsid, font_name=_font_from_rpr(source_rPr)))
+        para_node.append(_cloned_run(prefix))
     if old_text:
         del_el = etree.SubElement(para_node, f'{{{W}}}del')
         del_el.set(f'{{{W}}}id', _next_rev_id())  # B3: 全局唯一 ID
         del_el.set(f'{{{W}}}author', author)
         del_el.set(f'{{{W}}}date', now)
-        del_el.append(_make_run(old_text, rsid, is_deleted=True, font_name=_font_from_rpr(source_rPr)))
+        del_el.append(_cloned_run(old_text, is_deleted=True))
     if new_text:
         ins_el = etree.SubElement(para_node, f'{{{W}}}ins')
         ins_el.set(f'{{{W}}}id', _next_rev_id())  # B3: 全局唯一 ID
         ins_el.set(f'{{{W}}}author', author)
         ins_el.set(f'{{{W}}}date', now)
-        ins_el.append(_make_run(new_text, rsid, font_name=_font_from_rpr(source_rPr)))
+        ins_el.append(_cloned_run(new_text))
     if suffix:
-        para_node.append(_make_run(suffix, rsid, font_name=_font_from_rpr(source_rPr)))
+        para_node.append(_cloned_run(suffix))
+
+    # 6. 恢复非 run 子元素（NI3 修复）
+    for child in non_run_children:
+        para_node.append(child)
 
     return True
 

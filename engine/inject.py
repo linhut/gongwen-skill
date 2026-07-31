@@ -34,6 +34,24 @@ def _insert_before(new_para, reference_p, body) -> None:
         body.append(new_para._element)
 
 
+def _atomic_save(doc, output_path: str) -> None:
+    """NI8 修复：doc 原子保存（临时文件 + os.replace，崩溃不产生半写文件）。"""
+    import os as _os, tempfile as _tempfile
+    output_path = str(output_path)
+    out_dir = _os.path.dirname(_os.path.abspath(output_path))
+    tmp_fd, tmp_path = _tempfile.mkstemp(dir=out_dir, suffix='.tmp', prefix='.gongwen_')
+    _os.close(tmp_fd)
+    try:
+        doc.save(tmp_path)
+        _os.replace(tmp_path, output_path)
+    except Exception:
+        try:
+            _os.unlink(tmp_path)
+        except Exception:
+            pass
+        raise
+
+
 # ---------------------------------------------------------------------------
 #  版头注入：发文机关标志 + 发文字号 + 签发人 + 红色反线
 # ---------------------------------------------------------------------------
@@ -164,7 +182,7 @@ def inject_header(output_path: str, header_config: dict) -> None:
         pPr.append(spacing)
         _insert_before(p_border, first_p, body)
 
-        doc.save(output_path)
+        _atomic_save(doc, output_path)
         logger.info(f"版头已注入: {output_path}")
     except Exception as e:
         logger.error(f"版头注入失败: {e}", exc_info=True)
@@ -321,7 +339,7 @@ def inject_footer(output_path: str, footer_config: dict) -> None:
         # 4. 下分隔线
         _add_border_para('8')
 
-        doc.save(output_path)
+        _atomic_save(doc, output_path)
         logger.info(f"版记已注入: {output_path}")
     except Exception as e:
         logger.error(f"版记注入失败: {e}", exc_info=True)
@@ -466,10 +484,18 @@ def _inject_even_page_footer_direct(output_path: str, fmt: str, font_name: str, 
                     root = etree.fromstring(data)
                     ns_w = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
                     ns_r = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+                    # NS11 修复：动态分配偶数页页脚关系 ID，避免与已有 ID 冲突
+                    even_rid = 'rIdFtrEven'
+                    used_ids = {ref.get('{%s}id' % ns_r) for sp in root.findall('.//{%s}sectPr' % ns_w)
+                                for ref in sp.findall('{%s}footerReference' % ns_w)}
+                    n = 0
+                    while even_rid in used_ids:
+                        n += 1
+                        even_rid = f'rIdFtrEven{n}'
                     for sp in root.findall('.//{%s}sectPr' % ns_w):
                         even_fr = etree.SubElement(sp, '{%s}footerReference' % ns_w)
                         even_fr.set('{%s}type' % ns_w, 'even')
-                        even_fr.set('{%s}id' % ns_r, 'rIdFtrEven')
+                        even_fr.set('{%s}id' % ns_r, even_rid)
                         for i, child in enumerate(sp):
                             tag = child.tag.split('}')[1] if '}' in child.tag else child.tag
                             if tag == 'footerReference' and child.get('{%s}type' % ns_w) == 'default':
@@ -593,7 +619,7 @@ def inject_page_number(output_path: str, page_number_config: dict) -> None:
             elems = _build_page_number_xml(fmt, font_name, size_pt)
             _apply_page_number_elements(para._element, elems)
 
-        doc.save(output_path)
+        _atomic_save(doc, output_path)
 
         if is_odd_even:
             _inject_even_page_footer_direct(output_path, fmt, font_name, size_pt)

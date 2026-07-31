@@ -721,7 +721,17 @@ def create_diff_document(
 
 def load_changes_from_json(json_path: str) -> list[dict]:
     """从 JSON 文件加载变更列表。"""
-    data = json.loads(Path(json_path).read_text(encoding="utf-8"))
+    # NS5 修复：UTF-8 优先，失败回退 GBK/GB2312（Windows 中文环境）
+    p = Path(json_path)
+    raw = p.read_bytes()
+    for enc in ('utf-8', 'gbk', 'gb2312'):
+        try:
+            data = json.loads(raw.decode(enc))
+            break
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            if enc == 'gb2312':
+                data = json.loads(p.read_text(encoding='utf-8', errors='replace'))
+            continue
     changes = data.get("changes", data) if isinstance(data, dict) else data
     # I12 修复：仅核心字段必填，style/reference 可选（后续默认填充）
     required = {"paragraph_index", "original_text", "optimized_text"}

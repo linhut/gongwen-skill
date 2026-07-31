@@ -511,14 +511,37 @@ def _arabic_to_chinese(n: int) -> str:
 
 
 def replace_paragraph_text(model: DocumentModel, para_index: int, new_text: str) -> None:
-    """替换指定段落的文本。"""
+    """替换指定段落的文本（NI10 修复：按原 run 长度比例分配新文本，保留多 run 格式）。"""
     if 0 <= para_index < len(model.paragraphs):
         para = model.paragraphs[para_index]
         para.text = new_text
-        if para.runs:
+        if not para.runs:
+            return
+        if len(para.runs) == 1:
+            para.runs[0].text = new_text
+            return
+        # 多 run：按原文本长度比例分配新文本，尽量保留各 run 的格式
+        total_len = sum(len(r.text or '') for r in para.runs)
+        if total_len <= 0:
             para.runs[0].text = new_text
             for r in para.runs[1:]:
                 r.text = ""
+            return
+        pos = 0
+        for r in para.runs:
+            orig_len = len(r.text or '')
+            if orig_len <= 0:
+                r.text = ""
+                continue
+            alloc = round(len(new_text) * orig_len / total_len)
+            r.text = new_text[pos:pos + alloc]
+            pos += alloc
+        # 处理舍入误差（剩余字符并入最后一个非空 run）
+        if pos < len(new_text):
+            for r in reversed(para.runs):
+                if r.text:
+                    r.text += new_text[pos:]
+                    break
 
 
 # ---------------------------------------------------------------------------

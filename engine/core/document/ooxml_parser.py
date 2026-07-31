@@ -149,5 +149,5 @@ class OOXMLParser:
 
     @staticmethod
     def para_text_from_element(p_elem) -> str:
-        """从 <w:p> 节点提取文本。"""
-        return ''.join(t.text or '' for t in p_elem.findall(f'{{{W}}}t'))
+        """从 <w:p> 节点提取文本（NS4 修复：用 iter 遍历后代，与文本框解析一致）。"""
+        return ''.join(t.text or '' for t in p_elem.iter(f'{{{W}}}t'))

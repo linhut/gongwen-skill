@@ -434,6 +434,7 @@ def _update_pPr(p_element, para_model: Paragraph):
 
 
 # 预构建段落元素 → Paragraph 对象的映射，避免 O(N^2) 查找
+# NI9 修复：缓存键为 id(doc)，配合 weakref.finalize 保证文档 GC 时自动清理，避免泄漏
 _paragraph_index_cache: dict[int, dict[int, Any]] = {}
 
 
@@ -444,6 +445,12 @@ def _build_paragraph_index(doc: Document) -> dict[int, Any]:
         return _paragraph_index_cache[cache_key]
     idx: dict[int, Any] = {id(p._element): p for p in doc.paragraphs}
     _paragraph_index_cache[cache_key] = idx
+    # NI9: 文档对象被 GC 时自动清理缓存条目
+    try:
+        import weakref
+        weakref.finalize(doc, _paragraph_index_cache.pop, cache_key, None)
+    except Exception:
+        pass
     return idx
 
 

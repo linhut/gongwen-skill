@@ -61,8 +61,8 @@ def parse_indent(value: str | float | None) -> Optional[float]:
 
 
 def parse_twips_to_pt(val: str | int | None) -> Optional[float]:
-    """缇(twips) → pt（1/20 磅）。"""
-    if not val:
+    """缇(twips) → pt（1/20 磅）。NS14 修复：0 值返回 0.0 而非 None。"""
+    if val is None:
         return None
     try:
         return round(int(val) / 20.0, 1)
@@ -71,8 +71,8 @@ def parse_twips_to_pt(val: str | int | None) -> Optional[float]:
 
 
 def parse_twips_to_mm(val: str | int | None) -> Optional[float]:
-    """缇(twips) → mm（1 英寸 = 1440 缇 = 25.4mm，1mm ≈ 56.6929 缇）。"""
-    if not val:
+    """缇(twips) → mm（1 英寸 = 1440 缇 = 25.4mm，1mm ≈ 56.6929 缇）。NS14 修复：0 值返回 0.0 而非 None。"""
+    if val is None:
         return None
     try:
         return round(int(val) / 56.6929, 1)

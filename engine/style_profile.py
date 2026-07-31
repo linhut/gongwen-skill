@@ -18,7 +18,9 @@
   yaml_text = build_user_rule_yaml(profile, "单位红头规范")
 """
 from __future__ import annotations
+import re
 import zipfile
+import yaml
 from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -235,7 +237,8 @@ def learn_style_profile(docx_path: str | Path) -> StyleProfile:
         first_run = run_styles[0] if run_styles else {}
         para_style = _extract_para_style(pPr)
 
-        # 角色判定（启发式）
+        # 角色判定（NI12 修复：与 parser.py _assign_paragraph_roles 的判定规则对齐）
+        # parser 判定顺序：首段标题 → 结尾 date/signature → 编号标题（一、/（一）/1.）→ recipient → body
         role = 'body'
         align = para_style.get('alignment', '')
         size = first_run.get('size_pt', 0)
@@ -255,6 +258,8 @@ def learn_style_profile(docx_path: str | Path) -> StyleProfile:
             role = 'date'
         elif align == 'right':
             role = 'signature'
+        elif texts.endswith(('：', ':')):
+            role = 'recipient'  # 与 parser 一致：冒号结尾为主送机关
 
         merged = dict(first_run)
         merged.update(para_style)
@@ -290,7 +295,6 @@ def learn_style_profile(docx_path: str | Path) -> StyleProfile:
 
 def build_user_rule_yaml(profile: StyleProfile, template_name: str) -> str:
     """将样式画像生成为 user_rules 风格的 YAML 规则文本。"""
-    import yaml
 
     def _section(src: Dict[str, Any]) -> Dict[str, Any]:
         """样式画像 → YAML 规则段。"""

@@ -146,30 +146,23 @@ def _register_persons_xml(doc_path: str | Path) -> None:
             rel.set('Target', 'persons.xml')
         entries[rels_key] = etree.tostring(rels_root, xml_declaration=True, encoding='UTF-8', standalone=True)
 
-    # 写入 persons.xml 并回写 ZIP（保持其他条目）
+    # 写入 persons.xml 并回写 ZIP（NI6 修复：原子写入，异常时保留原文件）
     entries['word/persons.xml'] = persons_bytes
-    with zipfile.ZipFile(p, 'w', zipfile.ZIP_DEFLATED) as z:
-        for name in infos:
-            z.writestr(name, entries.get(name, b''))
-        # 新条目
-        for name in ('word/persons.xml',):
-            if name not in infos:
-                z.writestr(name, entries[name])
-
-
-def reviewer_color_xml() -> str:
-    """生成 persons.xml 片段（可选：为各角色作者设定固定批注颜色）。"""
-    parts = []
-    for role, cfg in REVIEWER_MAP.items():
-        author = cfg["author"]
-        color = cfg["color"]
-        # 生成稳定的 8 位 author id（基于作者名哈希）
-        import hashlib
-        aid = hashlib.md5(author.encode()).hexdigest()[:8].upper()
-        parts.append(
-            f'<w:person xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
-            f'w:author="{author}" w:preserve="1">'
-            f'<w:name w:val="{author}"/><w:color w:val="{color}"/>'
-            f'<w:initials w:val="{role[:1]}"/></w:person>'
-        )
-    return ''.join(parts)
+    import tempfile, os as _os
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=str(p.parent), suffix='.tmp', prefix='.gongwen_persons_')
+    _os.close(tmp_fd)
+    try:
+        with zipfile.ZipFile(tmp_path, 'w', zipfile.ZIP_DEFLATED) as z:
+            for name in infos:
+                z.writestr(name, entries.get(name, b''))
+            # 新条目
+            for name in ('word/persons.xml',):
+                if name not in infos:
+                    z.writestr(name, entries[name])
+        _os.replace(tmp_path, p)
+    except Exception:
+        try:
+            _os.unlink(tmp_path)
+        except Exception:
+            pass
+        raise

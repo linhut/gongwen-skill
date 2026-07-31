@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.18"
+__version__ = "1.12.19"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -658,20 +658,34 @@ def cmd_optimize_content(args):
     # --comment-mode：Word 原生批注模式（可审阅→接受/拒绝）
     if getattr(args, 'comment_mode', False):
         from core.document.annotator import GongwenAnnotator, CommentSuggestion
+        from core.document.reviewer_comments import REVIEWER_MAP, get_author
+
+        # NI7 修复：从 reason 字段的【角色名】提取五角色 author，可按审阅者筛选
+        _ROLE_NAMES = list(REVIEWER_MAP.keys())  # 格式审校员/用语审校员/逻辑审校员/法规审校员/综合审校员
         suggestions = []
         for c in changes:
+            author = None
+            reason = c.get("reason", "") or ""
+            for role_name in _ROLE_NAMES:
+                if role_name in reason:
+                    author = get_author(role_name)
+                    break
             suggestions.append(CommentSuggestion(
                 para_index=c.get("paragraph_index", 0),
                 start_offset=0,
                 end_offset=len(c.get("original_text", "")),
-                comment_text=f"建议修改：{c.get('optimized_text', '')}｜{c.get('reason', '')}",
+                comment_text=f"建议修改：{c.get('optimized_text', '')}｜{reason}",
                 category=c.get("style", "内容优化"),
+                author=author or "公文审校",
             ))
         ann = GongwenAnnotator()
         result = ann.inject_comments(args.input, suggestions, out_name)
         ok = ann.verify_comments(result)
         print(f"✅ 批注版文档已生成: {result}")
         print(f"  共 {len(suggestions)} 处批注（Word 打开后可通过「审阅→接受/拒绝」逐条处理）")
+        if any(s.author != "公文审校" for s in suggestions):
+            authors = sorted({s.author for s in suggestions})
+            print(f"  审阅者: {', '.join(authors)}（可按审阅者筛选）")
         print(f"  批注完整性验证: {'通过' if ok else '失败'}")
         return
 

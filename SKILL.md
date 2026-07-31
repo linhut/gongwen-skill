@@ -57,7 +57,15 @@ Licensed under the MIT License. See the LICENSE file for details.
 当必需依赖缺失或不可用时，Agent **必须**按以下顺序处理：
 
 1. **先尝试安装**：`pip install -r requirements.txt`（或按 requirements.txt 补充安装缺失包）
-2. **再使用降级模式**：若安装失败或工具仍不可用，运行指定的降级命令
+2. **再使用降级模式**：若安装失败或工具仍不可用，运行指定的降级命令：
+   | 缺失依赖 | 主用命令 | 降级命令 |
+   |---------|---------|---------|
+   | python-docx | `pip install python-docx` | 不可降级（核心依赖），需修复安装环境 |
+   | pydantic | `pip install pydantic` | 不可降级（模型定义依赖） |
+   | pyyaml | `pip install pyyaml` | `gongwen.py` 内置 YAML 解析兜底（rules 加载） |
+   | lxml | `pip install lxml` | 不可降级（OOXML/批注/修订注入核心） |
+   | LibreOffice（文档转图片） | `soffice --headless --convert-to pdf` | `python engine/docx_to_image.py <docx> --outdir <dir>`（docx2pdf/PyMuPDF 降级） |
+   | kdocs-cli（可选云协作） | `kdocs-cli --help` | 回退纯本地流程，不影响 gongwen 功能 |
 3. **不得自创降级方案**：严禁自行替换工具、使用替代流程或自创降级方案，除非上述两步均已尝试且确实无法满足任务需求
 
 ### 五、环境说明
@@ -881,6 +889,30 @@ python gongwen.py optimize 文档.docx -t 民委红头规范 --apply      # 套�
 ```
 
 模板存储于 `~/.gongwen-skill/user_rules/`（仓库之外），**git pull 更新 skill 不会丢失**。
+
+#### 文档审计（audit）
+
+对文档进行系统级合规审计，输出问题清单（含严重级别与位置）：
+
+```bash
+python gongwen.py audit 原文.docx -t notice
+```
+
+- 覆盖格式/用语/逻辑/法规/文风五维度检查
+- 输出 P0（阻断）/P1（重要）/P2（次要）分级问题列表
+- 与 `check` 的区别：audit 是深度审计（含内容层面），check 是格式合规检查
+
+#### 三种输出模式对照（路径 B）
+
+路径 B 的 `optimize-content` 支持三种交付模式，Agent 按用户需求选用：
+
+| 模式 | 参数 | 交付物 | 用户操作 |
+|------|------|--------|---------|
+| **行内标记**（默认） | （无） | 灰色删除线 + 红色新增 + 楷体修改说明 | 直接查看，人工誊改 |
+| **批注模式** | `--comment-mode` | Word 原生批注（字符级锚定，可精确到被修改文字） | 「审阅→接受/拒绝」逐条处理 |
+| **修订追踪** | `--tracked-change` | Word 原生修订标记（`<w:ins>`/`<w:del>`，保留原格式） | 「审阅→修订」面板逐条接受/拒绝 |
+
+> **D5 说明**：批注模式为字符级锚定——start/end 边界均精确拆分到 run 内部，Word 中选中批注文本时高亮范围与被修改文字完全一致。
 
 ---
 
@@ -2622,6 +2654,7 @@ Agent: 是否需要对此对比文档走格式优化，生成排版合规的无�
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
+| v2.9 | 2026-07-31 | 对应代码 v1.12.18 全面审计修复：批注 end 边界字符级锚定、五角色审阅者区分（author 从 reason 提取）、修订追踪完整格式保留、persons.xml 集成、原子写入、ZIP 炸弹防护、值解析/错误处理统一；新增 utils/parse.py 与 utils/errors.py |
 | v2.8 | 2026-07-31 | 新增批注模式（optimize-content --comment-mode，Word 原生批注可接受/拒绝）；新增完整审校（full-review 一条命令：格式修复+内容优化+批注）；新增样式学习（style-learn/style-list，从标准文档学习排版样式生成命名模板，含字间距等细微属性）；新增修订追踪（tracked-change，ins/del 修订标记）；模板存储于 ~/.gongwen-skill/user_rules/（仓库外，更新不丢失） |
 | v2.7 | 2026-07-31 | 新增人事信息准确性铁律（强制规则第 9 条）：严禁编造领导姓名/机构全称/职务/人物姓名/文号/数据，缺失用 `[XXX]` 占位；三条路径均有对应落地点（聚合禁令、路径 B 内容保留优先原则、路径 C 第〇步、使用红线） |
 | v2.6 | 2026-07-26 | 三点式入口重构：将 SKILL.md 按 A格式修复/B内容优化/C生成公文 三条路径重新组织；路径 C 新增 5 类公文标准段落骨架（通知/请示/报告/函/纪要，共 10 种子类型）和惯用语库；各路径内容归入对应章节；共享规则（格式基准、命名规范、22 种类型、使用红线）移至附录 |

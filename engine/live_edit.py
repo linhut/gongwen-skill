@@ -203,12 +203,13 @@ class LiveEditSession:
             return False
 
         if self._snapshots and len(self._snapshots) >= steps:
-            target = self._snapshots[-steps]
+            target_idx = len(self._snapshots) - steps
+            target = self._snapshots[target_idx]
             self.model = copy.deepcopy(target["model"])
             self.changes = copy.deepcopy(target["changes"])
-            # 移除被回退的快照
-            del self._snapshots[-steps:]
-            logger.info(f"  ↩️  已回退 {steps} 步到快照: {target.get('description', '未命名')}")
+            # NI11 修复：只丢弃目标之后的快照，保留目标本身及其之前——回退后仍可继续回退
+            self._snapshots = self._snapshots[:target_idx + 1]
+            logger.info(f"  ↩️  已回退 {steps} 步到快照: {target.get('description', '未命名')}（剩余 {len(self._snapshots)} 个快照可继续回退）")
             return True
 
         if steps == 1 and self.original_model is not None:
