@@ -648,6 +648,104 @@ def safe_write_output(output_path: Path, write_fn) -> Path:
         raise
 
 
+# 官方镜像仓库（多渠道版本自检用）
+REPO_MIRRORS = {
+    "GitHub": "https://github.com/linhut/gongwen-skill.git",
+    "GitCode": "https://gitcode.com/linhut/gongwen-skill.git",
+    "AtomGit": "https://atomgit.com/linhut/gongwen-skill.git",
+}
+
+
+def _parse_version(v: str) -> list[int]:
+    """解析版本号字符串为可比较的整数列表（兼容 'v1.12.24' 与 '1.12.24' 两种格式）。"""
+    s = v[1:] if v.startswith("v") else v
+    return [int(x) for x in s.split(".")[:3]]
+
+
+def _latest_tag_from_remote(remote_url: str, timeout: int = 15) -> tuple[bool, str]:
+    """从单个远程仓库查询最新 tag。
+
+    Returns:
+        (是否成功, 最新 tag 或错误信息)
+    """
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["git", "ls-remote", "--tags", remote_url],
+            capture_output=True, text=True, timeout=timeout,
+        )
+        if result.returncode != 0:
+            return False, result.stderr.strip()[:120] or "git ls-remote 失败"
+        tags = []
+        for line in result.stdout.splitlines():
+            ref = line.split("\t")[-1] if "\t" in line else line.split()[-1]
+            # 取 refs/tags/vX.Y.Z（排除 ^{} 剥壳引用）
+            if ref.endswith("^{}"):
+                continue
+            name = ref.rsplit("/", 1)[-1]
+            if name.startswith("v") and name[1:].count(".") >= 2:
+                tags.append(name)
+        if not tags:
+            return False, "仓库无版本 tag"
+        return True, max(tags, key=_parse_version)
+    except FileNotFoundError:
+        return False, "git 命令不可用"
+    except Exception as e:
+        return False, str(e)[:120]
+
+
+def cmd_check_update(args):
+    """多渠道版本自检：查询 GitHub/GitCode/AtomGit 三仓库最新 tag，取最高版本比对本地。
+
+    解决 SKILL.md 单渠道自检失效问题：单一仓库不可达/网络抖动时误判本地即最新。
+    """
+    import time
+    t0 = time.time()
+
+    print(f"🔍 版本自检（多渠道，本地 v{__version__}）")
+    print(f"{'─' * 50}")
+
+    results: dict[str, str] = {}
+    ok_count = 0
+    for name, url in REPO_MIRRORS.items():
+        ok, val = _latest_tag_from_remote(url)
+        if ok:
+            results[name] = val
+            ok_count += 1
+            print(f"  ✅ {name:<8} 最新: {val}")
+        else:
+            results[name] = ""
+            print(f"  ⚠️  {name:<8} 不可达: {val}")
+
+    print(f"{'─' * 50}")
+
+    if ok_count == 0:
+        print("❌ 全部仓库均不可达（无 git 或网络受限）")
+        print("   ⚠️ 版本自检因无法访问远程而跳过，本地版本可能不是最新")
+        print("   💡 拉取地址：")
+        for name, url in REPO_MIRRORS.items():
+            print(f"      - {name}: {url}")
+        return 2
+
+    # 取多渠道中的最高版本
+    valid = [v for v in results.values() if v]
+    latest = max(valid, key=_parse_version)
+
+    # 版本比较
+    if _parse_version(latest) > _parse_version(__version__):
+        print(f"📢 有更新可用：最新版 {latest}，当前 v{__version__}")
+        print("   更新命令：")
+        print("     cd <gongwen-skill目录> && git pull && git fetch --tags")
+    elif _parse_version(latest) == _parse_version(__version__):
+        print(f"✅ 已是最新版本：v{__version__}（多渠道一致）")
+    else:
+        print(f"ℹ️  本地版本 v{__version__} 高于远程 {latest}（本地领先或渠道不同步）")
+
+    print(f"⏱️  自检耗时 {time.time() - t0:.1f}s")
+    return 0
+
+
+
 
 def cmd_optimize_content(args):
     """内容优化差异对比：原文灰色+删除线，修改后红色高亮，附修改说明。
@@ -1359,6 +1457,10 @@ def main():
 
     p = sub.add_parser("style-list", help="列出所有通过 style-learn 学习的自定义样式模板")
     p.set_defaults(func=cmd_style_list)
+
+    # ---- 多渠道版本自检（GitHub/GitCode/AtomGit 比对取最新） ----
+    p = sub.add_parser("check-update", help="多渠道版本自检：查询 GitHub/GitCode/AtomGit 三仓库最新 tag，取最高版本比对本地")
+    p.set_defaults(func=cmd_check_update)
 
     # ---- 文档审计 ----
     p = sub.add_parser("audit", help="审计文档处理链：检查删除线、加粗、AI声明等合规性问题")

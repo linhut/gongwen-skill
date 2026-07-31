@@ -81,20 +81,30 @@ Licensed under the MIT License. See the LICENSE file for details.
 
 1. 读取 `gongwen.py` 顶部的 `__version__` 常量，获取本地版本号
 2. 告知用户：`当前加载 gongwen-skill v{__version__}`
-3. 比对**远程最新 tag**（不能只用本地 `git describe`——它只读本地可达 tag，未 fetch 时会误判本地即最新）：
+3. **多渠道比对远程最新 tag**（不能只用本地 `git describe`——它只读本地可达 tag，未 fetch 时会误判本地即最新；也不能只查单一远程——某仓库不可达/网络抖动会导致误判）：
    ```bash
-   # 查询远程 tag（无需 fetch，直接查远端），取最高版本
-   git ls-remote --tags <origin-url> | awk -F/ '{print $NF}' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1
+   # 首选：CLI 内置多渠道自检命令（自动查询 GitHub/GitCode/AtomGit 三仓库，取最高版本）
+   python gongwen.py check-update
+
+   # 手动回退：逐一查询三个镜像仓库，取最高版本
+   for url in \
+     https://github.com/linhut/gongwen-skill.git \
+     https://gitcode.com/linhut/gongwen-skill.git \
+     https://atomgit.com/linhut/gongwen-skill.git ; do
+     git ls-remote --tags "$url" | awk -F/ '{print $NF}' \
+       | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1
+   done
    ```
-   - 若上述命令不可用（无 git/无网络），**必须明确告知用户"版本自检因无法访问远程而跳过"**，不得静默假设本地即最新
-4. 若远程最新 tag > 本地 `__version__`，提示用户：
+   - 三个仓库取其中**最高版本**作为最新版（多渠道互相校验，任一渠道可达即不遗漏）
+   - 若全部渠道均不可用（无 git/无网络），**必须明确告知用户"版本自检因无法访问远程而跳过"**，不得静默假设本地即最新
+4. 若多渠道最高版本 > 本地 `__version__`，提示用户：
    ```
    有更新可用：最新版 {远程tag}，当前 {本地version}
    拉取地址：
      GitHub：https://github.com/linhut/gongwen-skill
      GitCode：https://gitcode.com/linhut/gongwen-skill
      AtomGit：https://atomgit.com/linhut/gongwen-skill
-   更新命令：git pull
+   更新命令：cd <gongwen-skill目录> && git pull && git fetch --tags
    ```
 
 ---
