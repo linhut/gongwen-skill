@@ -206,6 +206,7 @@ Licensed under the MIT License. See the LICENSE file for details.
 | 公文段落骨架模板 | SKILL.md 路径 C | 10 种公文类型的标准结构 |
 | 五角色审稿机制 | SKILL.md | 分层把关、人机协同的审稿流程 |
 | 九种段落类型优化清单 | SKILL.md 路径 B | 开头/依据/事项/要求等段落的专项检查 |
+| 自定义样式模板 | `~/.gongwen-skill/user_rules/*.yaml` | `style-learn` 从标准文档学习的命名模板，**存储于仓库之外，git pull 更新 skill 不会丢失** |
 
 **强制规则**：
 - 生成公文时必须引用 `style-prompts.md` 中的风格定义，不得自创风格

@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.16"
+__version__ = "1.12.17"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -943,6 +943,60 @@ def cmd_audit(args):
         print(f"  ✅ 加粗检查通过")
 
 
+def cmd_style_learn(args):
+    """从标准 .docx 文档学习排版样式，生成自定义命名模板并注册到 user_rules。
+
+    读取文档的字体/字号/字间距/行距/缩进/页边距等完整排版样式，
+    生成 `~/.gongwen-skill/user_rules/{模板名}.yaml`，
+    之后可用 `optimize -t {模板名}` 套用该模板。
+    """
+    from style_profile import learn_style_profile, build_user_rule_yaml
+    from core.rules.manager import save_rule
+
+    input_path = Path(args.input)
+    template_name = args.name or f"自定义_{input_path.stem}"
+
+    print(f"📖 正在学习排版样式: {input_path.name} ...")
+    profile = learn_style_profile(str(input_path))
+    print()
+    print(profile.summary())
+
+    # 生成 YAML 规则并注册到 user_rules
+    yaml_text = build_user_rule_yaml(profile, template_name)
+
+    from config import USER_RULES_DIR
+    out_path = USER_RULES_DIR / f"{template_name}.yaml"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(yaml_text, encoding="utf-8")
+
+    print()
+    print(f"✅ 自定义模板已生成: {out_path}")
+    print(f"  模板名: {template_name}")
+    print(f"  已注册到用户规则层（user_rules），后续可用:")
+    print(f"    python gongwen.py optimize 文档.docx -t {template_name} --apply")
+    print(f"    python gongwen.py check 文档.docx -t {template_name}")
+    print()
+    print(f"💾 持久化说明：模板存储在 {USER_RULES_DIR}（仓库之外），")
+    print(f"    git pull 更新 skill 不会丢失。若需迁移/备份，")
+    print(f"    复制该目录即可。")
+    print()
+    print("💡 提示：可修改该 YAML 文件微调样式（字体/字号/字间距等），或")
+    print("   再次上传不同标准文档生成其他命名模板。")
+
+
+def cmd_style_list(args):
+    """列出所有自定义学习生成的样式模板。"""
+    from config import USER_RULES_DIR
+    files = sorted(USER_RULES_DIR.glob("*.yaml"))
+    if not files:
+        print("暂无自定义样式模板。用以下命令学习一份标准文档：")
+        print("  python gongwen.py style-learn 标准公文.docx -n 模板名")
+        return
+    print(f"📚 自定义样式模板（{len(files)} 个）:")
+    for f in files:
+        print(f"  - {f.stem}  →  optimize -t {f.stem}")
+
+
 def cmd_review(args):
     """生成审稿流转单。"""
     from review_generator import generate_review_template
@@ -1106,6 +1160,15 @@ def main():
     p.add_argument("-t", "--doc-type", default="", help="公文类型（默认自动检测）")
     p.add_argument("--changes", default="", help="变更 JSON 文件路径（路径B优化建议，可省略则仅格式修复+批注空）")
     p.set_defaults(func=cmd_full_review)
+
+    # ---- 样式学习（上传标准文档 → 自定义命名模板） ----
+    p = sub.add_parser("style-learn", help="从标准 .docx 文档学习排版样式（含字间距等细微属性），生成自定义命名模板并注册")
+    p.add_argument("input", help="输入标准 .docx 文档路径（如单位定稿红头公文）")
+    p.add_argument("-n", "--name", default="", help="模板名（默认 自定义_{文档名}），注册后可用 optimize -t {模板名}")
+    p.set_defaults(func=cmd_style_learn)
+
+    p = sub.add_parser("style-list", help="列出所有通过 style-learn 学习的自定义样式模板")
+    p.set_defaults(func=cmd_style_list)
 
     # ---- 文档审计 ----
     p = sub.add_parser("audit", help="审计文档处理链：检查删除线、加粗、AI声明等合规性问题")
