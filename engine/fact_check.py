@@ -239,6 +239,115 @@ def extract_entities(paragraphs: list[str]) -> List[Entity]:
 
 
 # ---------------------------------------------------------------------------
+#  R3 修复：LLM 内容理解实体提取（主通道）+ 规则提取（兜底）交叉验证
+# ---------------------------------------------------------------------------
+
+_LLM_EXTRACT_PROMPT = (
+    "请从以下中文公文中提取所有需事实核验的实体，包括：\n"
+    "1. 人名（含其职务描述，如\"省民宗委党组成员、副主任覃万成\"）\n"
+    "2. 组织机构名（含完整全称）\n"
+    "3. 发文字号、关键数据\n"
+    "输出 JSON 数组，格式：[{\"type\": \"person|org|doc_no|data\", \"name\": \"实体名\", "
+    "\"title\": \"职务描述(仅person)\", \"paragraph_index\": 段落序号}]。\n"
+    "只输出 JSON，不要其他文字。\n\n"
+    "公文内容：\n{content}"
+)
+
+
+def extract_entities_llm(paragraphs: list[str]) -> Optional[List[Entity]]:
+    """R3 修复：LLM 内容理解提取实体（主通道，准确率优先）。
+
+    通过环境变量 GONGWEN_LLM_API 指定 OpenAI 兼容 API（如本地 Ollama）启用；
+    未配置时返回 None（调用方回退到规则提取，保持自包含、克隆即用）。
+
+    Args:
+        paragraphs: 文档段落文本列表
+
+    Returns:
+        LLM 提取的实体列表（成功时）；None（未配置/失败时回退规则）
+    """
+    import json as _json
+    import os
+
+    api_url = os.environ.get("GONGWEN_LLM_API", "").strip()
+    api_key = os.environ.get("GONGWEN_LLM_API_KEY", "").strip()
+    model = os.environ.get("GONGWEN_LLM_MODEL", "gpt-4o-mini").strip()
+    if not api_url:
+        logger.info("LLM 实体提取未配置（GONGWEN_LLM_API），回退规则提取")
+        return None
+
+    content = "\n".join(f"[{i}] {t}" for i, t in enumerate(paragraphs))
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "user", "content": _LLM_EXTRACT_PROMPT.format(content=content[:8000])},
+        ],
+        "temperature": 0,
+    }
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            api_url.rstrip("/") + "/chat/completions",
+            data=_json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json",
+                     **({"Authorization": f"Bearer {api_key}"} if api_key else {})},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = _json.loads(resp.read().decode("utf-8"))
+        raw = data["choices"][0]["message"]["content"]
+        # 提取 JSON 数组（LLM 可能附带 ```json 围栏）
+        m = re.search(r'\[\s*\{.*\}\s*\]', raw, re.S)
+        if not m:
+            logger.warning("LLM 返回无 JSON 数组，回退规则提取")
+            return None
+        items = _json.loads(m.group(0))
+        entities: List[Entity] = []
+        for it in items:
+            etype = it.get("type", "")
+            name = str(it.get("name", "")).strip()
+            if not name or etype not in ("person", "org", "doc_no", "data"):
+                continue
+            pi = int(it.get("paragraph_index", 0) or 0)
+            ctx = paragraphs[pi][:60] if 0 <= pi < len(paragraphs) else ""
+            entities.append(Entity(
+                entity_type=etype, entity_name=name, context=ctx, paragraph_index=pi,
+            ))
+        logger.info(f"LLM 实体提取完成: {len(entities)} 项")
+        return entities
+    except Exception as e:
+        logger.warning(f"LLM 实体提取失败（{e}），回退规则提取")
+        return None
+
+
+def extract_entities_hybrid(paragraphs: list[str]) -> List[Entity]:
+    """R3 修复：混合提取——LLM 主通道 + 规则兜底 + 合并去重（LLM 结果优先）。
+
+    Args:
+        paragraphs: 文档段落文本列表
+
+    Returns:
+        合并去重后的实体列表
+    """
+    llm_entities = extract_entities_llm(paragraphs) or []
+    rule_entities = extract_entities(paragraphs)
+
+    if not llm_entities:
+        return rule_entities
+
+    # 合并去重：LLM 结果优先，规则结果补充（按 类型+名称 去重）
+    merged: List[Entity] = []
+    seen: set = set()
+    for e in llm_entities + rule_entities:
+        key = (e.entity_type, e.entity_name)
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(e)
+    return merged
+
+
+# ---------------------------------------------------------------------------
 #  基准构建（背景资料解析）
 # ---------------------------------------------------------------------------
 
@@ -391,11 +500,11 @@ def run_fact_check(document_path: str | Path, background_paths: Optional[list[st
     doc_path = Path(document_path)
     report = FactCheckReport(document=doc_path.name)
 
-    # Step 1：实体提取
+    # Step 1：实体提取（R3 修复：混合提取——LLM 内容理解主通道 + 规则兜底）
     from core.document.parser import parse_docx
     model = parse_docx(str(doc_path))
     paragraphs = [p.text for p in model.paragraphs]
-    entities = extract_entities(paragraphs)
+    entities = extract_entities_hybrid(paragraphs)
     if not entities:
         logger.info("未提取到关键实体")
         return report

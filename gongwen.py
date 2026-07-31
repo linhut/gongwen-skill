@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.29"
+__version__ = "1.12.30"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -634,18 +634,40 @@ def safe_write_output(output_path: Path, write_fn) -> Path:
         write_fn(output_path)
         return output_path
     except PermissionError:
-        # 文件被占用，尝试追加序号
+        # R1 修复：明确警告"文件被占用"，并显示实际写入路径（避免用户误以为原文件已更新）
+        print(f"⚠️ 输出文件被占用（{output_path.name} 可能被其他程序打开），正在尝试备用文件名…")
         for i in range(2, 100):
             alt = output_path.with_stem(f"{output_path.stem}_v{i}")
             if alt.exists():
                 continue
             try:
                 write_fn(alt)
-                print(f"⚠️ 输出文件被占用，已自动保存为: {alt.name}")
+                print(f"⚠️ 已自动保存为: {alt.name}（原文件 {output_path.name} 未改动）")
                 return alt
             except PermissionError:
                 continue
         raise
+
+
+def verify_output_fresh(output_path: Path, start_time: float, label: str = "输出文件") -> bool:
+    """R1 修复：验证输出文件修改时间晚于运行开始时间，防止旧版文件被误认为已更新。
+
+    Returns:
+        是否新鲜（True = 文件已更新；False = 可能为旧版）
+    """
+    import time as _time
+    try:
+        mtime = output_path.stat().st_mtime
+        fresh = mtime >= start_time - 1  # 允许 1s 容差（文件系统时间精度）
+        if not fresh:
+            print(f"⚠️ {label} {output_path.name} 修改时间早于本次运行开始，可能未成功更新（文件被锁定）")
+        return fresh
+    except FileNotFoundError:
+        print(f"⚠️ {label} 不存在: {output_path}")
+        return False
+    except Exception as e:
+        print(f"⚠️ 无法验证 {label}: {e}")
+        return False
 
 
 # 官方镜像仓库（多渠道版本自检用）
@@ -907,11 +929,26 @@ def cmd_optimize_content(args):
         print(fc_report.summary_text())
         fc_author = get_author("事实核验员")  # D5: 独立角色 author（"事实核验"）
         # N3 修复：事实核验批注合并到统一 suggestions，随 tracked 流程一次注入（不再二次 inject_comments）
+        # R2 修复：按实体名在段落文本中的偏移精确锚定（而非 offset=0 锚定段落起始）
+        fc_para_texts: dict[int, str] = {}
+        try:
+            from core.document.parser import parse_docx
+            _m = parse_docx(str(args.input))
+            fc_para_texts = {i: p.text for i, p in enumerate(_m.paragraphs)}
+        except Exception:
+            pass
         for e in fc_report.doubtful + fc_report.unverified:
+            s_off = 0
+            e_off = 0
+            para_text = fc_para_texts.get(e.paragraph_index, "")
+            if para_text and e.entity_name:
+                idx = para_text.find(e.entity_name)
+                if idx >= 0:
+                    s_off, e_off = idx, idx + len(e.entity_name)
             suggestions.append(CommentSuggestion(
                 para_index=e.paragraph_index,
-                start_offset=0,
-                end_offset=0,
+                start_offset=s_off,
+                end_offset=e_off,
                 comment_text=f"【事实核验⚠️】{e.entity_name}：{e.note}",
                 category="事实核验",
                 author=fc_author,

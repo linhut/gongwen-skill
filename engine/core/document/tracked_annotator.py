@@ -351,10 +351,10 @@ def _build_comments_xml(suggestions: list, id_offset: int = 0) -> etree._Element
         r = etree.SubElement(p, f'{{{W}}}r')
         t = etree.SubElement(r, f'{{{W}}}t')
         t.text = sug.comment_text
-        # N4 + P2 修复：仅语义类别（事实核验等）追加到正文，风格类不显示（共用 reviewer_comments.SEMANTIC_CATEGORIES）
+        # N4 + P2 修复：仅语义类别追加到正文；R4 修复：author 已是该类别时不追加冗余标签
         if getattr(sug, 'category', ''):
             from core.document.reviewer_comments import SEMANTIC_CATEGORIES
-            if sug.category in SEMANTIC_CATEGORIES:
+            if sug.category in SEMANTIC_CATEGORIES and sug.author != sug.category:
                 r2 = etree.SubElement(p, f'{{{W}}}r')
                 t2 = etree.SubElement(r2, f'{{{W}}}t')
                 t2.text = f'（修改类别：{sug.category}）'
