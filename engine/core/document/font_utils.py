@@ -164,7 +164,8 @@ def set_run_font(run, font_name: str, latin_font: str | None = None) -> None:
     rFonts.set(qn('w:ascii'), latin)              # 西文 ASCII
     rFonts.set(qn('w:hAnsi'), latin)              # 高位 ANSI
     rFonts.set(qn('w:eastAsia'), east_asian_font) # 东亚文字（核心！）
-    rFonts.set(qn('w:cs'), font_name)             # 复杂脚本
+    # S11 修复：cs（复杂脚本，阿拉伯文/泰文等）应使用拉丁字体，而非中文字体名
+    rFonts.set(qn('w:cs'), latin)
 
     logger.debug(f"Set font: eastAsia={east_asian_font}, latin={latin}")
 

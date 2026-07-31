@@ -60,6 +60,10 @@ def parse_docx(file_path: Path | str) -> DocumentModel:
         DocumentModel instance with full format preservation
     """
     file_path = Path(file_path)
+    if not file_path.exists():
+        raise FileNotFoundError(f"文档不存在: {file_path}")
+    if not file_path.is_file():
+        raise ValueError(f"路径不是文件: {file_path}")
     doc = Document(str(file_path))
 
     logger.info(f"Parsing document: {file_path}")
@@ -89,8 +93,11 @@ def parse_docx(file_path: Path | str) -> DocumentModel:
     # 5. 解析表格（含 insert_after_index 定位）
     # 先遍历 doc body 元素，建立每个表格在段落流中的位置
     from lxml import etree
+    from core.document.ooxml_parser import OOXMLParser  # I7: 集成 OOXMLParser
     para_count = 0
     table_position_map = {}  # {table_element_id: last_para_index_before_it}
+    ooxml = OOXMLParser()
+    para_index_map = ooxml.get_paragraph_index_map(str(file_path))  # I7: 段落索引映射
     for child in doc.element.body:
         tag = etree.QName(child.tag).localname if child.tag else ''
         if tag == 'p':
@@ -119,6 +126,21 @@ def parse_docx(file_path: Path | str) -> DocumentModel:
 
     logger.info(f"Parsed: {len(paragraphs)} paragraphs, {len(tables)} tables, "
                 f"{len(headers)} headers, {len(footers)} footers")
+
+    # I7: 文本框（红头区域）内容暴露给管线——挂载为模型非 Pydantic 属性
+    try:
+        textboxes = ooxml.parse_textboxes(str(file_path))
+        if textboxes:
+            object.__setattr__(model, '_textboxes', [tb.text for tb in textboxes])
+            object.__setattr__(model, '_textbox_paragraphs', [tb.paragraphs for tb in textboxes])
+            logger.info(f"Textboxes extracted: {len(textboxes)} (红头/文本框区域)")
+        else:
+            object.__setattr__(model, '_textboxes', [])
+    except Exception as e:
+        logger.debug(f"Textbox extraction skipped: {e}")
+
+    # I7: 段落索引映射挂载（供批注锚定等下游使用）
+    object.__setattr__(model, '_para_index_map', para_index_map)
 
     # 6. AI辅助结构分析（独立发行版默认不可用，静默降级为纯启发式检测）
     try:

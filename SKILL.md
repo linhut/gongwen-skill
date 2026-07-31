@@ -69,7 +69,7 @@ Licensed under the MIT License. See the LICENSE file for details.
 | **本地 CLI** | 克隆仓库 → `pip install -r requirements.txt` → `python gongwen.py <命令>` |
 | **AI Agent 内嵌** | 将仓库路径加入 Agent 的 skills 目录，Agent 自动读取 SKILL.md 并调用 CLI 命令 |
 
-### 四、版本自检（Agent 必须在技能加载后执行）
+### 六、版本自检（Agent 必须在技能加载后执行）
 
 1. 读取 `gongwen.py` 顶部的 `__version__` 常量，获取本地版本号
 2. 告知用户：`当前加载 gongwen-skill v{__version__}`
@@ -834,6 +834,53 @@ Agent: 📋 审稿汇总报告
 4. 询问用户是否全部同意。若用户有异议，再针对具体段落讨论
 5. 用户确认后调用 `session.finalize("成品.docx")` 输出
 6. 将生成的 `.changes.json` 路径告知用户，供后续参考
+
+### 路径 B / 增强命令（v1.12.15+ 新增）
+
+路径 B 提供两种增强输出模式，Agent 应根据用户需求选用：
+
+#### 批注模式（--comment-mode）
+
+将优化建议以 **Word 原生批注** 写入，用户在 Word 中可通过「审阅 → 接受/拒绝」逐条处理，而非行内标记：
+
+```bash
+python gongwen.py optimize-content 原文.docx --changes changes.json --apply --comment-mode
+```
+
+- 批注按字符范围锚定（可精确定位到被修改文字）
+- 五角色审稿时，批注作者名区分五种角色，可按审阅者筛选
+- 兼容：不加 `--comment-mode` 时保持原行内标记模式
+
+#### 修订追踪（--tracked-change）
+
+将修改以 Word 原生修订标记（`<w:ins>`/`<w:del>`）写入，用户可在「审阅 → 修订」面板逐条接受/拒绝：
+
+```bash
+python gongwen.py optimize-content 原文.docx --changes changes.json --apply --tracked-change
+```
+
+- 修订 ID 全局唯一、RSID 无冲突
+- 保留原 run 字体格式，修订不损毁排版
+
+#### 完整审校（full-review）
+
+一条命令完成「格式修复（路径 A）→ 内容优化（路径 B）→ 批注输出」：
+
+```bash
+python gongwen.py full-review 原文.docx --changes changes.json -o 审校版.docx
+```
+
+#### 样式学习（style-learn / style-list）
+
+上传标准文档，学习其排版样式（含字间距等细微属性），生成自定义命名模板：
+
+```bash
+python gongwen.py style-learn 单位定稿红头.docx -n 民委红头规范   # 学习并注册模板
+python gongwen.py style-list                                     # 列出已学习模板
+python gongwen.py optimize 文档.docx -t 民委红头规范 --apply      # 套用模板
+```
+
+模板存储于 `~/.gongwen-skill/user_rules/`（仓库之外），**git pull 更新 skill 不会丢失**。
 
 ---
 
@@ -2575,6 +2622,7 @@ Agent: 是否需要对此对比文档走格式优化，生成排版合规的无�
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
+| v2.8 | 2026-07-31 | 新增批注模式（optimize-content --comment-mode，Word 原生批注可接受/拒绝）；新增完整审校（full-review 一条命令：格式修复+内容优化+批注）；新增样式学习（style-learn/style-list，从标准文档学习排版样式生成命名模板，含字间距等细微属性）；新增修订追踪（tracked-change，ins/del 修订标记）；模板存储于 ~/.gongwen-skill/user_rules/（仓库外，更新不丢失） |
 | v2.7 | 2026-07-31 | 新增人事信息准确性铁律（强制规则第 9 条）：严禁编造领导姓名/机构全称/职务/人物姓名/文号/数据，缺失用 `[XXX]` 占位；三条路径均有对应落地点（聚合禁令、路径 B 内容保留优先原则、路径 C 第〇步、使用红线） |
 | v2.6 | 2026-07-26 | 三点式入口重构：将 SKILL.md 按 A格式修复/B内容优化/C生成公文 三条路径重新组织；路径 C 新增 5 类公文标准段落骨架（通知/请示/报告/函/纪要，共 10 种子类型）和惯用语库；各路径内容归入对应章节；共享规则（格式基准、命名规范、22 种类型、使用红线）移至附录 |
 | v2.5 | 2026-07-26 | 新增段落类型优化检查清单（9 种类型，每类 4-8 项检查维度，强制 修订内容 附录检查结果）；风格词典补齐六维度描述（句式特征/用词偏好/结构要求/语气调性/典型句式/反面示例）；修正旧风格名称残留（简洁明快→简洁精炼） |

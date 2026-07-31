@@ -136,9 +136,9 @@ class LiveEditSession:
         logger.info(f"批量编辑: {len(applied)}/{len(edits)} 处已应用")
         return applied
 
-    def rollback(self, para_index: int) -> bool:
+    def rollback_paragraph(self, para_index: int) -> bool:
         """
-        撤销对某个段落的最后一次修改。
+        撤销对某个段落的最后一次修改（段落级回滚）。
 
         从 changes 记录中找到该段落的最后一条记录，恢复原文。
         """
@@ -160,6 +160,9 @@ class LiveEditSession:
         """
         保存当前文档状态快照（含模型深拷贝 + 变更记录）。
 
+        S12 修复：限制快照数量（默认最多 20 个），超过时丢弃最旧快照，
+        防止长会话中深拷贝导致内存线性增长。
+
         Args:
             description: 快照描述（如"第一次优化后"）
 
@@ -174,14 +177,19 @@ class LiveEditSession:
             "model": copy.deepcopy(self.model),
             "changes": copy.deepcopy(self.changes),
         })
+        # S12：容量上限 20 个，丢弃最旧快照
+        _MAX_SNAPSHOTS = 20
+        if len(self._snapshots) > _MAX_SNAPSHOTS:
+            dropped = self._snapshots.pop(0)
+            logger.info(f"  🧹 快照超上限({_MAX_SNAPSHOTS})，已丢弃最旧: {dropped.get('description', '未命名')}")
         logger.info(f"  📸 快照 #{len(self._snapshots)} 已保存: {description or '未命名'}")
         return len(self._snapshots)
 
-    def rollback(self, steps: int = 1) -> bool:
+    def rollback_snapshot(self, steps: int = 1) -> bool:
         """
-        回退到指定步数前的快照状态。
+        回退到指定步数前的快照状态（快照级回滚）。
 
-        与旧版 rollback(para_index) 不同，此版本回退整个文档状态：
+        与段落级 rollback_paragraph(para_index) 不同，此版本回退整个文档状态：
         - 有快照时：回退到倒数第 steps 个快照
         - 无快照时：回退所有变更（恢复原始模型）
 

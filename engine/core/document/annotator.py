@@ -128,29 +128,25 @@ class GongwenAnnotator:
     def _create_comments_xml(self, suggestions: List[CommentSuggestion]) -> etree._Element:
         """创建 comments.xml。"""
         root = etree.Element(f'{{{W}}}comments', nsmap={'w': W})
-        seen_ids = set()
 
         for i, sug in enumerate(suggestions, start=1):
-            cid = i
-            # 用内容哈希避免重复批注
-            h = int(hashlib.md5(f"{sug.para_index}:{sug.start_offset}:{sug.end_offset}".encode()).hexdigest()[:6], 16)
-            if h not in seen_ids:
-                cid = h
-                seen_ids.add(h)
+            cid = i  # 递增整数序列，避免 MD5 碰撞（B2 修复）
 
             c = etree.SubElement(root, f'{{{W}}}comment')
             c.set(f'{{{W}}}id', str(cid))
             c.set(f'{{{W}}}author', sug.author)
-            c.set(f'{{{W}}}date', datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ'))
+            # S1 修复：使用 UTC 时间并正确标注（Z 后缀），datetime.now(timezone.utc)
+            c.set(f'{{{W}}}date', datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))
 
-            # 批注文本段落
+            # 批注文本段落（多个 w:t 分属不同 run，符合 OOXML 规范）
             p = etree.SubElement(c, f'{{{W}}}p')
             r = etree.SubElement(p, f'{{{W}}}r')
             t = etree.SubElement(r, f'{{{W}}}t')
             t.text = sug.comment_text
             if sug.category:
-                # 追加类别标注
-                t2 = etree.SubElement(r, f'{{{W}}}t')
+                # 类别标注放入第二个 run（一个 run 仅一个 w:t）
+                r2 = etree.SubElement(p, f'{{{W}}}r')
+                t2 = etree.SubElement(r2, f'{{{W}}}t')
                 t2.text = f' [{sug.category}]'
         return root
 
@@ -166,7 +162,7 @@ class GongwenAnnotator:
             if tag == 'p':
                 para_nodes.append(child)
 
-        for sug in suggestions:
+        for sug_idx, sug in enumerate(suggestions, start=1):
             if not (0 <= sug.para_index < len(para_nodes)):
                 continue
             p = para_nodes[sug.para_index]
@@ -185,37 +181,90 @@ class GongwenAnnotator:
             if not runs:
                 continue
 
-            # 计算批注覆盖范围
-            start = sug.start_offset
-            end = min(sug.end_offset, offset)
+            # 计算批注覆盖范围（clamp 到段落长度）
+            start = max(0, sug.start_offset)
+            end = min(sug.end_offset if sug.end_offset > 0 else offset, offset)
+            if end <= start:
+                end = offset  # 未指定范围时覆盖整段
 
-            # 在段落开头插入 commentRangeStart
-            # 使用 charOffset 定位：直接在 pPr 后插入
-            cid = int(hashlib.md5(f"{sug.para_index}:{sug.start_offset}:{sug.end_offset}".encode()).hexdigest()[:6], 16)
+            cid = str(sug_idx)  # 与 _create_comments_xml 的递增 ID 对齐（B2 修复）
 
-            # 插入 commentRangeStart / commentReference（简化：锚定到段落级）
-            # 方案：在段落 pPr 后插入 commentRangeStart，段落末尾插入 commentRangeEnd + commentReference
+            # ---- 字符级锚定：拆分覆盖边界的 run（B1 修复）----
+            # 先定位 start/end 所在的 run
+            start_run_idx = None
+            end_run_idx = None
+            for i, (r, rstart, rend, rtext) in enumerate(runs):
+                if start_run_idx is None and start < rend:
+                    start_run_idx = i
+                if end <= rend:
+                    end_run_idx = i
+                    break
+
+            if start_run_idx is None:
+                start_run_idx = 0
+            if end_run_idx is None:
+                end_run_idx = len(runs) - 1
+
+            # 拆分 start 所在 run：前缀（start 之前）保留原 run，锚点插入其后
+            s_run, s_start, s_end, s_text = runs[start_run_idx]
+            if start > s_start and start < s_end:
+                # 拆成 [start 之前] + [start 之后]
+                keep_text = s_text[:start - s_start]
+                rest_text = s_text[start - s_start:]
+                # 更新原 run 文本为前缀，新建 run 承接剩余
+                for t in s_run.findall(f'{{{W}}}t'):
+                    t.text = None
+                if keep_text:
+                    for t in s_run.findall(f'{{{W}}}t')[:1]:
+                        t.text = keep_text
+                new_run = etree.Element(f'{{{W}}}r')
+                # 复制 rPr
+                s_rPr = s_run.find(f'{{{W}}}rPr')
+                if s_rPr is not None:
+                    new_run.append(copy.deepcopy(s_rPr))
+                new_t = etree.SubElement(new_run, f'{{{W}}}t')
+                new_t.text = rest_text
+                s_run.addnext(new_run)
+                # 重新收集 runs（偏移已变化）
+                runs = []
+                offset = 0
+                for r in p.findall(f'{{{W}}}r'):
+                    texts = [t.text or '' for t in r.findall(f'{{{W}}}t')]
+                    rt = ''.join(texts)
+                    if not rt:
+                        continue
+                    runs.append((r, offset, offset + len(rt), rt))
+                    offset += len(rt)
+                # 重新定位
+                for i, (r, rstart, rend, rtext) in enumerate(runs):
+                    if start_run_idx is None or start < rend:
+                        start_run_idx = i
+                        break
+                for i, (r, rstart, rend, rtext) in enumerate(runs):
+                    if end <= rend:
+                        end_run_idx = i
+                        break
+
+            # 确定 commentRangeStart 插入位置：start 所在 run 之前
+            insert_run_el = runs[start_run_idx][0]
             pPr = p.find(f'{{{W}}}pPr')
-            insert_pos = 0
-            if pPr is not None:
-                insert_pos = list(p).index(pPr) + 1
-
-            # commentRangeStart
+            # commentRangeStart 插到目标 run 前面
             crs = etree.Element(f'{{{W}}}commentRangeStart')
-            crs.set(f'{{{W}}}id', str(cid))
-            p.insert(insert_pos, crs)
+            crs.set(f'{{{W}}}id', cid)
+            insert_run_el.addprevious(crs)
 
-            # 在段落末尾追加 commentRangeEnd + commentReference
+            # commentRangeEnd 插到 end 所在 run 之后
             cre = etree.Element(f'{{{W}}}commentRangeEnd')
-            cre.set(f'{{{W}}}id', str(cid))
-            p.append(cre)
+            cre.set(f'{{{W}}}id', cid)
+            runs[end_run_idx][0].addnext(cre)
 
+            # commentReference 追加到段落末尾
             cr = etree.Element(f'{{{W}}}r')
             crPr = etree.SubElement(cr, f'{{{W}}}rPr')
             rStyle = etree.SubElement(crPr, f'{{{W}}}rStyle')
             rStyle.set(f'{{{W}}}val', 'CommentReference')
             crRef = etree.SubElement(cr, f'{{{W}}}commentReference')
-            crRef.set(f'{{{W}}}id', str(cid))
+            crRef.set(f'{{{W}}}id', cid)
             p.append(cr)
 
         return etree.tostring(root, xml_declaration=True, encoding='UTF-8', standalone=True)

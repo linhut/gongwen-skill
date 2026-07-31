@@ -21,6 +21,8 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
 from utils.logger import logger
+# 跨模块#2 修复：统一字体设置入口（避免直接 font.name 导致 eastAsia 回退）
+from core.document.font_utils import set_run_font
 
 # 审稿角色定义（完整版 5 角色）
 FULL_SCHEME = [
@@ -60,7 +62,7 @@ def _add_styled_cell(row, text: str, bold: bool = False, width_mm: float = None,
                    'right': WD_ALIGN_PARAGRAPH.RIGHT}.get(alignment, WD_ALIGN_PARAGRAPH.LEFT)
     run = p.add_run(text)
     run.font.size = Pt(12)
-    run.font.name = '仿宋_GB2312'
+    set_run_font(run, '仿宋_GB2312')  # 跨模块#2: 统一字体入口
     if bold:
         run.bold = True
 
@@ -81,7 +83,7 @@ def _add_styled_cell_by_index(table, row_idx: int, col_idx: int, text: str,
                    'right': WD_ALIGN_PARAGRAPH.RIGHT}.get(alignment, WD_ALIGN_PARAGRAPH.LEFT)
     run = p.add_run(text)
     run.font.size = Pt(12)
-    run.font.name = '仿宋_GB2312'
+    set_run_font(run, '仿宋_GB2312')  # 跨模块#2: 统一字体入口
     if bold:
         run.bold = True
 
@@ -136,7 +138,9 @@ def generate_review_template(
     title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     title_run = title_para.add_run(title_text)
     title_run.font.size = Pt(18)
-    title_run.font.name = '黑体'
+    # S10 修复：使用 set_run_font 设置 4 属性字体，避免直接 font.name 导致 eastAsia 回退
+    from core.document.font_utils import set_run_font
+    set_run_font(title_run, '黑体')
     title_run.bold = True
 
     # 基本信息区
@@ -148,7 +152,7 @@ def generate_review_template(
         info_text += f"\n文稿标题：{doc_title}"
     info_run = info.add_run(info_text)
     info_run.font.size = Pt(12)
-    info_run.font.name = '仿宋_GB2312'
+    set_run_font(info_run, '仿宋_GB2312')  # 跨模块#2: 统一字体入口
 
     doc.add_paragraph()  # 空行
 
@@ -189,7 +193,7 @@ def generate_review_template(
     flow_title = doc.add_paragraph()
     flow_title_run = flow_title.add_run("流转记录")
     flow_title_run.font.size = Pt(14)
-    flow_title_run.font.name = '黑体'
+    set_run_font(flow_title_run, '黑体')  # 跨模块#2: 统一字体入口
     flow_title_run.bold = True
 
     flow_table = doc.add_table(rows=4, cols=3)
@@ -214,7 +218,7 @@ def generate_review_template(
         "4. 本单随文稿流转，最终归档保存"
     )
     note_run.font.size = Pt(10)
-    note_run.font.name = '仿宋_GB2312'
+    set_run_font(note_run, '仿宋_GB2312')  # 跨模块#2: 统一字体入口
     note_run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
 
     out = Path(output_path)

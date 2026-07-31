@@ -70,7 +70,7 @@ class OOXMLWorkflow:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        # 清理临时目录（无论是否打包）
-        if self.unpack_dir is not None:
+        # S5 修复：异常时保留临时目录便于调试；正常结束才清理
+        if self.unpack_dir is not None and exc_type is None:
             shutil.rmtree(self.unpack_dir, ignore_errors=True)
             self.unpack_dir = None

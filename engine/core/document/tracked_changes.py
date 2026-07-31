@@ -24,6 +24,17 @@ from lxml import etree
 W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 NSMAP = {'w': W}
 
+# 全局修订 ID 计数器（B3 修复：w:id 必须全文档唯一）
+_rev_id_counter = [0]
+# 已用 RSID 集合（S2 修复：避免冲突）
+_used_rsids: set = set()
+
+
+def _next_rev_id() -> str:
+    """生成下一个全局唯一修订 ID。"""
+    _rev_id_counter[0] += 1
+    return str(_rev_id_counter[0])
+
 
 class RSIDManager:
     """修订会话 ID 管理器。"""
@@ -32,8 +43,12 @@ class RSIDManager:
         self._rsid = seed or self._generate_rsid()
 
     def _generate_rsid(self) -> str:
-        """生成 8 位十六进制 RSID。"""
-        return f"{random.randint(0, 0xFFFFFFFF):08X}"
+        """生成 8 位十六进制 RSID（S2 修复：去重，避免冲突）。"""
+        while True:
+            rsid = f"{random.randint(0, 0xFFFFFFFF):08X}"
+            if rsid not in _used_rsids:
+                _used_rsids.add(rsid)
+                return rsid
 
     @property
     def rsid(self) -> str:
@@ -55,8 +70,19 @@ def _make_run(text: str, rsid: str, is_deleted: bool = False,
     t = etree.SubElement(r, f'{{{W}}}t')
     if is_deleted:
         t.tag = f'{{{W}}}delText'
+        t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')  # S3: 保留空格
     t.text = text
     return r
+
+
+def _font_from_rpr(rPr) -> str:
+    """从 rPr 提取 eastAsia 字体名（B4 修复：保留原 run 字体）。"""
+    if rPr is None:
+        return ""
+    rFonts = rPr.find(f'{{{W}}}rFonts')
+    if rFonts is not None:
+        return rFonts.get(f'{{{W}}}eastAsia') or rFonts.get(f'{{{W}}}ascii') or ""
+    return ""
 
 
 def inject_tracked_change(para_node, old_text: str, new_text: str,
@@ -110,22 +136,30 @@ def inject_tracked_change(para_node, old_text: str, new_text: str,
     prefix = full_text[:pos]
     suffix = full_text[pos + len(old_text):]
 
+    # 从原文中提取第一个 run 的 rPr 用于新 run（B4 修复：保留格式）
+    source_rPr = None
+    for r, _, _, _ in runs:
+        rPr = r.find(f'{{{W}}}rPr')
+        if rPr is not None:
+            source_rPr = rPr
+            break
+
     if prefix:
-        para_node.append(_make_run(prefix, rsid))
+        para_node.append(_make_run(prefix, rsid, font_name=_font_from_rpr(source_rPr)))
     if old_text:
         del_el = etree.SubElement(para_node, f'{{{W}}}del')
-        del_el.set(f'{{{W}}}id', '1')
+        del_el.set(f'{{{W}}}id', _next_rev_id())  # B3: 全局唯一 ID
         del_el.set(f'{{{W}}}author', author)
         del_el.set(f'{{{W}}}date', now)
-        del_el.append(_make_run(old_text, rsid, is_deleted=True))
+        del_el.append(_make_run(old_text, rsid, is_deleted=True, font_name=_font_from_rpr(source_rPr)))
     if new_text:
         ins_el = etree.SubElement(para_node, f'{{{W}}}ins')
-        ins_el.set(f'{{{W}}}id', '2')
+        ins_el.set(f'{{{W}}}id', _next_rev_id())  # B3: 全局唯一 ID
         ins_el.set(f'{{{W}}}author', author)
         ins_el.set(f'{{{W}}}date', now)
-        ins_el.append(_make_run(new_text, rsid))
+        ins_el.append(_make_run(new_text, rsid, font_name=_font_from_rpr(source_rPr)))
     if suffix:
-        para_node.append(_make_run(suffix, rsid))
+        para_node.append(_make_run(suffix, rsid, font_name=_font_from_rpr(source_rPr)))
 
     return True
 

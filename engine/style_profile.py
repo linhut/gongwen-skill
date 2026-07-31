@@ -77,27 +77,15 @@ def _load_document_xml(docx_path: str | Path) -> etree._Element:
 
 
 def _mm(val: Optional[str]) -> Optional[float]:
-    """缇(twips) → mm。
-
-    注意：OOXML 中 w:pgSz（纸张）和 w:pgMar（页边距）的单位是缇
-    （twips，1/20 磅），1 英寸 = 1440 缇 = 25.4mm，故 1mm ≈ 56.6929 缇。
-    """
-    if not val:
-        return None
-    try:
-        return round(int(val) / 56.6929, 1)
-    except (ValueError, TypeError):
-        return None
+    """缇(twips) → mm。（跨模块#3: 委托 utils.parse）"""
+    from utils.parse import parse_twips_to_mm
+    return parse_twips_to_mm(val)
 
 
 def _pt_from_twips(val: Optional[str]) -> Optional[float]:
-    """缇(twips) → pt。"""
-    if not val:
-        return None
-    try:
-        return round(int(val) / 20.0, 1)
-    except (ValueError, TypeError):
-        return None
+    """缇(twips) → pt。（跨模块#3: 委托 utils.parse）"""
+    from utils.parse import parse_twips_to_pt
+    return parse_twips_to_pt(val)
 
 
 def _extract_run_style(rPr) -> Dict[str, Any]:

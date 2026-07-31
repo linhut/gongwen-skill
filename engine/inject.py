@@ -456,6 +456,11 @@ def _inject_even_page_footer_direct(output_path: str, fmt: str, font_name: str, 
     with zipfile.ZipFile(output_path, 'r') as zin:
         with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zout:
             for item in zin.infolist():
+                # I14 修复：ZIP 炸弹防护——限制单文件解压大小与压缩比
+                if item.file_size > 50 * 1024 * 1024:  # 单文件解压上限 50MB
+                    raise ValueError(f"ZIP 条目过大，拒绝处理: {item.filename} ({item.file_size} bytes)")
+                if item.compress_size > 0 and item.file_size / item.compress_size > 100:
+                    raise ValueError(f"ZIP 条目压缩比异常（疑似炸弹），拒绝处理: {item.filename}")
                 data = zin.read(item.filename)
                 if item.filename == 'word/document.xml':
                     root = etree.fromstring(data)
@@ -483,18 +488,36 @@ def _inject_even_page_footer_direct(output_path: str, fmt: str, font_name: str, 
                     zout.writestr(item.filename,
                         etree.tostring(root, xml_declaration=True, encoding='UTF-8', standalone=True))
                 elif item.filename == 'word/_rels/document.xml.rels':
-                    rels = data.decode('utf-8')
-                    if 'rIdFtrEven' not in rels:
-                        rels = rels.replace('</Relationships>',
-                            '<Relationship Id="rIdFtrEven" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer2.xml"/></Relationships>')
-                    zout.writestr(item.filename, rels.encode())
+                    # I15 修复：结构化 XML 编辑（替代纯文本替换，避免破坏结构）
+                    rel_root = etree.fromstring(data)
+                    rel_ns = 'http://schemas.openxmlformats.org/package/2006/relationships'
+                    existing_ids = [r.get('Id') for r in rel_root]
+                    if 'rIdFtrEven' not in existing_ids:
+                        rel = etree.SubElement(rel_root, '{%s}Relationship' % rel_ns)
+                        rel.set('Id', 'rIdFtrEven')
+                        rel.set('Type', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer')
+                        rel.set('Target', 'footer2.xml')
+                    zout.writestr(item.filename,
+                        etree.tostring(rel_root, xml_declaration=True, encoding='UTF-8', standalone=True))
                 else:
                     zout.writestr(item.filename, data)
             zout.writestr('word/footer2.xml',
                 etree.tostring(even_ftr, xml_declaration=True, encoding='UTF-8', standalone=True))
 
-    with open(output_path, 'wb') as f:
-        f.write(buf.getvalue())
+    # I10 修复：原子写入（先写临时文件再 os.replace，崩溃不产生半写文件）
+    import tempfile, os as _os
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=_os.path.dirname(_os.path.abspath(output_path)),
+                                        suffix='.tmp', prefix='.gongwen_')
+    try:
+        with _os.fdopen(tmp_fd, 'wb') as f:
+            f.write(buf.getvalue())
+        _os.replace(tmp_path, output_path)
+    except Exception:
+        try:
+            _os.unlink(tmp_path)
+        except Exception:
+            pass
+        raise
     logger.info("偶数页页脚已注入（直接 ZIP 方式）")
 
 

@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.17"
+__version__ = "1.12.18"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -46,8 +46,6 @@ __version__ = "1.12.17"
 import argparse
 import json
 import sys
-import uuid
-from datetime import datetime
 from pathlib import Path
 
 # 将 engine/ 加入模块搜索路径，使内部 `from core... / from utils... / from config`
@@ -677,6 +675,19 @@ def cmd_optimize_content(args):
         print(f"  批注完整性验证: {'通过' if ok else '失败'}")
         return
 
+    # --tracked-change：Word 原生修订标记模式（审阅面板逐条接受/拒绝）
+    if getattr(args, 'tracked_change', False):
+        from core.document.tracked_changes import inject_tracked_changes
+        tc_changes = [{
+            "para_index": c.get("paragraph_index", 0),
+            "original_text": c.get("original_text", ""),
+            "optimized_text": c.get("optimized_text", ""),
+        } for c in changes]
+        result = inject_tracked_changes(args.input, out_name, tc_changes)
+        print(f"✅ 修订版文档已生成: {result}")
+        print(f"  共 {len(tc_changes)} 处修订标记（Word 打开后可通过「审阅→修订」逐条接受/拒绝）")
+        return
+
     kwargs = {}
     if hasattr(args, 'disclaimer') and args.disclaimer is not None:
         kwargs['disclaimer'] = args.disclaimer
@@ -738,22 +749,6 @@ def cmd_full_review(args):
     print(f"✅ 完整审校完成: {result}")
     print(f"  格式修复 {len(issues)} 项 + 批注 {len(suggestions)} 处（可审阅→接受/拒绝）")
     print(f"  批注完整性验证: {'通过' if ok else '失败'}")
-
-
-def _get_tmp_path(input_path: Path) -> Path:
-    """在 engine/tmp/ 下创建中间文件路径。"""
-    import tempfile
-    tmp_dir = Path(__file__).resolve().parent / "engine" / "tmp"
-    tmp_dir.mkdir(parents=True, exist_ok=True)
-    return tmp_dir / f"_full_review_{input_path.stem}.docx"
-
-
-def _cleanup_tmp_path(path: Path) -> None:
-    """清理中间文件。"""
-    try:
-        path.unlink(missing_ok=True)
-    except Exception:
-        pass
 
 
 def cmd_bold_first(args):
@@ -1121,6 +1116,8 @@ def main():
     p.add_argument("--paragraphs", type=str, default=None, help='只处理指定段落范围，如 "11-15" 或 "5,7,9"')
     p.add_argument("--comment-mode", action="store_true",
                    help="批注模式：将优化建议以 Word 原生批注写入（可审阅→接受/拒绝），而非行内标记")
+    p.add_argument("--tracked-change", action="store_true",
+                   help="修订追踪模式：将修改以 Word 原生修订标记（ins/del）写入，可在审阅面板逐条接受/拒绝")
     p.set_defaults(func=cmd_optimize_content)
 
     p = sub.add_parser("bold-first", help="正文段落首句加粗（符合公文规范：点题第一句话默认加粗）")

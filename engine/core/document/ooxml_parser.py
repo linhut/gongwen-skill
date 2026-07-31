@@ -89,11 +89,33 @@ class OOXMLParser:
 
         文本框位置：<w:txbxContent> 内，通常在 <w:drawing>/<wp:anchor> 包裹的
         <wps:wsp>/<mc:AlternateContent> 中。
+
+        S4 修复：跳过 mc:Fallback 分支（旧版兼容），只提取 mc:Choice（当前生效版本），
+        避免同一文本框被重复提取。
         """
         root = self._load_document_xml(docx_path)
         textboxes: List[TextBoxContent] = []
+        MC_FALLBACK = f'{{{MC}}}Fallback'
+        MC_CHOICE = f'{{{MC}}}Choice'
 
+        seen_txbx = set()
         for idx, txbx in enumerate(root.iter(f'{{{W}}}txbxContent')):
+            # 检查是否位于 mc:Fallback 内（若是则跳过，避免与 Choice 重复）
+            parent = txbx.getparent()
+            in_fallback = False
+            while parent is not None:
+                if parent.tag == MC_FALLBACK:
+                    in_fallback = True
+                    break
+                parent = parent.getparent()
+            if in_fallback:
+                continue
+
+            # 去重（同一 txbxContent 元素只处理一次）
+            if id(txbx) in seen_txbx:
+                continue
+            seen_txbx.add(id(txbx))
+
             paras = []
             for p in txbx.findall(f'{{{W}}}p'):
                 # 注意：w:t 嵌套在 w:r 内（p > r > t），须用 iter 遍历后代

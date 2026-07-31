@@ -723,10 +723,15 @@ def load_changes_from_json(json_path: str) -> list[dict]:
     """从 JSON 文件加载变更列表。"""
     data = json.loads(Path(json_path).read_text(encoding="utf-8"))
     changes = data.get("changes", data) if isinstance(data, dict) else data
-    required = {"paragraph_index", "original_text", "optimized_text", "reason", "style", "reference"}
+    # I12 修复：仅核心字段必填，style/reference 可选（后续默认填充）
+    required = {"paragraph_index", "original_text", "optimized_text"}
     for c in changes:
         if not required.issubset(c.keys()):
             raise ValueError(
                 f"变更项缺少必要字段，需要 {required}，实际有 {set(c.keys())}"
             )
+        # 可选字段默认值
+        c.setdefault("reason", "")
+        c.setdefault("style", "庄重严谨")
+        c.setdefault("reference", "")
     return changes

@@ -363,29 +363,18 @@ def _get_template_content(template_id: str, template_name: str) -> dict:
 
 
 def _parse_size(size_value) -> float:
-    """解析 '22pt' / 22 → float。"""
-    if isinstance(size_value, (int, float)):
-        return float(size_value)
-    return float(str(size_value).replace("pt", "").strip())
+    """解析 '22pt' / 22 → float。（跨模块#3: 委托 utils.parse）"""
+    from utils.parse import parse_pt
+    return parse_pt(size_value) or 0.0
 
 
 def _parse_indent(indent_str) -> float:
-    """解析 '2em' → pt（1em ≈ 16pt）。"""
-    if isinstance(indent_str, (int, float)):
-        return float(indent_str)
-    indent_str = str(indent_str).strip()
-    if "em" in indent_str:
-        return float(indent_str.replace("em", "").strip()) * 16
-    return float(indent_str.replace("pt", "").strip())
+    """解析 '2em' → pt（1em ≈ 16pt）。（跨模块#3: 委托 utils.parse）"""
+    from utils.parse import parse_indent
+    return parse_indent(indent_str) or 0.0
 
 
 def _parse_margin(value) -> float:
-    """解析 '3.7cm' / '37mm' → mm。"""
-    if isinstance(value, (int, float)):
-        return float(value)
-    value = str(value).strip()
-    if "cm" in value:
-        return float(value.replace("cm", "").strip()) * 10
-    elif "mm" in value:
-        return float(value.replace("mm", "").strip())
-    return float(value)
+    """解析 '3.7cm' / '37mm' → mm。（跨模块#3: 委托 utils.parse）"""
+    from utils.parse import parse_mm
+    return parse_mm(value) or 0.0

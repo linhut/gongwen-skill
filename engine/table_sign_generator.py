@@ -240,6 +240,8 @@ def generate_table_signs(
         生成的 .docx 文件路径列表
     """
     tmpl = template_path or DEFAULT_TEMPLATE
+    if tmpl is None:
+        raise ValueError("缺少桌签模板：请通过 --template 参数指定桌签模板 .dotx 路径（如 F:/.../桌签.dotx）")
     if not tmpl.exists():
         raise FileNotFoundError(f"桌签模板不存在: {tmpl}")
 
@@ -274,6 +276,8 @@ def generate_table_signs_combined(
         生成的 .docx 文件路径
     """
     tmpl = template_path or DEFAULT_TEMPLATE
+    if tmpl is None:
+        raise ValueError("缺少桌签模板：请通过 --template 参数指定桌签模板 .dotx 路径（如 F:/.../桌签.dotx）")
     if not tmpl.exists():
         raise FileNotFoundError(f"桌签模板不存在: {tmpl}")
 

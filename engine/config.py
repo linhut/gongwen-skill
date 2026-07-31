@@ -31,7 +31,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # ---------------------------------------------------------------------------
 _env_data = os.environ.get("GONGWEN_DATA_DIR")
 if _env_data:
-    APP_DATA_DIR = Path(_env_data).expanduser().resolve()
+    # S15 修复：环境变量路径校验——必须为绝对路径，拒绝空串/相对路径/含非法字符
+    if not _env_data.strip():
+        _log = __import__('logging').getLogger(__name__)
+        _log.warning("GONGWEN_DATA_DIR 为空，回退默认目录")
+        APP_DATA_DIR = Path.home() / ".gongwen-skill"
+    elif not Path(_env_data).is_absolute():
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            f"GONGWEN_DATA_DIR 必须为绝对路径: {_env_data!r}，回退默认目录")
+        APP_DATA_DIR = Path.home() / ".gongwen-skill"
+    else:
+        APP_DATA_DIR = Path(_env_data).expanduser().resolve()
 else:
     APP_DATA_DIR = Path.home() / ".gongwen-skill"
 
@@ -48,7 +59,7 @@ USER_RULES_DIR = APP_DATA_DIR / "user_rules"
 
 LOG_DIR = APP_DATA_DIR / "logs"
 SESSION_DIR = APP_DATA_DIR / "sessions"
-TMP_DIR = Path(__file__).resolve().parent / "tmp"
+TMP_DIR = APP_DATA_DIR / "tmp"   # 移到数据目录（安装目录可能只读，B8 修复）
 
 # ---------------------------------------------------------------------------
 #  自动创建可写目录

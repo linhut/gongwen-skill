@@ -13,6 +13,28 @@ from typing import Optional
 # ---------------------------------------------------------------------------
 #  Primitives
 # ---------------------------------------------------------------------------
+from pydantic import field_validator
+
+
+def _validate_rgb_color(v) -> str:
+    """S6 修复：校验 RGB 颜色格式（RRGGBB 或 #RRGGBB），只校验不改写值。"""
+    if v is None:
+        return v
+    s = str(v).lstrip('#')
+    if len(s) != 6 or not all(c in '0123456789ABCDEFabcdef' for c in s):
+        raise ValueError(f"非法 RGB 颜色值: {v!r}（应为 6 位十六进制 RRGGBB）")
+    return v  # 保持原值，不规范化（避免破坏向后兼容）
+
+
+def _validate_heading_level(v) -> int | None:
+    """S7 修复：heading_level 限制在 1-9（Word 标题层级范围）。"""
+    if v is None:
+        return None
+    v = int(v)
+    if not (1 <= v <= 9):
+        raise ValueError(f"heading_level 必须在 1-9 之间，实际 {v}")
+    return v
+
 
 class RunFormat(BaseModel):
     """Formatting information for a single text run."""
@@ -23,6 +45,12 @@ class RunFormat(BaseModel):
     underline: Optional[bool] = None
     strikethrough: Optional[bool] = None
     color: Optional[str] = None
+
+    # S6: RGB 颜色校验（Pydantic V2 field_validator）
+    @field_validator('color')
+    @classmethod
+    def _check_color(cls, v):
+        return _validate_rgb_color(v)
 
 
 class Run(BaseModel):
@@ -55,6 +83,12 @@ class Paragraph(BaseModel):
     runs: list[Run] = Field(default_factory=list)
     format: ParagraphFormat = Field(default_factory=ParagraphFormat)
     page_break: bool = False                 # 段前分页
+
+    # S7: heading_level 范围校验（1-9）
+    @field_validator('heading_level')
+    @classmethod
+    def _check_heading_level(cls, v):
+        return _validate_heading_level(v)
 
 
 class TableCell(BaseModel):

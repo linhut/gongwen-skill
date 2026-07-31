@@ -67,7 +67,12 @@ def generate_docx(model: DocumentModel, output_path: Path | str | "io.BytesIO") 
             doc = Document(str(source_path))
             logger.debug(f"Loaded source document: {source_path}")
         except Exception as e:
-            logger.warning(f"Failed to load source doc, creating new", exc_info=True)
+            # S8 修复：明确告知源文档加载失败将导致未建模内容（图片/分节符等）丢失
+            logger.warning(
+                f"源文档加载失败（{e}），将创建空文档——原文档中的图片/嵌入对象/"
+                f"分节符等未建模内容将无法保留。如确认源文件损坏，请检查 {source_path}",
+                exc_info=True,
+            )
             doc = Document()
     else:
         doc = Document()
@@ -194,7 +199,10 @@ def _auto_fix_fonts(doc: Document, font_issues: list[dict]):
             continue
         seen_runs.add(id(run))
         try:
-            set_run_font(run, BODY_FONT)
+            # S9 修复：使用 FONT_FALLBACK_MAP 计算结果替换，而非一律 BODY_FONT
+            invalid_font = issue.get("font_name", "") or issue.get("name", "")
+            replacement = _get_replacement(issue.get("attr", "eastAsia"), invalid_font)
+            set_run_font(run, replacement)
             fixed_count += 1
         except Exception as e:
             logger.debug(f"Auto-fix font failed: {e}")

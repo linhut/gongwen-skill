@@ -427,7 +427,25 @@ def normalize_heading_content(model: DocumentModel) -> int:
     - 三级标题：1．→ 1.（全角句号转半角）
     - 四级标题：(1)→（1）（半角括号转全角）
     返回修改次数。
+
+    I8 修复：保留多 run 标题格式——只更新首个 run 的编号前缀，
+    不再清空后续 run（避免加粗/字体等格式丢失）。
     """
+    def _apply_heading_text(para, new_text: str) -> None:
+        """仅更新首 run 前缀，保留后续 run 文本与格式。"""
+        para.text = new_text
+        if not para.runs:
+            return
+        rest_text = ''.join(r.text or '' for r in para.runs[1:])
+        if rest_text and new_text.endswith(rest_text):
+            # 首 run 只放新前缀 + 其余部分保持在后缀 run
+            para.runs[0].text = new_text[:len(new_text) - len(rest_text)]
+        else:
+            para.runs[0].text = new_text
+            for r in para.runs[1:]:
+                r.text = ""
+        # 注意：不清空后续 run 的格式，只更新文本
+
     changes = 0
     for para in model.paragraphs:
         if not para.text.strip():
@@ -442,11 +460,7 @@ def normalize_heading_content(model: DocumentModel) -> int:
             if cn:
                 new_text = f'{cn}、{m.group(2)}'
                 if new_text != text:
-                    para.text = new_text
-                    if para.runs:
-                        para.runs[0].text = new_text
-                        for r in para.runs[1:]:
-                            r.text = ""
+                    _apply_heading_text(para, new_text)
                     changes += 1
                 continue
 
@@ -455,11 +469,7 @@ def normalize_heading_content(model: DocumentModel) -> int:
         if m:
             new_text = f'（{m.group(1)}）{m.group(2)}'
             if new_text != text:
-                para.text = new_text
-                if para.runs:
-                    para.runs[0].text = new_text
-                    for r in para.runs[1:]:
-                        r.text = ""
+                _apply_heading_text(para, new_text)
                 changes += 1
             continue
 
@@ -468,11 +478,7 @@ def normalize_heading_content(model: DocumentModel) -> int:
         if m:
             new_text = f'{m.group(1)}.{m.group(2)}'
             if new_text != text:
-                para.text = new_text
-                if para.runs:
-                    para.runs[0].text = new_text
-                    for r in para.runs[1:]:
-                        r.text = ""
+                _apply_heading_text(para, new_text)
                 changes += 1
             continue
 
@@ -481,11 +487,7 @@ def normalize_heading_content(model: DocumentModel) -> int:
         if m:
             new_text = f'（{m.group(1)}）{m.group(2)}'
             if new_text != text:
-                para.text = new_text
-                if para.runs:
-                    para.runs[0].text = new_text
-                    for r in para.runs[1:]:
-                        r.text = ""
+                _apply_heading_text(para, new_text)
                 changes += 1
 
     return changes
@@ -983,34 +985,15 @@ def apply_modifications(model: DocumentModel, modifications: list[dict]) -> Docu
 # ---------------------------------------------------------------------------
 
 def _parse_mm_value(value: str | float | None) -> float | None:
-    """Parse margin value like '3.7cm' or 37 to mm."""
-    if value is None:
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    value = str(value).strip()
-    try:
-        if "cm" in value:
-            return float(value.replace("cm", "").strip()) * 10
-        if "mm" in value:
-            return float(value.replace("mm", "").strip())
-        return float(value)
-    except (ValueError, TypeError):
-        logger.warning(f"无法解析 mm 值: {value!r}")
-        return None
+    """Parse margin value like '3.7cm' or 37 to mm.（跨模块#3: 委托 utils.parse）"""
+    from utils.parse import parse_mm
+    return parse_mm(value)
 
 
 def _parse_pt_value(value: str | float | None) -> float | None:
-    """Parse size/spacing value like '16pt' or 16 to pt."""
-    if value is None:
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    try:
-        return float(str(value).replace("pt", "").strip())
-    except (ValueError, TypeError):
-        logger.warning(f"无法解析 pt 值: {value!r}")
-        return None
+    """Parse size/spacing value like '16pt' or 16 to pt.（跨模块#3: 委托 utils.parse）"""
+    from utils.parse import parse_pt
+    return parse_pt(value)
 
 
 def _parse_indent_value(value: str | float | None) -> float | None:

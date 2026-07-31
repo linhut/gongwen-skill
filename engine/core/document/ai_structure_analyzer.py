@@ -113,29 +113,39 @@ def classify_with_ai(model: DocumentModel, provider_name: str = "openai") -> boo
     # 调用AI
     try:
         logger.info(f"Calling AI ({provider_name}) for structure analysis of {len(paragraphs_text)} paragraphs")
-        # provider.analyze() 是 async 函数，需要使用 asyncio 运行
+        # provider.analyze() 是 async 函数，需安全运行（I9 修复：兼容 Jupyter/FastAPI 已运行事件循环环境）
         import asyncio
+        coro = provider.analyze(prompt, task_type="classification")
+
+        def _run_async(coro_obj):
+            """在独立事件循环中运行协程，避免污染当前线程事件循环。"""
+            loop = asyncio.new_event_loop()
+            try:
+                return loop.run_until_complete(coro_obj)
+            finally:
+                loop.close()
+
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # 如果事件循环正在运行，使用 run_coroutine_threadsafe
+            current = asyncio.get_event_loop()
+            if current.is_running():
+                # 当前线程已有运行中的事件循环（Jupyter/FastAPI 等）→ 用新线程运行
                 import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    result = pool.submit(asyncio.run, provider.analyze(prompt, task_type="classification")).result(timeout=30)
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    result = pool.submit(_run_async, coro).result(timeout=30)
             else:
-                result = loop.run_until_complete(provider.analyze(prompt, task_type="classification"))
+                result = current.run_until_complete(coro)
         except RuntimeError:
-            # 没有事件循环，直接运行
-            result = asyncio.run(provider.analyze(prompt, task_type="classification"))
+            # 无当前事件循环 → 新开一个
+            result = _run_async(coro)
         raw_response = result.raw_response if hasattr(result, 'raw_response') else str(result)
     except Exception as e:
         logger.error(f"AI structure analysis failed: {e}")
         return False
     finally:
-        # 关闭 provider 的 HTTP 连接
+        # 关闭 provider 的 HTTP 连接（同样用独立循环，I9 修复）
         try:
             import asyncio as _asyncio
-            _asyncio.run(provider.close())
+            _run_async(provider.close())
         except Exception:
             pass
 
