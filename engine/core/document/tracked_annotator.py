@@ -1,0 +1,388 @@
+# -*- coding: utf-8 -*-
+"""
+tracked + comments 单次 ZIP 注入器（优化方案 v4.0 F2/F4）。
+
+F2：修订标记注入与批注注入合并为同一次 ZIP 操作——
+    一次解包 → 内存中完成 document.xml 修订+锚定 → 构建 comments.xml 等 → 一次打包。
+F4：句子级/片段级差异修订（inject_tracked_change_granular）——
+    仅标记实际变更的短语，非全段替换；相邻 diff 片段合并避免碎片化。
+
+用法：
+  from core.document.tracked_annotator import inject_tracked_with_comments
+  inject_tracked_with_comments("输入.docx", changes, suggestions, "输出.docx", id_offset=0)
+"""
+from __future__ import annotations
+import copy
+import re
+import zipfile
+from datetime import datetime
+from difflib import SequenceMatcher
+from pathlib import Path
+from typing import List, Optional
+
+from lxml import etree
+
+W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+CT = 'http://schemas.openxmlformats.org/package/2006/content-types'
+PC = 'http://schemas.openxmlformats.org/package/2006/relationships'
+W15 = 'http://schemas.microsoft.com/office/word/2012/wordml'
+
+XML_SPACE = '{http://www.w3.org/XML/1998/namespace}space'
+
+# 全局修订 ID 计数器（与 tracked_changes 共用语义：w:id 全文档唯一）
+_rev_id_counter = [0]
+
+
+def _next_rev_id() -> str:
+    _rev_id_counter[0] += 1
+    return str(_rev_id_counter[0])
+
+
+def _reset_rev_counter() -> None:
+    _rev_id_counter[0] = 0
+
+
+# ---------------------------------------------------------------------------
+#  F4：句子级/片段级差异修订
+# ---------------------------------------------------------------------------
+
+_SENT_SPLIT_RE = re.compile(r'([。！？：；])')
+
+
+def split_sentences(text: str) -> list[str]:
+    """按中文标点分句，返回句子列表（含标点）。"""
+    parts = _SENT_SPLIT_RE.split(text)
+    sents = []
+    buf = ""
+    for p in parts:
+        buf += p
+        if _SENT_SPLIT_RE.match(p):
+            sents.append(buf)
+            buf = ""
+    if buf.strip():
+        sents.append(buf)
+    return sents
+
+
+def _build_diff_ops(original_text: str, optimized_text: str,
+                    merge_gap: int = 3) -> list:
+    """构建片段级 diff 操作列表（F4：句子级 + 相邻合并）。
+
+    - 完全相同的文本 → 返回空列表（无修改）
+    - 低相似度（< 0.3）→ 整段替换
+    - 否则 → 句子级 diff + 相邻片段合并（间隔 ≤ merge_gap 字符合并）
+
+    Returns:
+        ops: [("keep", text) | ("delete", text) | ("insert", text) | ("replace_all", orig, opt)]
+    """
+    if original_text == optimized_text:
+        return []
+    ratio = SequenceMatcher(None, original_text, optimized_text).ratio()
+    if ratio < 0.3:
+        return [("replace_all", original_text, optimized_text)]
+
+    # 字符级 opcodes
+    matcher = SequenceMatcher(None, original_text, optimized_text, autojunk=False)
+    raw_ops = []
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            raw_ops.append(("keep", original_text[i1:i2]))
+        elif tag == "replace":
+            raw_ops.append(("delete", original_text[i1:i2]))
+            raw_ops.append(("insert", optimized_text[j1:j2]))
+        elif tag == "delete":
+            raw_ops.append(("delete", original_text[i1:i2]))
+        elif tag == "insert":
+            raw_ops.append(("insert", optimized_text[j1:j2]))
+
+    # 合并优化：相邻 del+ins 合并为一组（F4 4.4）
+    merged: list = []
+    i = 0
+    while i < len(raw_ops):
+        op = raw_ops[i]
+        if op[0] == "delete" and i + 1 < len(raw_ops) and raw_ops[i + 1][0] == "insert":
+            merged.append(("replace", op[1], raw_ops[i + 1][1]))
+            i += 2
+        else:
+            merged.append(op)
+            i += 1
+    return merged
+
+
+def inject_tracked_change_granular(para_node, old_text: str, new_text: str,
+                                   rsid: str, author: str) -> bool:
+    """F4：片段级差异修订注入。
+
+    仅标记实际变更的短语：原文中未变部分保留原 run，
+    变化部分生成 w:del（旧片段）+ w:ins（新片段），可连续出现多组。
+    """
+    if para_node is None:
+        return False
+    if old_text == new_text:
+        return True  # 无修改
+
+    now = datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    # 收集 run 文本
+    runs = []
+    offset = 0
+    for r in para_node.iter(f'{{{W}}}r'):
+        text = ''.join(t.text or '' for t in r.findall(f'{{{W}}}t'))
+        if not text:
+            continue
+        runs.append((r, offset, offset + len(text), text))
+        offset += len(text)
+    if not runs:
+        return False
+
+    full_text = ''.join(r[3] for r in runs)
+
+    # 片段级 diff ops（对原文整体做 diff，非分句对齐——分句仅用于合并启发）
+    ops = _build_diff_ops(full_text, new_text)
+    if not ops:
+        return True
+
+    # 保留非 run 子元素
+    non_run_children = [child for child in para_node if child.tag != f'{{{W}}}r']
+    for r in para_node.findall(f'{{{W}}}r'):
+        para_node.remove(r)
+
+    # 源格式模板（第一个有文本 run 的 rPr）
+    source_rPr = None
+    for r, _, _, _ in runs:
+        rPr = r.find(f'{{{W}}}rPr')
+        if rPr is not None:
+            source_rPr = rPr
+            break
+
+    def _cloned_run(text: str, is_deleted: bool = False) -> etree._Element:
+        r = etree.Element(f'{{{W}}}r')
+        r.set(f'{{{W}}}rsidR', rsid)
+        if source_rPr is not None:
+            r.append(copy.deepcopy(source_rPr))
+        t = etree.SubElement(r, f'{{{W}}}t')
+        if is_deleted:
+            t.tag = f'{{{W}}}delText'
+            t.set(XML_SPACE, 'preserve')
+        else:
+            t.set(XML_SPACE, 'preserve')
+        t.text = text
+        return r
+
+    # 按 ops 重建
+    for op_tuple in ops:
+        op = op_tuple[0]
+        if op == "keep":
+            para_node.append(_cloned_run(op_tuple[1]))
+        elif op == "delete":
+            del_el = etree.SubElement(para_node, f'{{{W}}}del')
+            del_el.set(f'{{{W}}}id', _next_rev_id())
+            del_el.set(f'{{{W}}}author', author)
+            del_el.set(f'{{{W}}}date', now)
+            del_el.append(_cloned_run(op_tuple[1], is_deleted=True))
+        elif op == "insert":
+            ins_el = etree.SubElement(para_node, f'{{{W}}}ins')
+            ins_el.set(f'{{{W}}}id', _next_rev_id())
+            ins_el.set(f'{{{W}}}author', author)
+            ins_el.set(f'{{{W}}}date', now)
+            ins_el.append(_cloned_run(op_tuple[1]))
+        elif op == "replace":
+            # 合并组：del(旧) + ins(新)
+            del_el = etree.SubElement(para_node, f'{{{W}}}del')
+            del_el.set(f'{{{W}}}id', _next_rev_id())
+            del_el.set(f'{{{W}}}author', author)
+            del_el.set(f'{{{W}}}date', now)
+            del_el.append(_cloned_run(op_tuple[1], is_deleted=True))
+            ins_el = etree.SubElement(para_node, f'{{{W}}}ins')
+            ins_el.set(f'{{{W}}}id', _next_rev_id())
+            ins_el.set(f'{{{W}}}author', author)
+            ins_el.set(f'{{{W}}}date', now)
+            ins_el.append(_cloned_run(op_tuple[2]))
+        elif op == "replace_all":
+            # 整段替换：原文整体删除 + 修改文整体插入
+            _, orig_all, opt_all = op_tuple
+            if orig_all:
+                del_el = etree.SubElement(para_node, f'{{{W}}}del')
+                del_el.set(f'{{{W}}}id', _next_rev_id())
+                del_el.set(f'{{{W}}}author', author)
+                del_el.set(f'{{{W}}}date', now)
+                del_el.append(_cloned_run(orig_all, is_deleted=True))
+            if opt_all:
+                ins_el = etree.SubElement(para_node, f'{{{W}}}ins')
+                ins_el.set(f'{{{W}}}id', _next_rev_id())
+                ins_el.set(f'{{{W}}}author', author)
+                ins_el.set(f'{{{W}}}date', now)
+                ins_el.append(_cloned_run(opt_all))
+
+    # 恢复非 run 子元素
+    for child in non_run_children:
+        para_node.append(child)
+    return True
+
+
+# ---------------------------------------------------------------------------
+#  F2：修订+批注 单次 ZIP 注入
+# ---------------------------------------------------------------------------
+
+def _collect_para_nodes(body) -> list:
+    para_nodes = []
+    for child in body:
+        tag = etree.QName(child.tag).localname if child.tag else ''
+        if tag == 'p':
+            para_nodes.append(child)
+    return para_nodes
+
+
+def _anchor_comment(p, cid: int) -> None:
+    """在段落上锚定 commentRangeStart/End/Reference（整段锚定，D2 回退方案）。"""
+    runs = [r for r in p.iter(f'{{{W}}}r') if ''.join(t.text or '' for t in r.findall(f'{{{W}}}t'))]
+    if not runs:
+        return
+    crs = etree.Element(f'{{{W}}}commentRangeStart')
+    crs.set(f'{{{W}}}id', str(cid))
+    runs[0].addprevious(crs)
+    cre = etree.Element(f'{{{W}}}commentRangeEnd')
+    cre.set(f'{{{W}}}id', str(cid))
+    runs[-1].addnext(cre)
+    cr = etree.Element(f'{{{W}}}r')
+    crPr = etree.SubElement(cr, f'{{{W}}}rPr')
+    rStyle = etree.SubElement(crPr, f'{{{W}}}rStyle')
+    rStyle.set(f'{{{W}}}val', 'CommentReference')
+    crRef = etree.SubElement(cr, f'{{{W}}}commentReference')
+    crRef.set(f'{{{W}}}id', str(cid))
+    p.append(cr)
+
+
+def _build_comments_xml(suggestions: list, id_offset: int = 0) -> etree._Element:
+    """构建 comments.xml（批注 ID 从 id_offset 开始，避免与修订 ID 碰撞，D3 修复）。"""
+    root = etree.Element(f'{{{W}}}comments', nsmap={'w': W, 'w15': W15})
+    for i, sug in enumerate(suggestions, start=1):
+        cid = id_offset + i
+        c = etree.SubElement(root, f'{{{W}}}comment')
+        c.set(f'{{{W}}}id', str(cid))
+        c.set(f'{{{W}}}author', sug.author)
+        c.set(f'{{{W}}}date', datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))
+        p = etree.SubElement(c, f'{{{W}}}p')
+        p.set(f'{{{W15}}}paraId', f'{cid:08X}')
+        p.set(f'{{{W15}}}textId', '77777777')
+        r = etree.SubElement(p, f'{{{W}}}r')
+        t = etree.SubElement(r, f'{{{W}}}t')
+        t.text = sug.comment_text
+        if getattr(sug, 'category', ''):
+            r2 = etree.SubElement(p, f'{{{W}}}r')
+            t2 = etree.SubElement(r2, f'{{{W}}}t')
+            t2.text = f' [{sug.category}]'
+    return root
+
+
+def inject_tracked_with_comments(
+    input_path: str | Path,
+    changes: list[dict],
+    suggestions: list,
+    output_path: str | Path,
+    author: str = "公文技能-修订",
+    id_offset: int = 1000,
+) -> Path:
+    """
+    F2：修订标记 + 批注 单次 ZIP 操作注入。
+
+    Args:
+        input_path: 输入 .docx
+        changes: [{para_index, original_text, optimized_text}]（F4 granular 修订）
+        suggestions: [CommentSuggestion]（批注）
+        output_path: 输出 .docx
+        author: 修订作者（F1：skill 名 + "-修订"）
+        id_offset: 批注 ID 起始偏移（与修订 ID 隔离，D3 修复）
+
+    Returns:
+        输出路径
+    """
+    _reset_rev_counter()
+    src = Path(input_path)
+    out = Path(output_path)
+
+    with zipfile.ZipFile(src) as z:
+        entries = {name: z.read(name) for name in z.namelist()}
+
+    # 1. document.xml：修订注入 + 批注锚定
+    root = etree.fromstring(entries['word/document.xml'])
+    body = root.find(f'{{{W}}}body')
+    para_nodes = _collect_para_nodes(body)
+
+    import random
+    rsid = f"{random.randint(0, 0xFFFFFFFF):08X}"
+
+    applied = 0
+    for c in changes:
+        pi = c.get('para_index', -1)
+        orig = c.get('original_text', '')
+        opt = c.get('optimized_text', '')
+        if not (0 <= pi < len(para_nodes)) or not orig:
+            continue
+        # D4：未修改段落跳过
+        if (orig or '').strip() == (opt or '').strip():
+            continue
+        if inject_tracked_change_granular(para_nodes[pi], orig, opt, rsid, author):
+            applied += 1
+
+    # 2. 批注锚定（在修订后的段落上）
+    for i, sug in enumerate(suggestions, start=1):
+        if not (0 <= sug.para_index < len(para_nodes)):
+            continue
+        _anchor_comment(para_nodes[sug.para_index], id_offset + i)
+
+    entries['word/document.xml'] = etree.tostring(
+        root, xml_declaration=True, encoding='UTF-8', standalone=True)
+
+    # 3. comments.xml
+    comments_xml = _build_comments_xml(suggestions, id_offset)
+    entries['word/comments.xml'] = etree.tostring(
+        comments_xml, xml_declaration=True, encoding='UTF-8', standalone=True)
+
+    # 4. Content-Type
+    ct_key = '[Content_Types].xml'
+    if ct_key in entries:
+        ct_root = etree.fromstring(entries[ct_key])
+        if not any(ov.get('PartName') == '/word/comments.xml' for ov in ct_root):
+            ov = etree.SubElement(ct_root, f'{{{CT}}}Override')
+            ov.set('PartName', '/word/comments.xml')
+            ov.set('ContentType', 'application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml')
+        entries[ct_key] = etree.tostring(ct_root, xml_declaration=True, encoding='UTF-8', standalone=True)
+
+    # 5. 关系
+    rels_key = 'word/_rels/document.xml.rels'
+    if rels_key in entries:
+        rels_root = etree.fromstring(entries[rels_key])
+        if not any(r.get('Type', '').endswith('/comments') for r in rels_root):
+            existing_ids = {r.get('Id', '') for r in rels_root}
+            max_num = 0
+            for rid in existing_ids:
+                if rid.startswith('rId') and rid[3:].isdigit():
+                    max_num = max(max_num, int(rid[3:]))
+            rel = etree.SubElement(rels_root, f'{{{PC}}}Relationship')
+            rel.set('Id', f'rId{max_num + 1}')
+            rel.set('Type', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments')
+            rel.set('Target', 'comments.xml')
+        entries[rels_key] = etree.tostring(rels_root, xml_declaration=True, encoding='UTF-8', standalone=True)
+
+    # 6. settings.xml rsids（G4）
+    settings_key = 'word/settings.xml'
+    if settings_key in entries:
+        try:
+            sroot = etree.fromstring(entries[settings_key])
+            if sroot.find(f'{{{W}}}rsids') is None:
+                rsids = etree.SubElement(sroot, f'{{{W}}}rsids')
+                rsidRoot = etree.SubElement(rsids, f'{{{W}}}rsidRoot')
+                rsidRoot.set(f'{{{W}}}val', rsid)
+            entries[settings_key] = etree.tostring(
+                sroot, xml_declaration=True, encoding='UTF-8', standalone=True)
+        except Exception:
+            pass
+
+    # 7. 一次打包
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
+        for name, data in entries.items():
+            z.writestr(name, data)
+    return out

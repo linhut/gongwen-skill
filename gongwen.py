@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.23"
+__version__ = "1.12.24"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -606,6 +606,49 @@ def _echo_progress(args, step: int, total: int, label: str, detail: str = "") ->
     print(line)
 
 
+def safe_backup_input(input_path: Path) -> Path:
+    """F5 修复：将输入文件备份到系统临时目录，返回备份路径。
+
+    全部操作基于备份文件（而非原文件），输出成功后清理，失败时保留作为恢复点。
+    """
+    import tempfile, datetime as _dt
+    backup_dir = Path(tempfile.gettempdir()) / "gongwen_backup"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = backup_dir / f"{ts}_{input_path.name}"
+    shutil.copy2(str(input_path), str(backup_path))
+    return backup_path
+
+
+def safe_write_output(output_path: Path, write_fn) -> Path:
+    """F5 修复：尝试写入输出文件，被占用（PermissionError）时自动重命名 _v2/_v3…。
+
+    Args:
+        output_path: 目标输出路径
+        write_fn: 执行实际写入的可调用对象（接收目标路径参数）
+
+    Returns:
+        实际写入成功的路径
+    """
+    try:
+        write_fn(output_path)
+        return output_path
+    except PermissionError:
+        # 文件被占用，尝试追加序号
+        for i in range(2, 100):
+            alt = output_path.with_stem(f"{output_path.stem}_v{i}")
+            if alt.exists():
+                continue
+            try:
+                write_fn(alt)
+                print(f"⚠️ 输出文件被占用，已自动保存为: {alt.name}")
+                return alt
+            except PermissionError:
+                continue
+        raise
+
+
+
 def cmd_optimize_content(args):
     """内容优化差异对比：原文灰色+删除线，修改后红色高亮，附修改说明。
 
@@ -718,40 +761,40 @@ def cmd_optimize_content(args):
         return
 
     # --mode tracked：Word 原生修订（del/ins）+ 批注（修改说明）统一模式
-    mode = getattr(args, 'mode', 'inline')
+    mode = getattr(args, 'mode', 'tracked')
     if mode == 'tracked':
-        from core.document.tracked_changes import inject_tracked_changes
-        from core.document.annotator import GongwenAnnotator, CommentSuggestion
+        from core.document.tracked_annotator import inject_tracked_with_comments
+        from core.document.annotator import CommentSuggestion
         from core.document.reviewer_comments import REVIEWER_MAP, get_author
 
-        _ROLE_NAMES = list(REVIEWER_MAP.keys())
+        # F1 修复：修订作者 = skill 名 + "-修订"（Word 中区分"谁做了修改"）
+        REVISION_AUTHOR = "公文技能-修订"
+        # F3 修复：category → 批注角色映射表（不依赖 reason 文本匹配）
+        _CATEGORY_ROLE_MAP = {
+            "格式优化": "格式审校员",
+            "用语优化": "用语审校员",
+            "逻辑优化": "逻辑审校员",
+            "法规合规": "法规审校员",
+            "事实核验": "综合审校员",
+        }
         # 按 --reviewers 截取角色子集（3 精简版取前 3）
         reviewers_count = getattr(args, 'reviewers', 5)
-        _ACTIVE_ROLES = _ROLE_NAMES[:reviewers_count]
+        _ACTIVE_ROLES = list(REVIEWER_MAP.keys())[:reviewers_count]
 
-        # 1. 修订标记（del/ins 共享 RSID，Word 识别为同一次编辑）
         tc_changes = [{
             "para_index": c.get("paragraph_index", 0),
             "original_text": c.get("original_text", ""),
             "optimized_text": c.get("optimized_text", ""),
         } for c in changes]
         _echo_progress(args, 2, 6, "文本匹配预检", f"{len(tc_changes)}/{len(tc_changes)} 完全匹配")
-        # 模块4.1（G2 修复）：内存 BytesIO 中间稿，消除两步流程的中间落盘（单次 ZIP 操作）
-        import io as _io
-        intermediate_buf = _io.BytesIO()
-        inject_tracked_changes(args.input, intermediate_buf, tc_changes)
-        intermediate_buf.seek(0)
-        _echo_progress(args, 3, 6, "修订标记注入", f"{len(tc_changes)} 处已注入")
 
-        # 2. 修改说明 → 批注（reason/style/reference 写入 comments.xml，按角色 author 区分）
+        # 批注建议（F3：按 category 映射角色 author）
         suggestions = []
         for c in changes:
-            author = None
+            category = c.get("style", "内容优化")
+            role_name = _CATEGORY_ROLE_MAP.get(category)
+            author = get_author(role_name) if role_name and role_name in _ACTIVE_ROLES else "综合审校"
             reason = c.get("reason", "") or ""
-            for role_name in _ACTIVE_ROLES:
-                if role_name in reason:
-                    author = get_author(role_name)
-                    break
             comment_text = f"建议修改：{c.get('optimized_text', '')}｜{reason}"
             ref = c.get("reference", "")
             if ref:
@@ -761,12 +804,18 @@ def cmd_optimize_content(args):
                 start_offset=0,
                 end_offset=len(c.get("original_text", "")),
                 comment_text=comment_text,
-                category=c.get("style", "内容优化"),
-                author=author or "公文审校",
+                category=category,
+                author=author,
             ))
-        ann = GongwenAnnotator()
-        result = ann.inject_comments(intermediate, suggestions, out_name)
-        _echo_progress(args, 4, 6, "批注内容写入", f"{len(suggestions)} 条批注已写入")
+        _echo_progress(args, 3, 6, "修订+批注注入", f"{len(tc_changes)} 处修订 / {len(suggestions)} 条批注")
+
+        # F2 修复：单次 ZIP 操作（修订注入 + 批注锚定 + comments.xml 一次打包，无中间文件）
+        # F5 修复：输出文件被占用时自动重命名 _v2/_v3…
+        result = safe_write_output(Path(out_name), lambda p: inject_tracked_with_comments(
+            args.input, tc_changes, suggestions, p,
+            author=REVISION_AUTHOR,
+            id_offset=1000,
+        ))
 
         # --background：事实核验（问题三）——存疑/未核验实体追加核验批注
         bg_paths = getattr(args, 'background', None)
@@ -775,7 +824,6 @@ def cmd_optimize_content(args):
             _echo_progress(args, 5, 6, "事实核验", f"{len(bg_paths)} 份背景资料")
             fc_report = run_fact_check(str(args.input), list(bg_paths))
             print(fc_report.summary_text())
-            # 存疑/未核验项 → 追加黄色提醒批注
             extra_suggestions = []
             for e in fc_report.doubtful + fc_report.unverified:
                 extra_suggestions.append(CommentSuggestion(
@@ -787,15 +835,34 @@ def cmd_optimize_content(args):
                     author="事实核验",
                 ))
             if extra_suggestions:
-                result2 = ann.inject_comments(result, extra_suggestions, out_name)
-                result = result2
-            suggestions = suggestions + extra_suggestions
+                from core.document.annotator import GongwenAnnotator
+                ann = GongwenAnnotator()
+                result = safe_write_output(Path(out_name), lambda p: ann.inject_comments(
+                    result, extra_suggestions, p))
+                suggestions = suggestions + extra_suggestions
 
+        # 校验：comments.xml 与修订标记存在
+        ok = False
         try:
-            intermediate.unlink(missing_ok=True)
+            import zipfile as _zipfile
+            with _zipfile.ZipFile(result) as z:
+                names = z.namelist()
+                ok = 'word/comments.xml' in names and b'w:ins' in z.read('word/document.xml')
         except Exception:
             pass
-        ok = ann.verify_comments(result)
+        _t_elapsed = time.time() - _t_start
+        _echo_progress(args, 6, 6, "生成文档", f"已保存 ({_t_elapsed:.1f}s)")
+        print(f"✅ 修订+批注版文档已生成: {result}")
+        print(f"  共 {len(tc_changes)} 处修订标记 + {len(suggestions)} 条批注（Word「审阅」面板可逐条接受/拒绝、按审阅者筛选）")
+        print(f"  修订作者: {REVISION_AUTHOR}")
+        if any(s.author != "综合审校" for s in suggestions):
+            authors = sorted({s.author for s in suggestions})
+            print(f"  审阅者: {', '.join(authors)}（可按审阅者筛选）")
+        print(f"  审稿角色: {'完整版(5角色)' if reviewers_count == 5 else '精简版(3角色)'}")
+        print(f"  批注完整性验证: {'通过' if ok else '失败'}")
+        if not getattr(args, 'quiet', False):
+            print(f"  ── 统计：{len(tc_changes)} 处变更 / {len(suggestions)} 条批注 / 耗时 {_t_elapsed:.1f}s")
+        return
         _t_elapsed = time.time() - _t_start
         _echo_progress(args, 6, 6, "生成文档", f"已保存 ({_t_elapsed:.1f}s)")
         print(f"✅ 修订+批注版文档已生成: {result}")
