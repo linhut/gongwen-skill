@@ -311,8 +311,17 @@ def _anchor_comment(p, cid: int) -> bool:
     """在段落上锚定 commentRangeStart/End/Reference（整段锚定，D2 回退方案）。
 
     M4 修复：锚定失败（段落无文本 run）时返回 False 并记录日志，供调用方排查。
+    S1-B 修复：修订标记（w:del/w:ins）内 run 也参与搜索，避免锚定失败。
     """
     runs = [r for r in p.iter(f'{{{W}}}r') if ''.join(t.text or '' for t in r.findall(f'{{{W}}}t'))]
+    if not runs:
+        # S1-B：尝试在 w:del / w:ins 内搜索文本 run（修订标记包裹的段落）
+        for tag in (f'{{{W}}}del', f'{{{W}}}ins'):
+            for parent in p.iter(tag):
+                for r in parent.findall(f'{{{W}}}r'):
+                    text = ''.join(t.text or '' for t in r.findall(f'{{{W}}}t'))
+                    if text:
+                        runs.append(r)
     if not runs:
         try:
             from utils.logger import logger
@@ -430,6 +439,8 @@ def inject_tracked_with_comments(
                         pass
                     break
 
+    # S6 修复：AI 声明在第一次序列化前追加（消除 document.xml 二次序列化）
+    _append_ai_disclaimer(root, skill_name="GongWen-Skill")
     entries['word/document.xml'] = etree.tostring(
         root, xml_declaration=True, encoding='UTF-8', standalone=True)
 
@@ -478,10 +489,79 @@ def inject_tracked_with_comments(
         except Exception:
             pass
 
-    # 7. AI 声明追加（tracked 模式 AI 声明缺失修复）——打包前追加，一次 ZIP 完成
-    _append_ai_disclaimer(root, skill_name="GongWen-Skill")
-    entries['word/document.xml'] = etree.tostring(
-        root, xml_declaration=True, encoding='UTF-8', standalone=True)
+    # S1-C + S4-A：people.xml + comments 扩展注册内联进一次 ZIP（消除外部二次打开覆盖 comments.xml）
+    try:
+        from core.document.reviewer_comments import REVIEWER_MAP
+        from utils.zip_utils import register_content_type, register_relationship
+
+        # people.xml（7 角色：6 批注角色 + 修订作者）
+        people = etree.Element(f'{{{W15}}}people', nsmap={'w15': W15})
+        for role, cfg in REVIEWER_MAP.items():
+            person = etree.SubElement(people, f'{{{W15}}}person')
+            person.set(f'{{{W15}}}author', cfg["author"])
+            person.set(f'{{{W15}}}preserve', '1')
+            etree.SubElement(person, f'{{{W15}}}presenceInfo')
+            nm = etree.SubElement(person, f'{{{W15}}}name')
+            nm.set(f'{{{W15}}}val', cfg["author"])
+            em = etree.SubElement(person, f'{{{W15}}}email')
+            em.set(f'{{{W15}}}val', '')
+            im = etree.SubElement(person, f'{{{W15}}}img')
+            im.set(f'{{{W15}}}val', '')
+        # 修订作者
+        rev_p = etree.SubElement(people, f'{{{W15}}}person')
+        rev_p.set(f'{{{W15}}}author', author)
+        rev_p.set(f'{{{W15}}}preserve', '1')
+        etree.SubElement(rev_p, f'{{{W15}}}presenceInfo')
+        rn = etree.SubElement(rev_p, f'{{{W15}}}name')
+        rn.set(f'{{{W15}}}val', author)
+        entries['word/people.xml'] = etree.tostring(
+            people, xml_declaration=True, encoding='UTF-8', standalone=True)
+
+        # commentsExtended.xml / commentsIds.xml / commentsExtensible.xml
+        n_comments = len(suggestions)
+        ext = etree.Element(f'{{{W15}}}commentsEx', nsmap={'w15': W15})
+        for i in range(1, n_comments + 1):
+            cex = etree.SubElement(ext, f'{{{W15}}}commentEx')
+            cex.set(f'{{{W15}}}paraId', f'{i:08X}')
+            cex.set(f'{{{W15}}}done', '0')
+        entries['word/commentsExtended.xml'] = etree.tostring(
+            ext, xml_declaration=True, encoding='UTF-8', standalone=True)
+
+        ids = etree.Element(f'{{{W15}}}commentsIds', nsmap={'w15': W15})
+        for i in range(1, n_comments + 1):
+            cid = etree.SubElement(ids, f'{{{W15}}}commentId')
+            cid.set(f'{{{W15}}}id', str(i))
+            cid.set(f'{{{W15}}}paraId', f'{i:08X}')
+        entries['word/commentsIds.xml'] = etree.tostring(
+            ids, xml_declaration=True, encoding='UTF-8', standalone=True)
+
+        ext2 = etree.Element(f'{{{W16}}}commentsExtensible', nsmap={'w16': W16})
+        entries['word/commentsExtensible.xml'] = etree.tostring(
+            ext2, xml_declaration=True, encoding='UTF-8', standalone=True)
+
+        # Content-Type 注册（含 people/comments 扩展）
+        if ct_key in entries:
+            ct_root = etree.fromstring(entries[ct_key])
+            for part, ctype in (
+                ('/word/people.xml', 'application/vnd.openxmlformats-officedocument.wordprocessingml.people+xml'),
+                ('/word/commentsExtended.xml', 'application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml'),
+                ('/word/commentsIds.xml', 'application/vnd.openxmlformats-officedocument.wordprocessingml.commentsIds+xml'),
+                ('/word/commentsExtensible.xml', 'application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtensible+xml'),
+            ):
+                entries[ct_key] = register_content_type(entries[ct_key], part, ctype)
+        # 关系注册（people + comments 扩展）
+        if rels_key in entries:
+            for rel_type, target in (
+                ('http://schemas.openxmlformats.org/officeDocument/2006/relationships/people', 'people.xml'),
+                ('http://schemas.openxmlformats.org/officeDocument/2006/relationships/commentsExtended', 'commentsExtended.xml'),
+                ('http://schemas.openxmlformats.org/officeDocument/2006/relationships/commentsIds', 'commentsIds.xml'),
+                ('http://schemas.openxmlformats.org/officeDocument/2006/relationships/commentsExtensible', 'commentsExtensible.xml'),
+            ):
+                entries[rels_key] = register_relationship(entries[rels_key], rel_type, target)
+    except Exception as e:
+        import traceback as _tb
+        _tb.print_exc()
+        print(f"  ⚠️ people/comments 扩展内联注册失败: {type(e).__name__}: {e}")
 
     # 8. 一次打包
     out.parent.mkdir(parents=True, exist_ok=True)

@@ -154,16 +154,47 @@ def _parse_llm_suggestions(raw: str, paragraphs: list) -> List[dict]:
             continue
         if orig == opt:
             continue  # 无变化跳过
+        category = str(it.get("category", "")).strip()
+        if not category:
+            # S3-A 修复：category 缺失时基于 reason 关键词推断语义类别
+            category = _infer_category(str(it.get("reason", "")))
         changes.append({
             "paragraph_index": pi,
             "original_text": orig,
             "optimized_text": opt,
             "reason": str(it.get("reason", "")),
-            "category": str(it.get("category", "内容优化")),
+            "category": category,
             "style": str(it.get("style", "庄重严谨")),
             "reference": str(it.get("reference", "")),
         })
     return changes
+
+
+# S3-A 修复：reason 关键词 → 语义类别推断表
+_CATEGORY_HINT_KEYWORDS = [
+    ("格式", ["格式", "排版", "段落", "字号", "字体", "缩进"]),
+    ("用语", ["用语", "措辞", "用词", "文字", "文字校对", "简化", "冗余"]),
+    ("逻辑", ["逻辑", "衔接", "闭环", "顺序", "层次"]),
+    ("事实核验", ["事实", "核实", "确认", "职务", "机构"]),
+    ("法规", ["法规", "合规", "依据", "政策"]),
+]
+
+
+def _infer_category(reason: str) -> str:
+    """S3-A 修复：从 reason 文本关键词推断语义类别（格式/用语/逻辑/事实核验/法规）。
+
+    Args:
+        reason: 修改原因文本
+
+    Returns:
+        语义类别（未匹配时返回"内容优化"）
+    """
+    if not reason:
+        return "内容优化"
+    for category, keywords in _CATEGORY_HINT_KEYWORDS:
+        if any(kw in reason for kw in keywords):
+            return category
+    return "内容优化"
 
 
 def auto_generate_changes(input_path: str, doc_type: str,

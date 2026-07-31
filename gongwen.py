@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.31"
+__version__ = "1.12.32"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -1135,11 +1135,27 @@ def cmd_optimize_content(args):
             print(f"  ⚠️ 结构/焦点检查跳过（{e}）")
 
         # N3 修复：所有批注（内容优化 + 事实核验）统一经 tracked 路径一次注入
+        # S1-A 修复：注入前打印批注构成，注入后验证实际批注数（防止批注静默丢失）
+        n_fc = len(fc_report.doubtful) + len(fc_report.unverified)
+        print(f"  批注列表: {len(suggestions)} 条（内容优化{len(changes)} + 事实核验{n_fc} + 结构/焦点{len(suggestions) - len(changes) - n_fc}）")
         result = safe_write_output(Path(out_name), lambda p: inject_tracked_with_comments(
             args.input, tc_changes, suggestions, p,
             author=REVISION_AUTHOR,
             id_offset=1000,
         ))
+        # S1-A：注入后验证 comments.xml 实际批注数
+        try:
+            import zipfile as _zip_chk
+            from lxml import etree as _etree_chk
+            with _zip_chk.ZipFile(result) as z:
+                _cx = _etree_chk.fromstring(z.read('word/comments.xml'))
+                _actual = len(_cx.findall(f'{{{W}}}comment')) if hasattr(_cx, 'findall') else 0
+            if _actual != len(suggestions):
+                print(f"  ⚠️ 批注注入异常：预期{len(suggestions)}条，实际{_actual}条")
+            else:
+                print(f"  ✅ 批注注入完整: {_actual} 条")
+        except Exception:
+            pass
         # L1 修复：tracked 路径补调 persons.xml + comments 三文件注册（7 色方案生效）
         from core.document.reviewer_comments import _register_persons_xml, _register_comments_infrastructure
         # P4 修复：注册失败不得静默吞异常——升级为 logger.error + traceback，便于排查
@@ -1176,16 +1192,13 @@ def cmd_optimize_content(args):
         if any(s.author != "综合审校" for s in suggestions):
             authors = sorted({s.author for s in suggestions})
             print(f"  审阅者: {', '.join(authors)}（可按审阅者筛选）")
-        print(f"  审稿角色: {'完整版(5角色)' if reviewers_count == 5 else '精简版(3角色)'}")
-        print(f"  批注完整性验证: {'通过' if ok else '失败'}")
-        if not getattr(args, 'quiet', False):
-            print(f"  ── 统计：{len(tc_changes)} 处变更 / {len(suggestions)} 条批注 / 耗时 {_t_elapsed:.1f}s")
-        return
-        _t_elapsed = time.time() - _t_start
-        _echo_progress(args, 6, 6, "生成文档", f"已保存 ({_t_elapsed:.1f}s)")
-        print(f"✅ 修订+批注版文档已生成: {result}")
-        print(f"  共 {len(tc_changes)} 处修订标记 + {len(suggestions)} 条批注（Word「审阅」面板可逐条接受/拒绝、按审阅者筛选）")
-        print(f"  审稿角色: {'完整版(5角色)' if reviewers_count == 5 else '精简版(3角色)'}")
+        # S2 修复：审稿角色显示映射（默认 6 角色不再误判为 3 角色）
+        _role_display = {
+            3: "精简版(3角色)",
+            5: "完整版(5角色)",
+            6: "完整版(6角色，含事实核验员)",
+        }
+        print(f"  审稿角色: {_role_display.get(reviewers_count, f'{reviewers_count}角色版')}")
         print(f"  批注完整性验证: {'通过' if ok else '失败'}")
         if not getattr(args, 'quiet', False):
             print(f"  ── 统计：{len(tc_changes)} 处变更 / {len(suggestions)} 条批注 / 耗时 {_t_elapsed:.1f}s")
