@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.27"
+__version__ = "1.12.28"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -858,7 +858,7 @@ def cmd_optimize_content(args):
     if mode == 'tracked':
         from core.document.tracked_annotator import inject_tracked_with_comments
         from core.document.annotator import CommentSuggestion
-        from core.document.reviewer_comments import REVIEWER_MAP, resolve_role
+        from core.document.reviewer_comments import REVIEWER_MAP, resolve_role, get_author
 
         # F1 + D3 修复：修订作者 = skill 英文名 + "-修订"（与 skill 英文标识统一，保留中文后缀便于中文 Word 用户理解）
         REVISION_AUTHOR = "GongWen-Skill修订"
@@ -1405,8 +1405,8 @@ def main():
                    help="修订追踪模式：将修改以 Word 原生修订标记（ins/del）写入，可在审阅面板逐条接受/拒绝")
     p.add_argument("--mode", default="tracked", choices=["inline", "tracked"],
                    help="输出模式：tracked 修订+批注（默认，Word 审阅面板逐条接受/拒绝，修改说明写入批注）；inline 行内标记（显式降级选择）")
-    p.add_argument("--reviewers", type=int, default=5, choices=[3, 5],
-                   help="审稿角色数：5 完整版（默认）/ 3 精简版，意见作为独立批注按审阅者写入")
+    p.add_argument("--reviewers", type=int, default=6, choices=[3, 5, 6],
+                   help="审稿角色数：6 完整版（默认，含事实核验员）/ 5 完整版（历史兼容，同6）/ 3 精简版，意见作为独立批注按审阅者写入")
     p.add_argument("--background", nargs="*", default=None,
                    help="背景资料路径（事实核验用，支持多个）：.docx / .pdf / .md / .txt / URL，与 --mode tracked 配合对存疑人事信息生成批注提醒")
     p.add_argument("--quiet", action="store_true", help="安静模式：仅输出最终结果，不显示分步进度")

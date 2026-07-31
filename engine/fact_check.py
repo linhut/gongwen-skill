@@ -299,6 +299,8 @@ def _web_verify(entity_name: str, entity_type: str) -> Optional[str]:
     """
     Step 3：对关键实体做互联网交叉核验（尽力而为，网络不可用返回 None）。
 
+    N4 修复：对"姓名+职务"组合一并搜索，比对文档中的职务描述与检索结果。
+
     Returns:
         核验说明（找到官方来源）或 None（无法核验）
     """
@@ -315,6 +317,26 @@ def _web_verify(entity_name: str, entity_type: str) -> Optional[str]:
     except Exception as e:
         logger.debug(f"web 核验失败 {entity_name}: {e}")
         return None
+
+
+# N4 修复：人名+职务配对核验——识别"职务+姓名"组合（如"副主任覃万成"）
+# 返回 [(姓名, 职务描述), ...]
+def extract_person_title_pairs(text: str) -> List[tuple[str, str]]:
+    """从段落文本中提取 (姓名, 职务描述) 配对。
+
+    模式：{职务}（2-8 字，含 主任/副主任/书记/部长 等后缀）+ {姓名}（2-3 字）。
+    如"省民宗委党组成员、副主任覃万成" → ("覃万成", "省民宗委党组成员、副主任")。
+    """
+    pairs: List[tuple[str, str]] = []
+    title_pattern = r'([\u4e00-\u9fa5、]{2,20}(?:' + '|'.join(_TITLE_SUFFIXES) + r'))([\u4e00-\u9fa5]{2,3})(?![、，。；])'
+    for m in re.finditer(title_pattern, text):
+        title = m.group(1)
+        name = m.group(2)
+        # 过滤常见非姓名词
+        if name in ("会议", "工作", "部门", "单位", "同志", "有关", "相关"):
+            continue
+        pairs.append((name, title))
+    return pairs
 
 
 # ---------------------------------------------------------------------------
@@ -345,12 +367,32 @@ def run_fact_check(document_path: str | Path, background_paths: Optional[list[st
     if not entities:
         logger.info("未提取到关键实体")
         return report
+
+    # N2 修复：按实体文本在文档段落中搜索定位，校正 paragraph_index（提取阶段索引可能偏差）
+    for e in entities:
+        if not e.entity_name:
+            continue
+        found_idx = None
+        for idx, ptext in enumerate(paragraphs):
+            if e.entity_name in ptext:
+                found_idx = idx
+                break
+        if found_idx is not None and found_idx != e.paragraph_index:
+            logger.debug(f"实体 {e.entity_name}: 段落索引 {e.paragraph_index} → 校正为 {found_idx}")
+            e.paragraph_index = found_idx
+
     report.entities = entities
 
     # Step 2：基准构建
     baseline = build_baseline(background_paths or [])
 
     # Step 3+4：核验与标记
+    # N4 修复：先做人名+职务配对识别，对"姓名+职务"组合整体核验（能发现职务写反等严重错误）
+    person_title_pairs: dict[str, str] = {}
+    for ptext in paragraphs:
+        for name, title in extract_person_title_pairs(ptext):
+            person_title_pairs.setdefault(name, title)
+
     for e in entities:
         if e.entity_name in baseline:
             src = baseline[e.entity_name]['source']
@@ -362,7 +404,14 @@ def run_fact_check(document_path: str | Path, background_paths: Optional[list[st
             # 互联网交叉核验（仅关键项：person / org）
             note = None
             if web_enabled and e.entity_type in ('person', 'org'):
-                note = _web_verify(e.entity_name, e.entity_type)
+                # N4：人名+职务配对核验——搜索"姓名+职务"组合，提示人工比对
+                if e.entity_type == 'person' and e.entity_name in person_title_pairs:
+                    doc_title = person_title_pairs[e.entity_name]
+                    note = _web_verify(f"{e.entity_name} {doc_title}", 'person')
+                    if note:
+                        note += f"｜文档中职务描述：{doc_title}（请人工核对该职务是否准确）"
+                else:
+                    note = _web_verify(e.entity_name, e.entity_type)
             if note and '相关信息' in note:
                 e.status = '存疑'
                 e.source = '互联网'
