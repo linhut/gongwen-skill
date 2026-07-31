@@ -181,11 +181,13 @@ class GongwenAnnotator:
             r = etree.SubElement(p, f'{{{W}}}r')
             t = etree.SubElement(r, f'{{{W}}}t')
             t.text = sug.comment_text
+            # P2 修复：仅语义类别（事实核验等）追加标签，风格类不显示（与 tracked_annotator 共用 SEMANTIC_CATEGORIES）
             if sug.category:
-                # 类别标注放入第二个 run（一个 run 仅一个 w:t）
-                r2 = etree.SubElement(p, f'{{{W}}}r')
-                t2 = etree.SubElement(r2, f'{{{W}}}t')
-                t2.text = f' [{sug.category}]'
+                from core.document.reviewer_comments import SEMANTIC_CATEGORIES
+                if sug.category in SEMANTIC_CATEGORIES:
+                    r2 = etree.SubElement(p, f'{{{W}}}r')
+                    t2 = etree.SubElement(r2, f'{{{W}}}t')
+                    t2.text = f'（修改类别：{sug.category}）'
         return root
 
     @staticmethod

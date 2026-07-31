@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.26"
+__version__ = "1.12.27"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -814,32 +814,27 @@ def cmd_optimize_content(args):
     # --comment-mode：Word 原生批注模式（可审阅→接受/拒绝）
     if getattr(args, 'comment_mode', False):
         from core.document.annotator import GongwenAnnotator, CommentSuggestion
-        from core.document.reviewer_comments import REVIEWER_MAP, get_author
+        from core.document.reviewer_comments import resolve_role
 
-        # NI7 修复：从 reason 字段的【角色名】提取五角色 author，可按审阅者筛选
-        _ROLE_NAMES = list(REVIEWER_MAP.keys())  # 格式审校员/用语审校员/逻辑审校员/法规审校员/综合审校员
+        # P1 修复：comment_mode 路径共用 resolve_role（category 优先，角色真正区分）
         suggestions = []
         for c in changes:
-            author = None
+            category, author = resolve_role(c)
             reason = c.get("reason", "") or ""
-            for role_name in _ROLE_NAMES:
-                if role_name in reason:
-                    author = get_author(role_name)
-                    break
             suggestions.append(CommentSuggestion(
                 para_index=c.get("paragraph_index", 0),
                 start_offset=0,
                 end_offset=len(c.get("original_text", "")),
                 comment_text=f"建议修改：{c.get('optimized_text', '')}｜{reason}",
-                category=c.get("style", "内容优化"),
-                author=author or "公文审校",
+                category=category,
+                author=author,
             ))
         ann = GongwenAnnotator()
         result = ann.inject_comments(args.input, suggestions, out_name)
         ok = ann.verify_comments(result)
         print(f"✅ 批注版文档已生成: {result}")
         print(f"  共 {len(suggestions)} 处批注（Word 打开后可通过「审阅→接受/拒绝」逐条处理）")
-        if any(s.author != "公文审校" for s in suggestions):
+        if any(s.author != "综合审校" for s in suggestions):
             authors = sorted({s.author for s in suggestions})
             print(f"  审阅者: {', '.join(authors)}（可按审阅者筛选）")
         print(f"  批注完整性验证: {'通过' if ok else '失败'}")
@@ -863,48 +858,19 @@ def cmd_optimize_content(args):
     if mode == 'tracked':
         from core.document.tracked_annotator import inject_tracked_with_comments
         from core.document.annotator import CommentSuggestion
-        from core.document.reviewer_comments import REVIEWER_MAP, get_author
+        from core.document.reviewer_comments import REVIEWER_MAP, resolve_role
 
         # F1 + D3 修复：修订作者 = skill 英文名 + "-修订"（与 skill 英文标识统一，保留中文后缀便于中文 Word 用户理解）
         REVISION_AUTHOR = "GongWen-Skill修订"
-        # L2 + L3 修复：仅保留"语义类别 → 角色"映射；风格描述（庄重严谨等）不再进入映射表
-        _CATEGORY_ROLE_MAP = {
-            "格式优化": "格式审校员",
-            "用语优化": "用语审校员",
-            "逻辑优化": "逻辑审校员",
-            "法规合规": "法规审校员",
-            "事实核验": "事实核验员",   # D5: 映射独立角色，不再混入综合审校
-            "内容优化": "综合审校员",
-        }
-        # L2 修复：从 reason 文本提取语义类别（【文字校对】→用语优化 等），供无 category 字段时兜底
-        _REASON_CATEGORY_HINTS = [
-            ("【文字校对】", "用语优化"),
-            ("【用语审校】", "用语优化"),
-            ("【事实核验】", "事实核验"),
-            ("【业务审核】", "逻辑优化"),
-            ("【逻辑审校】", "逻辑优化"),
-            ("【法规审校】", "法规合规"),
-            ("【格式审校】", "格式优化"),
-        ]
+        # P1 修复：角色解析统一走共享 resolve_role（category 优先 → reason 提示 → 综合审校）
 
-        def _resolve_role(c: dict) -> tuple[str, str]:
-            """解析批注的 (category, author)。优先 category 字段 → reason 提示 → 综合审校。"""
-            category = c.get("category") or c.get("style", "内容优化")
-            role_name = _CATEGORY_ROLE_MAP.get(category)
-            if not role_name:
-                reason = c.get("reason", "") or ""
-                for hint, cat in _REASON_CATEGORY_HINTS:
-                    if hint in reason:
-                        category, role_name = cat, _CATEGORY_ROLE_MAP[cat]
-                        break
-            if not role_name:
-                category, role_name = "内容优化", "综合审校员"
-            author = get_author(role_name) if role_name in _ACTIVE_ROLES else "综合审校"
-            return category, author
-
-        # 按 --reviewers 截取角色子集（3 精简版取前 3）
+        # M2 修复：--reviewers 白名单模式——事实核验员不被截断
+        # 3 精简版取核心 3 角色；5 完整版取全部 6 角色（含事实核验员）；6 显式完整版
         reviewers_count = getattr(args, 'reviewers', 5)
-        _ACTIVE_ROLES = list(REVIEWER_MAP.keys())[:reviewers_count]
+        if reviewers_count == 3:
+            _ACTIVE_ROLES = ["格式审校员", "用语审校员", "综合审校员"]
+        else:
+            _ACTIVE_ROLES = list(REVIEWER_MAP.keys())  # 5/6 均启用全部角色（含事实核验员）
 
         tc_changes = [{
             "para_index": c.get("paragraph_index", 0),
@@ -916,7 +882,7 @@ def cmd_optimize_content(args):
         # 批注建议（L2：category 优先，语义类别决定角色）
         suggestions = []
         for c in changes:
-            category, author = _resolve_role(c)
+            category, author = resolve_role(c)
             reason = c.get("reason", "") or ""
             comment_text = f"建议修改：{c.get('optimized_text', '')}｜{reason}"
             ref = c.get("reference", "")

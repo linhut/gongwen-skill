@@ -307,11 +307,19 @@ def _collect_para_nodes(body) -> list:
     return para_nodes
 
 
-def _anchor_comment(p, cid: int) -> None:
-    """在段落上锚定 commentRangeStart/End/Reference（整段锚定，D2 回退方案）。"""
+def _anchor_comment(p, cid: int) -> bool:
+    """在段落上锚定 commentRangeStart/End/Reference（整段锚定，D2 回退方案）。
+
+    M4 修复：锚定失败（段落无文本 run）时返回 False 并记录日志，供调用方排查。
+    """
     runs = [r for r in p.iter(f'{{{W}}}r') if ''.join(t.text or '' for t in r.findall(f'{{{W}}}t'))]
     if not runs:
-        return
+        try:
+            from utils.logger import logger
+            logger.warning(f"批注 #{cid} 锚定失败：段落无文本 run（可能 para_index 与文档结构不匹配）")
+        except Exception:
+            pass
+        return False
     crs = etree.Element(f'{{{W}}}commentRangeStart')
     crs.set(f'{{{W}}}id', str(cid))
     runs[0].addprevious(crs)
@@ -325,6 +333,7 @@ def _anchor_comment(p, cid: int) -> None:
     crRef = etree.SubElement(cr, f'{{{W}}}commentReference')
     crRef.set(f'{{{W}}}id', str(cid))
     p.append(cr)
+    return True
 
 
 def _build_comments_xml(suggestions: list, id_offset: int = 0) -> etree._Element:
@@ -342,10 +351,10 @@ def _build_comments_xml(suggestions: list, id_offset: int = 0) -> etree._Element
         r = etree.SubElement(p, f'{{{W}}}r')
         t = etree.SubElement(r, f'{{{W}}}t')
         t.text = sug.comment_text
-        # N4 修复：仅语义类别（事实核验等）追加到正文，风格类（庄重严谨等）不显示，避免冗余噪音
+        # N4 + P2 修复：仅语义类别（事实核验等）追加到正文，风格类不显示（共用 reviewer_comments.SEMANTIC_CATEGORIES）
         if getattr(sug, 'category', ''):
-            _SEMANTIC_CATEGORIES = ("事实核验", "格式优化", "用语优化", "逻辑优化", "法规合规")
-            if sug.category in _SEMANTIC_CATEGORIES:
+            from core.document.reviewer_comments import SEMANTIC_CATEGORIES
+            if sug.category in SEMANTIC_CATEGORIES:
                 r2 = etree.SubElement(p, f'{{{W}}}r')
                 t2 = etree.SubElement(r2, f'{{{W}}}t')
                 t2.text = f'（修改类别：{sug.category}）'
@@ -408,7 +417,18 @@ def inject_tracked_with_comments(
     for i, sug in enumerate(suggestions, start=1):
         if not (0 <= sug.para_index < len(para_nodes)):
             continue
-        _anchor_comment(para_nodes[sug.para_index], id_offset + i)
+        # M4 修复：锚定失败时保底尝试相邻段落（+1/-1），避免批注整体缺失
+        anchored = _anchor_comment(para_nodes[sug.para_index], id_offset + i)
+        if not anchored:
+            for delta in (1, -1):
+                alt_idx = sug.para_index + delta
+                if 0 <= alt_idx < len(para_nodes) and _anchor_comment(para_nodes[alt_idx], id_offset + i):
+                    try:
+                        from utils.logger import logger
+                        logger.warning(f"批注 #{id_offset + i} 保底锚定到相邻段落 {alt_idx}（原 {sug.para_index}）")
+                    except Exception:
+                        pass
+                    break
 
     entries['word/document.xml'] = etree.tostring(
         root, xml_declaration=True, encoding='UTF-8', standalone=True)

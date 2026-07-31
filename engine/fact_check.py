@@ -111,12 +111,28 @@ _NON_ENTITY_PATTERNS = [
     r'^推动', r'^加快', r'^实现', r'^强化', r'^深化', r'^健全', r'^完善',
     r'^确保', r'^坚持', r'^充分', r'^切实', r'^全力',
 ]
-# 机构名最小长度（避免"限公司"这类截断残片）
-_ORG_MIN_LEN = 4
+# 机构名最小长度（M3 修复：从 4 提升到 5，避免"各部""副部"等过短残片）
+_ORG_MIN_LEN = 5
+# M3 修复：单字机构后缀右边界扩展映射（"信息技术部"+"门"→"信息技术部门"）
+_ORG_SUFFIX_EXTENSIONS = {
+    "部": ["门", "长"],
+    "副部": ["长"],
+    "办": ["公室"],
+}
+# M3 修复：句子特征词（包含 2 个以上则判定为短句而非实体）
+_SENTENCE_INDICATORS = [
+    "赋能", "保障", "贴合", "服务", "构建", "坚持", "推动", "深化",
+    "既", "又", "实现", "围绕", "聚焦", "促进", "确保", "凝聚",
+]
 
 
-def _is_valid_entity_name(e_type: str, name: str) -> bool:
-    """N2 修复：实体名有效性过滤（长度/动词片段/截断残片）。"""
+def _looks_like_sentence(text: str) -> bool:
+    """M3 修复：长候选实体中包含多个动词/连词 → 判定为短句。"""
+    return sum(1 for w in _SENTENCE_INDICATORS if w in text) >= 2
+
+
+def _is_valid_entity_name(e_type: str, name: str, context: str = "") -> bool:
+    """N2 + M3 修复：实体名有效性过滤（长度/动词片段/截断残片/右边界/长句）。"""
     if not name:
         return False
     if e_type in ('person', 'org'):
@@ -124,12 +140,24 @@ def _is_valid_entity_name(e_type: str, name: str) -> bool:
             return False
     if e_type == 'org' and len(name) < _ORG_MIN_LEN:
         return False
+    # M3：长度 > 10 的候选做句子检测（含 2+ 动词/连词 → 短句非实体）
+    if len(name) > 10 and _looks_like_sentence(name):
+        return False
+    # M3：右边界截断检测——机构名以单字后缀结尾，且原文紧跟扩展字（"部"+"门/长"）
+    if e_type == 'org':
+        for suffix, extensions in _ORG_SUFFIX_EXTENSIONS.items():
+            if name.endswith(suffix):
+                for ext in extensions:
+                    if ext in context and context.find(name) >= 0:
+                        after = context[context.find(name) + len(name):]
+                        if after.startswith(ext):
+                            return False  # 右边界截断（原文有"门/长"但未纳入实体）
     # 动词/助词开头 → 非实体（如"限公司""表分别"）
     for pat in _NON_ENTITY_PATTERNS:
         if re.match(pat, name):
             return False
     # 截断残片：以"限公司""表"等结尾但缺少前半部分
-    if re.match(r'^(限公司|表|钟扬关|分别)', name):
+    if re.match(r'^(限公司|表|钟扬关|分别|副部|各部)', name):
         return False
     return True
 

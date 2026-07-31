@@ -42,6 +42,54 @@ def get_color(role: str) -> str:
     return REVIEWER_MAP.get(role, {}).get("color", "000000")
 
 
+# ---------------------------------------------------------------------------
+#  角色解析公共函数（P1 修复：三条路径共用，避免 comment_mode/tracked-change 角色区分失效）
+# ---------------------------------------------------------------------------
+
+# 语义类别 → 角色映射（仅保留语义类别；风格描述不进入映射表）
+CATEGORY_ROLE_MAP = {
+    "格式优化": "格式审校员",
+    "用语优化": "用语审校员",
+    "逻辑优化": "逻辑审校员",
+    "法规合规": "法规审校员",
+    "事实核验": "事实核验员",
+    "内容优化": "综合审校员",
+}
+
+# P2 修复：语义类别白名单（批注正文仅追加这些类别的标签，风格类不显示）
+SEMANTIC_CATEGORIES = ("事实核验", "格式优化", "用语优化", "逻辑优化", "法规合规")
+
+# reason 文本 → 语义类别提示（category 字段缺失时兜底）
+REASON_CATEGORY_HINTS = [
+    ("【文字校对】", "用语优化"),
+    ("【用语审校】", "用语优化"),
+    ("【事实核验】", "事实核验"),
+    ("【业务审核】", "逻辑优化"),
+    ("【逻辑审校】", "逻辑优化"),
+    ("【法规审校】", "法规合规"),
+    ("【格式审校】", "格式优化"),
+]
+
+
+def resolve_role(c: dict) -> tuple[str, str]:
+    """解析变更项的 (category, author)。优先 category 字段 → reason 提示 → 综合审校。
+
+    M2 修复：author 检查使用 REVIEWER_MAP（全部 6 角色），不受 _ACTIVE_ROLES 截断影响。
+    """
+    category = c.get("category") or c.get("style", "内容优化")
+    role_name = CATEGORY_ROLE_MAP.get(category)
+    if not role_name:
+        reason = c.get("reason", "") or ""
+        for hint, cat in REASON_CATEGORY_HINTS:
+            if hint in reason:
+                category, role_name = cat, CATEGORY_ROLE_MAP[cat]
+                break
+    if not role_name:
+        category, role_name = "内容优化", "综合审校员"
+    author = get_author(role_name) if role_name in REVIEWER_MAP else "综合审校"
+    return category, author
+
+
 def inject_reviewer_comments(input_path: str | Path,
                              review_opinions: List[dict],
                              output_path: str | Path | None = None) -> Path:
@@ -280,9 +328,9 @@ def _register_persons_xml(doc_path: str | Path) -> None:
             rel.set('Target', 'people.xml')
         entries[rels_key] = etree.tostring(rels_root, xml_declaration=True, encoding='UTF-8', standalone=True)
 
-    # 写入 people.xml 并回写 ZIP（NI6 修复：原子写入，异常时保留原文件）
+    # 写入 people.xml 并回写 ZIP（NI6 修复：原子写入；M1 修复：权限失败重试+降级）
     entries['word/people.xml'] = persons_bytes
-    import tempfile, os as _os
+    import tempfile, os as _os, time as _time
     tmp_fd, tmp_path = tempfile.mkstemp(dir=str(p.parent), suffix='.tmp', prefix='.gongwen_people_')
     _os.close(tmp_fd)
     try:
@@ -293,7 +341,25 @@ def _register_persons_xml(doc_path: str | Path) -> None:
             for name in ('word/people.xml',):
                 if name not in infos:
                     z.writestr(name, entries[name])
-        _os.replace(tmp_path, p)
+
+        # M1 修复：原子替换失败（文件被占用 WinError 5）时重试 3 次，仍失败降级为先删后写
+        max_retries = 3
+        last_err = None
+        for attempt in range(max_retries):
+            try:
+                _os.replace(tmp_path, p)
+                break
+            except PermissionError as e:
+                last_err = e
+                if attempt < max_retries - 1:
+                    _time.sleep(0.2)
+        else:
+            # 降级：先删后写（文件被其他进程占用时强制替换）
+            try:
+                _os.unlink(p)
+                _os.replace(tmp_path, p)
+            except Exception as e2:
+                raise OSError(f"文件写入失败（已重试{max_retries}次+降级）: {e2}") from last_err
     except Exception:
         try:
             _os.unlink(tmp_path)
