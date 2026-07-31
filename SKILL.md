@@ -46,7 +46,21 @@ Licensed under the MIT License. See the LICENSE file for details.
 ❌ 严禁编造领导姓名、机构名称、职务、人物姓名——所有人事信息必须来源明确或用 XXX 占位
 ```
 
-### 三、环境说明
+### 三、模板保留策略（当用户提供 .docx 模板时）
+
+- **必须严格保留模板的格式约定**：文档样式、字体、页面布局（边距/页面大小/方向）、页眉页脚、分节结构和表格样式
+- **不得引入模板中不存在的结构或版式**，不得静默偏离模板
+- 若用户需求与模板约束冲突，先说明具体冲突并获得用户明确同意，再做结构性变更
+
+### 四、依赖降级策略（依赖缺失时的强制处理顺序）
+
+当必需依赖缺失或不可用时，Agent **必须**按以下顺序处理：
+
+1. **先尝试安装**：`pip install -r requirements.txt`（或按 requirements.txt 补充安装缺失包）
+2. **再使用降级模式**：若安装失败或工具仍不可用，运行指定的降级命令
+3. **不得自创降级方案**：严禁自行替换工具、使用替代流程或自创降级方案，除非上述两步均已尝试且确实无法满足任务需求
+
+### 五、环境说明
 
 本 Skill 可通过以下方式使用：
 
@@ -214,6 +228,25 @@ Licensed under the MIT License. See the LICENSE file for details.
 - 优先使用 `.gov.cn` 或官方媒体来源
 - 无法确认的信息用 `[待确认]` 标注，不凭空编造
 - 引用政策文件时应注明文号和发布日期
+
+#### 4. kdocs 云文档协同（可选增强，结合 kdocs-skill）
+
+当环境中同时安装了 **kdocs-skill**（金山文档 CLI Skill，提供 `kdocs-cli`）时，gongwen-skill 可与云文档联动，弥补本地处理的短板：
+
+| 场景 | kdocs 命令/服务 | 与 gongwen 的衔接 |
+|------|----------------|------------------|
+| **扫描件 PDF 读取** | `kdocs-cli pdf inspect` / `pdf convert` | 用户提供扫描件 PDF 时，先用 kdocs 提取文字 → 保存为 .docx/.md → gongwen 正常处理 |
+| **云端文档读取** | `kdocs-cli drive search-files` / `read_file` | 用户给金山云文档链接时，先下载/导出为本地 .docx → gongwen parse/check/optimize |
+| **产物云保存** | `kdocs-cli drive create_file_with_content` / `upload_file` | gongwen 生成的公文成品上传到金山云文档，获取分享链接给用户 |
+| **公文转 PDF** | `kdocs-cli pdf convert` | 成品 .docx 转 PDF 用于分发归档 |
+| **网页剪藏素材** | `kdocs-cli` workflows/web-scrape | 抓取网页内容作为公文引用的素材来源 |
+
+**协同规则**：
+- kdocs-skill 是**可选增强**，未安装时不影响 gongwen 任何本地功能
+- 使用 kdocs 前先确认 `kdocs-cli` 可用（`kdocs-cli --help`），不可用则回退为纯本地流程
+- kdocs 的 Token 认证遵循 kdocs-skill 自身规范（`kdocs-cli auth`），gongwen 不涉及
+- 云端读取的文档必须先落盘为本地 .docx 再进入 gongwen 管线，**不直接跨进程传对象**
+- 云端保存成功后必须向用户展示可访问链接
 
 ### 强制规则（MUST FOLLOW — 违反即为不合格执行）
 

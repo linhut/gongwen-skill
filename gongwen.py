@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.14"
+__version__ = "1.12.15"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -55,10 +55,12 @@ from pathlib import Path
 _ENGINE_DIR = Path(__file__).resolve().parent / "engine"
 sys.path.insert(0, str(_ENGINE_DIR))
 
-# Windows 控制台中文输出保护
+# Windows 控制台中文输出保护（借鉴 docx-skill 强制 UTF-8 策略）
+# 同时覆盖 stdout/stderr/stdin，确保中文路径、管道输入均无编码问题
 try:
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
+    sys.stdin.reconfigure(encoding="utf-8")
 except Exception:
     pass
 
@@ -654,6 +656,27 @@ def cmd_optimize_content(args):
 
     # 执行模式
     out_name = args.output or _build_output_name(args.input, "B", _extract_dominant_style(changes))
+
+    # --comment-mode：Word 原生批注模式（可审阅→接受/拒绝）
+    if getattr(args, 'comment_mode', False):
+        from core.document.annotator import GongwenAnnotator, CommentSuggestion
+        suggestions = []
+        for c in changes:
+            suggestions.append(CommentSuggestion(
+                para_index=c.get("paragraph_index", 0),
+                start_offset=0,
+                end_offset=len(c.get("original_text", "")),
+                comment_text=f"建议修改：{c.get('optimized_text', '')}｜{c.get('reason', '')}",
+                category=c.get("style", "内容优化"),
+            ))
+        ann = GongwenAnnotator()
+        result = ann.inject_comments(args.input, suggestions, out_name)
+        ok = ann.verify_comments(result)
+        print(f"✅ 批注版文档已生成: {result}")
+        print(f"  共 {len(suggestions)} 处批注（Word 打开后可通过「审阅→接受/拒绝」逐条处理）")
+        print(f"  批注完整性验证: {'通过' if ok else '失败'}")
+        return
+
     kwargs = {}
     if hasattr(args, 'disclaimer') and args.disclaimer is not None:
         kwargs['disclaimer'] = args.disclaimer
@@ -668,6 +691,69 @@ def cmd_optimize_content(args):
     )
     print(f"差异对比文档已生成: {out_name}")
     print(f"  共 {len(changes)} 处变更")
+
+
+def cmd_full_review(args):
+    """完整审校流程：格式修复（路径A）→ 内容优化（路径B）→ 批注输出。"""
+    from core.document.parser import parse_docx
+    from core.document.generator import generate_docx
+    from core.rules.engine import RuleEngine
+    from optimizer import load_changes_from_json
+    from core.document.annotator import GongwenAnnotator, CommentSuggestion
+
+    input_path = Path(args.input)
+    doc_type = _detect_doc_type(input_path, getattr(args, 'doc_type', ''))[0]
+
+    # 1. 路径 A：格式修复
+    print(f"🔧 步骤1/3 格式修复（路径 A，类型 {doc_type}）...")
+    model = parse_docx(str(input_path))
+    engine = RuleEngine()
+    issues, fixed = engine.check_and_fix(model, doc_type)
+
+    # 格式修复后的中间稿
+    fixed_tmp = _get_tmp_path(input_path)
+    generate_docx(fixed, str(fixed_tmp))
+    print(f"  ✓ 格式修复完成，修复 {len(issues)} 项")
+
+    # 2. 路径 B：内容优化（加载变更）
+    changes = load_changes_from_json(args.changes) if args.changes else []
+    print(f"🔧 步骤2/3 内容优化（路径 B，{len(changes)} 处变更）...")
+
+    # 3. 批注输出
+    out_name = args.output or input_path.parent / _build_output_name(input_path, "B", "审校")
+    suggestions = []
+    for c in changes:
+        suggestions.append(CommentSuggestion(
+            para_index=c.get("paragraph_index", 0),
+            start_offset=0,
+            end_offset=len(c.get("original_text", "")),
+            comment_text=f"建议修改：{c.get('optimized_text', '')}｜{c.get('reason', '')}",
+            category=c.get("style", "内容优化"),
+        ))
+    ann = GongwenAnnotator()
+    result = ann.inject_comments(fixed_tmp, suggestions, out_name)
+    _cleanup_tmp_path(fixed_tmp)
+
+    ok = ann.verify_comments(result)
+    print(f"✅ 完整审校完成: {result}")
+    print(f"  格式修复 {len(issues)} 项 + 批注 {len(suggestions)} 处（可审阅→接受/拒绝）")
+    print(f"  批注完整性验证: {'通过' if ok else '失败'}")
+
+
+def _get_tmp_path(input_path: Path) -> Path:
+    """在 engine/tmp/ 下创建中间文件路径。"""
+    import tempfile
+    tmp_dir = Path(__file__).resolve().parent / "engine" / "tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    return tmp_dir / f"_full_review_{input_path.stem}.docx"
+
+
+def _cleanup_tmp_path(path: Path) -> None:
+    """清理中间文件。"""
+    try:
+        path.unlink(missing_ok=True)
+    except Exception:
+        pass
 
 
 def cmd_bold_first(args):
@@ -979,6 +1065,8 @@ def main():
     p.add_argument("--disclaimer", default=None, help="文档末尾 AI 声明文字（默认：内容由GongWen-skill-AI生成，仅供参考）")
     p.add_argument("--force", action="store_true", help="强制替换：文本匹配失败时直接替换段落全部内容（可能丢失加粗等格式）")
     p.add_argument("--paragraphs", type=str, default=None, help='只处理指定段落范围，如 "11-15" 或 "5,7,9"')
+    p.add_argument("--comment-mode", action="store_true",
+                   help="批注模式：将优化建议以 Word 原生批注写入（可审阅→接受/拒绝），而非行内标记")
     p.set_defaults(func=cmd_optimize_content)
 
     p = sub.add_parser("bold-first", help="正文段落首句加粗（符合公文规范：点题第一句话默认加粗）")
@@ -1010,6 +1098,14 @@ def main():
     p.add_argument("--combined", action="store_true", help="合并为一个多页文档（默认每人一个独立文件）")
     p.add_argument('--prefix', default='桌签', help='独立文件时文件名前缀（默认"桌签"）')
     p.set_defaults(func=cmd_table_signs)
+
+    # ---- 完整审校（路径A + 路径B + 批注） ----
+    p = sub.add_parser("full-review", help="完整审校：格式修复（路径A）→ 内容优化（路径B）→ 批注输出，一条命令完成")
+    p.add_argument("input", help="输入 .docx 路径")
+    p.add_argument("-o", "--output", help="输出 .docx 路径")
+    p.add_argument("-t", "--doc-type", default="", help="公文类型（默认自动检测）")
+    p.add_argument("--changes", default="", help="变更 JSON 文件路径（路径B优化建议，可省略则仅格式修复+批注空）")
+    p.set_defaults(func=cmd_full_review)
 
     # ---- 文档审计 ----
     p = sub.add_parser("audit", help="审计文档处理链：检查删除线、加粗、AI声明等合规性问题")

@@ -47,6 +47,7 @@ class LiveEditSession:
         self.model: DocumentModel | None = None
         self.original_model: DocumentModel | None = None
         self.changes: List[dict] = []
+        self._snapshots: List[dict] = []
         self._start_time: datetime | None = None
         self._finalized: bool = False
 
@@ -154,6 +155,67 @@ class LiveEditSession:
         reverted = self.changes.pop(idx)
         logger.info(f"  → 段落 {para_index} 已回滚: {reverted['optimized_text'][:20]!r} → {reverted['original_text'][:20]!r}")
         return True
+
+    def save_snapshot(self, description: str = "") -> int:
+        """
+        保存当前文档状态快照（含模型深拷贝 + 变更记录）。
+
+        Args:
+            description: 快照描述（如"第一次优化后"）
+
+        Returns:
+            快照序号（从 1 起）
+        """
+        if self.model is None:
+            raise RuntimeError("LiveEditSession 尚未初始化")
+        self._snapshots.append({
+            "timestamp": datetime.now().isoformat(),
+            "description": description,
+            "model": copy.deepcopy(self.model),
+            "changes": copy.deepcopy(self.changes),
+        })
+        logger.info(f"  📸 快照 #{len(self._snapshots)} 已保存: {description or '未命名'}")
+        return len(self._snapshots)
+
+    def rollback(self, steps: int = 1) -> bool:
+        """
+        回退到指定步数前的快照状态。
+
+        与旧版 rollback(para_index) 不同，此版本回退整个文档状态：
+        - 有快照时：回退到倒数第 steps 个快照
+        - 无快照时：回退所有变更（恢复原始模型）
+
+        Args:
+            steps: 回退步数（默认 1）
+
+        Returns:
+            是否回退成功
+        """
+        if self.model is None:
+            return False
+
+        if self._snapshots and len(self._snapshots) >= steps:
+            target = self._snapshots[-steps]
+            self.model = copy.deepcopy(target["model"])
+            self.changes = copy.deepcopy(target["changes"])
+            # 移除被回退的快照
+            del self._snapshots[-steps:]
+            logger.info(f"  ↩️  已回退 {steps} 步到快照: {target.get('description', '未命名')}")
+            return True
+
+        if steps == 1 and self.original_model is not None:
+            # 无快照时回退全部：恢复原始模型
+            self.model = copy.deepcopy(self.original_model)
+            self.changes = []
+            self._snapshots = []
+            logger.info("  ↩️  无快照，已回退全部变更（恢复原稿）")
+            return True
+
+        return False
+
+    def snapshot_count(self) -> int:
+        """当前快照数量。"""
+        return len(self._snapshots)
 
     # -----------------------------------------------------------------------
     #  输出接口
