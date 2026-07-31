@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.32"
+__version__ = "1.12.33"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -957,6 +957,23 @@ def cmd_optimize_content(args):
     else:
         print(f"🎨 风格: {style_name}（style-prompts.md 未找到对应段落）")
 
+    # B1（路线 B）：--changes 路径风格增强——LLM 按 style_prompt 追加风格级建议
+    if style_prompt:
+        try:
+            from auto_optimizer import style_enhance_changes, llm_configured
+            if llm_configured():
+                from core.document.parser import parse_docx
+                _se_model = parse_docx(str(args.input))
+                _se_paras = [p.text for p in _se_model.paragraphs if p.text and p.text.strip()]
+                style_changes = style_enhance_changes(_se_paras, style_prompt, changes)
+                if style_changes:
+                    changes.extend(style_changes)
+                    print(f"🎨 风格增强: 追加 {len(style_changes)} 条风格级建议（用语审校角色）")
+            else:
+                print("🎨 风格增强: 未配置 GONGWEN_LLM_API，跳过（不影响现有流程）")
+        except Exception as e:
+            print(f"  ⚠️ 风格增强跳过（{e}）")
+
     # --comment-mode：Word 原生批注模式（可审阅→接受/拒绝）
     if getattr(args, 'comment_mode', False):
         from core.document.annotator import GongwenAnnotator, CommentSuggestion
@@ -1030,7 +1047,11 @@ def cmd_optimize_content(args):
         for c in changes:
             category, author = resolve_role(c)
             reason = c.get("reason", "") or ""
-            comment_text = f"建议修改：{c.get('optimized_text', '')}｜{reason}"
+            # T3 修复：事实核验类批注用"【事实核验⚠️】"前缀，与实体核验批注格式统一
+            if category == "事实核验":
+                comment_text = f"【事实核验⚠️】{c.get('original_text', '')} → {c.get('optimized_text', '')}：{reason}"
+            else:
+                comment_text = f"建议修改：{c.get('optimized_text', '')}｜{reason}"
             ref = c.get("reference", "")
             if ref:
                 comment_text += f"｜依据：{ref}"
@@ -1101,7 +1122,8 @@ def cmd_optimize_content(args):
                     cat, role = "逻辑优化", "逻辑审校员"
                 else:
                     cat, role = "内容优化", "综合审校员"
-                _rcat, _rauthor = resolve_role({"category": role})
+                # T2 修复：resolve_role 传入语义类别名（cat），而非角色名（role）
+                _rcat, _rauthor = resolve_role({"category": cat})
                 suggestions.append(CommentSuggestion(
                     para_index=issue.paragraph_index if issue.paragraph_index is not None else 0,
                     start_offset=0,
@@ -1122,7 +1144,8 @@ def cmd_optimize_content(args):
                     cat, role = "内容优化", "综合审校员"
                 else:
                     cat, role = "用语优化", "用语审校员"
-                _rcat2, _rauthor2 = resolve_role({"category": role})
+                # T2 修复：resolve_role 传入语义类别名（cat），而非角色名（role）
+                _rcat2, _rauthor2 = resolve_role({"category": cat})
                 suggestions.append(CommentSuggestion(
                     para_index=issue.paragraph_index if issue.paragraph_index is not None else 0,
                     start_offset=0,
@@ -1159,10 +1182,9 @@ def cmd_optimize_content(args):
         # L1 修复：tracked 路径补调 persons.xml + comments 三文件注册（7 色方案生效）
         from core.document.reviewer_comments import _register_persons_xml, _register_comments_infrastructure
         # P4 修复：注册失败不得静默吞异常——升级为 logger.error + traceback，便于排查
+        # T4 修复：people/comments 扩展已内联进 inject_tracked_with_comments（S1-C+S4-A），
+        # 移除外部冗余 _register_persons_xml/_register_comments_infrastructure 调用，仅保留验证
         try:
-            _register_persons_xml(result)
-            _register_comments_infrastructure(result, len(suggestions))
-            # P4：注册后验证关键文件确实存在
             import zipfile as _zip_verify
             with _zip_verify.ZipFile(result) as z:
                 _names = z.namelist()
@@ -1173,7 +1195,7 @@ def cmd_optimize_content(args):
         except Exception as e:
             import traceback as _tb
             _tb.print_exc()
-            print(f"  ⚠️ 批注颜色/扩展注册失败: {e}（详见上方 traceback）")
+            print(f"  ⚠️ 批注颜色/扩展注册验证失败: {e}（详见上方 traceback）")
 
         # 校验：comments.xml 与修订标记存在
         ok = False

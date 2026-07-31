@@ -197,6 +197,93 @@ def _infer_category(reason: str) -> str:
     return "内容优化"
 
 
+# ---------------------------------------------------------------------------
+#  路线 B（B1）：--changes 路径风格增强步骤
+# ---------------------------------------------------------------------------
+
+def _build_style_enhance_prompt(paragraphs: list, style_prompt: str,
+                                existing_changes: List[dict]) -> str:
+    """B1：构建风格级优化建议的 LLM prompt（仅追加，不修改已有 changes）。"""
+    doc_text = "\n".join([f"P{i}: {t}" for i, t in enumerate(paragraphs)])
+    existing_summary = "\n".join([
+        f"- P{c['paragraph_index']}: {str(c.get('original_text', ''))[:30]}→{str(c.get('optimized_text', ''))[:30]}"
+        for c in existing_changes
+    ])
+    return f"""你是公文风格优化专家。请根据以下风格要求，对文档进行风格级优化建议。
+
+## 风格要求
+{style_prompt}
+
+## 文档内容
+{doc_text}
+
+## 已有变更（请勿重复）
+{existing_summary or "（无）"}
+
+## 要求
+1. 仅提出风格级优化建议（用词正式化、去除口语化/网络化表述、消除主观评价修饰词、标点规范等）
+2. 不要重复已有变更的内容
+3. 每条建议必须精确对应原文中的一个连续文本片段
+4. 输出JSON格式：{{"style_changes": [{{"paragraph_index": int, "original_text": str, "optimized_text": str, "reason": str, "category": "用语优化"}}]}}
+5. category 固定为"用语优化"（风格建议归属用语审校角色）
+6. 如果没有风格优化建议，返回空列表"""
+
+
+def style_enhance_changes(doc_paragraphs: List[str], style_prompt: str,
+                          existing_changes: List[dict]) -> List[dict]:
+    """B1：使用 LLM 根据 style_prompt 生成风格级优化建议，追加到变更列表（去重）。
+
+    Args:
+        doc_paragraphs: 文档段落文本列表
+        style_prompt: 风格提示词（来自 style-prompts.md）
+        existing_changes: 已加载的 changes.json 变更列表
+
+    Returns:
+        风格增强变更列表（与 changes.json 格式兼容，category 固定"用语优化"）
+    """
+    if not style_prompt or not llm_configured():
+        logger.info("[风格增强] 未配置 GONGWEN_LLM_API 或无风格提示词，跳过")
+        return []
+
+    prompt = _build_style_enhance_prompt(doc_paragraphs, style_prompt, existing_changes)
+    raw = _call_llm_for_suggestions(prompt)
+    if not raw:
+        return []
+
+    m = re.search(r'\{\s*"style_changes"\s*:\s*\[.*\]\s*\}', raw, re.S)
+    if not m:
+        logger.warning("[风格增强] LLM 返回无 style_changes JSON")
+        return []
+    try:
+        result = json.loads(m.group(0))
+    except json.JSONDecodeError as e:
+        logger.warning(f"[风格增强] JSON 解析失败: {e}")
+        return []
+
+    style_changes = []
+    existing_keys = {(c.get("paragraph_index"), c.get("original_text", "")) for c in existing_changes}
+    for it in result.get("style_changes", []):
+        pi = int(it.get("paragraph_index", -1))
+        orig = str(it.get("original_text", "")).strip()
+        opt = str(it.get("optimized_text", "")).strip()
+        if pi < 0 or pi >= len(doc_paragraphs) or not orig or not opt:
+            continue
+        if orig == opt:
+            continue
+        if (pi, orig) in existing_keys:  # 精确去重（paragraph_index + original_text）
+            continue
+        style_changes.append({
+            "paragraph_index": pi,
+            "original_text": orig,
+            "optimized_text": opt,
+            "reason": str(it.get("reason", "")),
+            "category": "用语优化",  # 风格建议固定归属用语审校
+            "style": "庄重严谨",
+            "reference": "风格增强（style-prompts.md）",
+        })
+    return style_changes
+
+
 def auto_generate_changes(input_path: str, doc_type: str,
                           content_rules: dict, style_prompt: str) -> List[dict]:
     """基于内置规则和风格提示词，调用 LLM 自动生成内容优化建议。
@@ -206,7 +293,6 @@ def auto_generate_changes(input_path: str, doc_type: str,
         doc_type: 文档类型
         content_rules: 内容层规则（structure/focus_checks/title）
         style_prompt: 风格提示词文本
-
     Returns:
         changes 列表（与 changes.json 格式完全兼容）
     """

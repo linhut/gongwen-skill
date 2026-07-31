@@ -27,6 +27,7 @@ R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 CT = 'http://schemas.openxmlformats.org/package/2006/content-types'
 PC = 'http://schemas.openxmlformats.org/package/2006/relationships'
 W15 = 'http://schemas.microsoft.com/office/word/2012/wordml'
+W16 = 'http://schemas.microsoft.com/office/word/2018/wordml'  # T1 修复：W16 命名空间缺失
 
 XML_SPACE = '{http://www.w3.org/XML/1998/namespace}space'
 
