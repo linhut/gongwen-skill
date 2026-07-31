@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.34"
+__version__ = "1.12.35"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -905,17 +905,41 @@ def cmd_optimize_content(args):
         return 2
 
     # V1：--input-tasks 读入 Agent 回填结果，合并到 changes（事实核验修正 + 风格建议）
+    # B3 修复：合并前按 (paragraph_index, original_text) 去重 + 整段/局部包含检查
+    # B4 修复：style_enhance 合并补 revision_author="风格审校"
+    # B5 修复：收集 confirmed_entities 供后续事实核验过滤
     if args.input_tasks:
         try:
             import json as _json
             task_data = _json.loads(Path(args.input_tasks).read_text(encoding="utf-8"))
             n_merge = 0
+            confirmed_entities = set()  # B5：已确认实体集合
+
+            def _is_covered_by_existing(change: dict) -> bool:
+                """B3：新变更是否已被已有变更覆盖（整段替换包含局部替换）。"""
+                pi = change.get("paragraph_index", 0)
+                orig = change.get("original_text", "")
+                opt = change.get("optimized_text", "")
+                for ec in changes:
+                    if ec.get("paragraph_index", 0) != pi:
+                        continue
+                    ex_orig = ec.get("original_text", "")
+                    ex_opt = ec.get("optimized_text", "")
+                    if orig and orig in ex_orig and opt and opt in ex_opt:
+                        return True
+                return False
+
             for task in task_data.get("tasks", []):
                 tid = task.get("task_id", "")
                 if tid == "fact_check":
                     for r in task.get("results", []):
-                        if r.get("status") == "error" and r.get("auto_fix"):
+                        if r.get("status") == "confirmed":
+                            confirmed_entities.add(r.get("entity_name", ""))
+                        elif r.get("status") == "error" and r.get("auto_fix"):
                             fix = r["auto_fix"]
+                            if _is_covered_by_existing(fix):
+                                print(f"  ℹ️ --input-tasks: 跳过重复修正 {fix.get('original_text','')[:20]}…", file=sys.stderr)
+                                continue
                             changes.append({
                                 "paragraph_index": fix.get("paragraph_index", 0),
                                 "original_text": fix.get("original_text", ""),
@@ -925,21 +949,28 @@ def cmd_optimize_content(args):
                                 "style": style_name if 'style_name' in dir() else "庄重严谨",
                                 "reference": f"Agent事实核验（来源：{r.get('source', '未知')}）",
                             })
+                            confirmed_entities.add(r.get("entity_name", ""))
                             n_merge += 1
                 elif tid == "style_enhance":
                     for sc in task.get("results", []):
+                        if _is_covered_by_existing(sc):
+                            print(f"  ℹ️ --input-tasks: 跳过重复风格建议 {sc.get('original_text','')[:20]}…", file=sys.stderr)
+                            continue
                         changes.append({
                             "paragraph_index": sc.get("paragraph_index", 0),
                             "original_text": sc.get("original_text", ""),
                             "optimized_text": sc.get("optimized_text", ""),
                             "reason": sc.get("reason", ""),
-                            "category": sc.get("category", "用语优化"),
+                            "category": sc.get("category", "风格优化"),  # B8：默认风格优化
                             "style": style_name if 'style_name' in dir() else "庄重严谨",
                             "reference": "风格增强（Agent）",
+                            "revision_author": "风格审校",  # B4：独立修订作者
                         })
                         n_merge += 1
             if n_merge:
                 print(f"🤝 --input-tasks: 合并 {n_merge} 条 Agent 回填建议到变更列表")
+            # B5：将已确认实体集合传递到后续事实核验（供批注生成过滤）
+            args._confirmed_entities = confirmed_entities
         except Exception as e:
             print(f"  ⚠️ --input-tasks 读取失败（{e}），忽略回填", file=sys.stderr)
 
@@ -1107,18 +1138,34 @@ def cmd_optimize_content(args):
         for c in changes:
             category, author = resolve_role(c)
             reason = c.get("reason", "") or ""
-            # T3 修复：事实核验类批注用"【事实核验⚠️】"前缀，与实体核验批注格式统一
+            orig_text = c.get("original_text", "") or ""
+            opt_text = c.get("optimized_text", "") or ""
+            # B9 修复：reason 已含【事实核验⚠️】前缀时不重复添加
             if category == "事实核验":
-                comment_text = f"【事实核验⚠️】{c.get('original_text', '')} → {c.get('optimized_text', '')}：{reason}"
+                if reason.startswith("【事实核验⚠️】"):
+                    comment_text = f"{orig_text} → {opt_text}：{reason}"
+                else:
+                    comment_text = f"【事实核验⚠️】{orig_text} → {opt_text}：{reason}"
             else:
-                comment_text = f"建议修改：{c.get('optimized_text', '')}｜{reason}"
+                comment_text = f"建议修改：{opt_text}｜{reason}"
             ref = c.get("reference", "")
             if ref:
                 comment_text += f"｜依据：{ref}"
+            # B7 修复：超长 original_text（>100字）提取最小差异片段作为批注锚定范围
+            anchor_start = 0
+            anchor_end = len(orig_text)
+            if len(orig_text) > 100 and orig_text != opt_text:
+                import difflib as _dfl
+                changed_spans = [op for op in _dfl.SequenceMatcher(
+                    None, orig_text, opt_text).get_opcodes() if op[0] != 'equal']
+                if changed_spans:
+                    first_change = changed_spans[0]
+                    anchor_start = max(0, first_change[1] - 10)
+                    anchor_end = min(len(orig_text), first_change[2] + 10)
             suggestions.append(CommentSuggestion(
                 para_index=c.get("paragraph_index", 0),
-                start_offset=0,
-                end_offset=len(c.get("original_text", "")),
+                start_offset=anchor_start,
+                end_offset=anchor_end,
                 comment_text=comment_text,
                 category=category,
                 author=author,
@@ -1196,6 +1243,9 @@ def cmd_optimize_content(args):
             except Exception:
                 pass
             for e in fc_report.doubtful + fc_report.unverified:
+                # B5 修复：Agent 已确认/已修正的实体不再生成"未经核验"批注
+                if e.entity_name in getattr(args, '_confirmed_entities', set()):
+                    continue
                 s_off = 0
                 e_off = 0
                 para_text = fc_para_texts.get(e.paragraph_index, "")
@@ -1224,11 +1274,19 @@ def cmd_optimize_content(args):
                 ))
 
         # 改进 B+C+F：结构完整性检查 + focus_checks 自动检查 → 批注注入
+        # B6 修复：_m 预初始化 + 结构检查前确保可用（parse_docx 异常时不再 UnboundLocalError）
+        if '_m' not in dir() or _m is None:
+            _m = None
+            try:
+                from core.document.parser import parse_docx
+                _m = parse_docx(str(args.input))
+            except Exception:
+                pass
         try:
             from structure_checker import check_structure
             from focus_checker import run_focus_checks
             # F1：结构完整性检查批注
-            for issue in check_structure(_m.paragraphs, content_rules.get("structure", [])):
+            for issue in check_structure(_m.paragraphs if _m is not None else [], content_rules.get("structure", [])):
                 if issue.issue_type == "缺失":
                     cat, role = "格式优化", "格式审校员"
                 elif issue.issue_type == "要素缺失":

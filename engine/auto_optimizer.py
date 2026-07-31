@@ -277,7 +277,7 @@ def style_enhance_changes(doc_paragraphs: List[str], style_prompt: str,
             "original_text": orig,
             "optimized_text": opt,
             "reason": str(it.get("reason", "")),
-            "category": "用语优化",  # 风格建议固定归属用语审校
+            "category": "风格优化",  # B8 修复：风格建议归属风格审校员（原"用语优化"）
             "style": "庄重严谨",
             "reference": "风格增强（style-prompts.md）",
         })
