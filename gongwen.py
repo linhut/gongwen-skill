@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.12"
+__version__ = "1.12.13"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -953,9 +953,9 @@ def main():
     p.add_argument("-o", "--output", help="输出 .docx 路径（默认原地修改）")
     p.add_argument("--font", default="宋体", help="页码字体（默认 宋体）")
     p.add_argument("--size", type=int, default=14, help="页码字号（默认 14）")
-    p.add_argument("--alignment", default="center",
+    p.add_argument("--alignment", default="right",
                    choices=["center", "left", "right"],
-                   help="对齐（center 居中 / right 单右双左奇偶排版）")
+                   help="对齐（默认 right 单右双左奇偶排版，适配双面打印；center 居中；left 左对齐）")
     p.add_argument("--format", default="— {PAGE} —",
                    help="页码格式，可用 {PAGE} / {NUMPAGES}（默认 '— {PAGE} —'）")
     p.set_defaults(func=cmd_pagenum)
