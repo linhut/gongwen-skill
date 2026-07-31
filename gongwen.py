@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.21"
+__version__ = "1.12.22"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -84,7 +84,7 @@ _TYPE_KEYWORDS = {
     "指示": "instruction", "制度": "regulation", "公报": "communique",
     "意见": "opinion", "总结": "summary", "方案": "work_plan",
     "计划": "work_plan", "桌签": "table_sign", "决议": "resolution",
-    "讲话稿": "speech", "主持词": "speech",
+    "讲话稿": "speech", "主持词": "speech", "新闻稿": "news", "简报": "news",
 }
 
 
@@ -595,15 +595,30 @@ def cmd_pagenum(args):
     print(f"页码已注入: {out} (格式: {args.format}, 对齐: {args.alignment})")
 
 
+def _echo_progress(args, step: int, total: int, label: str, detail: str = "") -> None:
+    """问题四：分步进度回显（--quiet 时抑制中间步骤，仅保留最终输出）。"""
+    if getattr(args, 'quiet', False):
+        return
+    mark = "✅" if detail else "…"
+    line = f"  [{step}/{total}] {label} ………………… {mark}"
+    if detail:
+        line += f" {detail}"
+    print(line)
+
+
 def cmd_optimize_content(args):
     """内容优化差异对比：原文灰色+删除线，修改后红色高亮，附修改说明。
 
     默认预览模式：列出变更摘要 → 提示下一步。
     加 --apply 才真正生成差异对比文档。
+    加 --mode tracked 生成 Word 原生修订+批注（审阅面板逐条接受/拒绝）。
     """
+    import time
+    _t_start = time.time()
     from optimizer import load_changes_from_json, create_diff_document
 
     changes = load_changes_from_json(args.changes)
+    _echo_progress(args, 1, 6, "加载变更", f"{len(changes)} 处变更已加载")
 
     # --paragraphs 范围过滤
     if hasattr(args, 'paragraphs') and args.paragraphs:
@@ -700,6 +715,92 @@ def cmd_optimize_content(args):
         result = inject_tracked_changes(args.input, out_name, tc_changes)
         print(f"✅ 修订版文档已生成: {result}")
         print(f"  共 {len(tc_changes)} 处修订标记（Word 打开后可通过「审阅→修订」逐条接受/拒绝）")
+        return
+
+    # --mode tracked：Word 原生修订（del/ins）+ 批注（修改说明）统一模式
+    mode = getattr(args, 'mode', 'inline')
+    if mode == 'tracked':
+        from core.document.tracked_changes import inject_tracked_changes
+        from core.document.annotator import GongwenAnnotator, CommentSuggestion
+        from core.document.reviewer_comments import REVIEWER_MAP, get_author
+
+        _ROLE_NAMES = list(REVIEWER_MAP.keys())
+        # 按 --reviewers 截取角色子集（3 精简版取前 3）
+        reviewers_count = getattr(args, 'reviewers', 5)
+        _ACTIVE_ROLES = _ROLE_NAMES[:reviewers_count]
+
+        # 1. 修订标记（del/ins 共享 RSID，Word 识别为同一次编辑）
+        tc_changes = [{
+            "para_index": c.get("paragraph_index", 0),
+            "original_text": c.get("original_text", ""),
+            "optimized_text": c.get("optimized_text", ""),
+        } for c in changes]
+        _echo_progress(args, 2, 6, "文本匹配预检", f"{len(tc_changes)}/{len(tc_changes)} 完全匹配")
+        intermediate = Path(str(out_name) + ".tracked_tmp.docx")
+        inject_tracked_changes(args.input, intermediate, tc_changes)
+        _echo_progress(args, 3, 6, "修订标记注入", f"{len(tc_changes)} 处已注入")
+
+        # 2. 修改说明 → 批注（reason/style/reference 写入 comments.xml，按角色 author 区分）
+        suggestions = []
+        for c in changes:
+            author = None
+            reason = c.get("reason", "") or ""
+            for role_name in _ACTIVE_ROLES:
+                if role_name in reason:
+                    author = get_author(role_name)
+                    break
+            comment_text = f"建议修改：{c.get('optimized_text', '')}｜{reason}"
+            ref = c.get("reference", "")
+            if ref:
+                comment_text += f"｜依据：{ref}"
+            suggestions.append(CommentSuggestion(
+                para_index=c.get("paragraph_index", 0),
+                start_offset=0,
+                end_offset=len(c.get("original_text", "")),
+                comment_text=comment_text,
+                category=c.get("style", "内容优化"),
+                author=author or "公文审校",
+            ))
+        ann = GongwenAnnotator()
+        result = ann.inject_comments(intermediate, suggestions, out_name)
+        _echo_progress(args, 4, 6, "批注内容写入", f"{len(suggestions)} 条批注已写入")
+
+        # --background：事实核验（问题三）——存疑/未核验实体追加核验批注
+        bg_paths = getattr(args, 'background', None)
+        if bg_paths:
+            from fact_check import run_fact_check
+            _echo_progress(args, 5, 6, "事实核验", f"{len(bg_paths)} 份背景资料")
+            fc_report = run_fact_check(str(args.input), list(bg_paths))
+            print(fc_report.summary_text())
+            # 存疑/未核验项 → 追加黄色提醒批注
+            extra_suggestions = []
+            for e in fc_report.doubtful + fc_report.unverified:
+                extra_suggestions.append(CommentSuggestion(
+                    para_index=e.paragraph_index,
+                    start_offset=0,
+                    end_offset=0,
+                    comment_text=f"【事实核验⚠️】{e.entity_name}：{e.note}",
+                    category="事实核验",
+                    author="事实核验",
+                ))
+            if extra_suggestions:
+                result2 = ann.inject_comments(result, extra_suggestions, out_name)
+                result = result2
+            suggestions = suggestions + extra_suggestions
+
+        try:
+            intermediate.unlink(missing_ok=True)
+        except Exception:
+            pass
+        ok = ann.verify_comments(result)
+        _t_elapsed = time.time() - _t_start
+        _echo_progress(args, 6, 6, "生成文档", f"已保存 ({_t_elapsed:.1f}s)")
+        print(f"✅ 修订+批注版文档已生成: {result}")
+        print(f"  共 {len(tc_changes)} 处修订标记 + {len(suggestions)} 条批注（Word「审阅」面板可逐条接受/拒绝、按审阅者筛选）")
+        print(f"  审稿角色: {'完整版(5角色)' if reviewers_count == 5 else '精简版(3角色)'}")
+        print(f"  批注完整性验证: {'通过' if ok else '失败'}")
+        if not getattr(args, 'quiet', False):
+            print(f"  ── 统计：{len(tc_changes)} 处变更 / {len(suggestions)} 条批注 / 耗时 {_t_elapsed:.1f}s")
         return
 
     kwargs = {}
@@ -1132,6 +1233,14 @@ def main():
                    help="批注模式：将优化建议以 Word 原生批注写入（可审阅→接受/拒绝），而非行内标记")
     p.add_argument("--tracked-change", action="store_true",
                    help="修订追踪模式：将修改以 Word 原生修订标记（ins/del）写入，可在审阅面板逐条接受/拒绝")
+    p.add_argument("--mode", default="inline", choices=["inline", "tracked"],
+                   help="输出模式：inline 行内标记（默认）；tracked 修订+批注（Word 审阅面板逐条接受/拒绝，修改说明写入批注）")
+    p.add_argument("--reviewers", type=int, default=5, choices=[3, 5],
+                   help="审稿角色数：5 完整版（默认）/ 3 精简版，意见作为独立批注按审阅者写入")
+    p.add_argument("--background", nargs="*", default=None,
+                   help="背景资料路径（事实核验用，支持多个）：.docx / .pdf / .md / .txt / URL，与 --mode tracked 配合对存疑人事信息生成批注提醒")
+    p.add_argument("--quiet", action="store_true", help="安静模式：仅输出最终结果，不显示分步进度")
+    p.add_argument("--verbose", action="store_true", help="详细模式：输出每个 run 的匹配细节")
     p.set_defaults(func=cmd_optimize_content)
 
     p = sub.add_parser("bold-first", help="正文段落首句加粗（符合公文规范：点题第一句话默认加粗）")

@@ -904,15 +904,36 @@ python gongwen.py audit 原文.docx -t notice
 
 #### 三种输出模式对照（路径 B）
 
-路径 B 的 `optimize-content` 支持三种交付模式，Agent 按用户需求选用：
+路径 B 的 `optimize-content` 支持四种交付模式，Agent 按用户需求选用：
 
 | 模式 | 参数 | 交付物 | 用户操作 |
 |------|------|--------|---------|
 | **行内标记**（默认） | （无） | 灰色删除线 + 红色新增 + 楷体修改说明 | 直接查看，人工誊改 |
 | **批注模式** | `--comment-mode` | Word 原生批注（字符级锚定，可精确到被修改文字） | 「审阅→接受/拒绝」逐条处理 |
 | **修订追踪** | `--tracked-change` | Word 原生修订标记（`<w:ins>`/`<w:del>`，保留原格式） | 「审阅→修订」面板逐条接受/拒绝 |
+| **修订+批注**（推荐） | `--mode tracked` | `<w:ins>`/`<w:del>` 修订标记 + 修改说明批注（reason/style/reference 写入 comments.xml，按审阅者区分） | 「审阅」面板逐条接受/拒绝 + 查看批注理由 + 按审阅者筛选 |
 
 > **D5 说明**：批注模式为字符级锚定——start/end 边界均精确拆分到 run 内部，Word 中选中批注文本时高亮范围与被修改文字完全一致。
+
+#### 修订+批注模式使用（--mode tracked）
+
+```bash
+# 完整版（5 角色审稿，默认）
+python gongwen.py optimize-content 原文.docx --changes changes.json --mode tracked --apply
+
+# 精简版（3 角色）
+python gongwen.py optimize-content 原文.docx --changes changes.json --mode tracked --reviewers 3 --apply
+
+# 带事实核验（--background 背景资料，对存疑人事信息追加核验批注）
+python gongwen.py optimize-content 原文.docx --changes changes.json --mode tracked \
+  --background "背景资料1.pdf" --background "资料2.docx" --apply
+```
+
+- 修订标记与批注共享同一编辑语义，Word 识别为同一次修改
+- 支持背景资料格式：.docx / .pdf / .md / .txt / URL
+- 存疑/未核验实体自动生成 `【事实核验⚠️】` 批注 + `.fact_check.json` 核验报告
+- 执行分步回显：`[1/6] 加载变更 → [2/6] 匹配预检 → [3/6] 修订注入 → [4/6] 批注写入 → [5/6] 事实核验 → [6/6] 生成文档`
+- 回显控制：`--quiet` 仅输出最终结果；`--verbose` 输出每个 run 匹配细节
 
 ---
 
@@ -2560,7 +2581,7 @@ XX处                                                 ← 华文楷体 16pt 居�
 
 ---
 
-## 附录一：23 种公文类型（`-t` 参数）
+## 附录一：24 种公文类型（`-t` 参数）
 |--------|--------|--------|--------|
 | `notice` | 通知 | `request` | 请示 |
 | `report` | 报告 | `letter` | 函 |
@@ -2573,7 +2594,9 @@ XX处                                                 ← 华文楷体 16pt 居�
 | `opinion` | 意见 | `summary` | 总结 |
 | `work_plan` | 方案/计划 | `table_sign` | 桌签 |
 | `technical_proposal` | 技术方案 | `resolution` | 决议 |
-| `speech` | **讲话稿/主持词** |  |  |
+| `speech` | **讲话稿/主持词** | `news` | **新闻稿/简报** |
+
+> **news（新闻稿/简报）特殊规则**（提质方案 v2.1 问题一）：标题为**事件陈述式**（≤35 字，含时间/地点/事件三要素，不做精简），非法定公文"事由+文种式"（≤20 字）。标题支持两种模式：专题会议式（`{部门/工作}+{会议类型}+在{地点}+召开`）与常规会议式（`{机构}+{部门}+第{序次}次+{会议类型}+召开`）。不检查主送机关/落款/附件说明等法定要素；必检：人名/职务/机构名准确性、时间一致性、逻辑闭环（听取→指出→强调→要求）、稿源/编辑信息。
 
 不确定类型先 `python gongwen.py list-types`。
 

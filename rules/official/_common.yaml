@@ -28,6 +28,19 @@ doc_title:
   bold: false
   line_spacing: 33pt
 
+# --- 新闻稿标题规范（文种分叉，P3 方案 2.3.2）---
+# 法定公文标题：事由+文种式，≤20 字；新闻稿标题：事件陈述式，≤35 字
+title_spec:
+  official_doc:
+    max_length: 20
+    style: "事由+文种"
+    example: "关于召开XX会议的通知"
+  news_doc:
+    max_length: 35
+    style: "事件陈述式"
+    example: "XX会议在XX召开"
+    note: "新闻稿标题应完整陈述事件事实，包含时间/地点/事件核心要素，不做精简"
+
 # --- 一级标题格式（一、二、三…）---
 heading_1:
   font: "黑体"
