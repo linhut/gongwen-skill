@@ -57,6 +57,38 @@ class GongwenAnnotator:
         self.author = author
 
     # ------------------------------------------------------------------
+    #  字符级偏移计算（模块3.3，I5 修复）
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def calc_offsets(para_full_text: str, modified_text: str,
+                     start_offset: int = 0, end_offset: int = 0) -> tuple[int, int]:
+        """
+        计算批注的字符级锚定偏移。
+
+        若调用方显式提供 start_offset/end_offset 则直接使用；
+        否则在段落文本中定位修改区域（modified_text 首次出现位置），
+        找不到时回退到整段锚定。
+
+        Args:
+            para_full_text: 段落全文
+            modified_text: 被修改的原文片段（用于定位）
+            start_offset: 显式起始偏移（0 表示未指定）
+            end_offset: 显式结束偏移（0 表示未指定）
+
+        Returns:
+            (start_offset, end_offset)
+        """
+        if start_offset > 0 or end_offset > 0:
+            return (start_offset, end_offset)
+        if modified_text:
+            idx = para_full_text.find(modified_text)
+            if idx >= 0:
+                return (idx, idx + len(modified_text))
+        # 回退到整段锚定
+        return (0, len(para_full_text))
+
+    # ------------------------------------------------------------------
     #  对外主接口
     # ------------------------------------------------------------------
 
@@ -129,7 +161,8 @@ class GongwenAnnotator:
 
     def _create_comments_xml(self, suggestions: List[CommentSuggestion]) -> etree._Element:
         """创建 comments.xml。"""
-        root = etree.Element(f'{{{W}}}comments', nsmap={'w': W})
+        W15 = 'http://schemas.microsoft.com/office/word/2012/wordml'
+        root = etree.Element(f'{{{W}}}comments', nsmap={'w': W, 'w15': W15})
 
         for i, sug in enumerate(suggestions, start=1):
             cid = i  # 递增整数序列，避免 MD5 碰撞（B2 修复）
@@ -142,6 +175,9 @@ class GongwenAnnotator:
 
             # 批注文本段落（多个 w:t 分属不同 run，符合 OOXML 规范）
             p = etree.SubElement(c, f'{{{W}}}p')
+            # 模块3.4（P2）：w14:paraId/w14:textId —— Word 2019+ 批注线程/回复定位所需
+            p.set(f'{{{W15}}}paraId', f'{cid:08X}')
+            p.set(f'{{{W15}}}textId', '77777777')
             r = etree.SubElement(p, f'{{{W}}}r')
             t = etree.SubElement(r, f'{{{W}}}t')
             t.text = sug.comment_text
@@ -254,10 +290,18 @@ class GongwenAnnotator:
             if not runs:
                 continue
 
-            # 计算批注覆盖范围（clamp 到段落长度）
+            # 计算批注覆盖范围（模块3.3：优先 calc_offsets 字符级定位，回退整段锚定）
             offset_total = runs[-1][2]
-            start = max(0, sug.start_offset)
-            end = min(sug.end_offset if sug.end_offset > 0 else offset_total, offset_total)
+            para_full_text = ''.join(r[3] for r in runs)
+            start, end = self.calc_offsets(
+                para_full_text, sug.comment_text and sug.comment_text.split('：')[-1] if False else "",
+                sug.start_offset, sug.end_offset,
+            )
+            # 若未显式提供偏移且找不到定位文本，回退整段
+            if sug.start_offset <= 0 and sug.end_offset <= 0:
+                start, end = self.calc_offsets(para_full_text, "", 0, 0)
+            start = max(0, start)
+            end = min(end if end > 0 else offset_total, offset_total)
             if end <= start:
                 end = offset_total  # 未指定范围时覆盖整段
 

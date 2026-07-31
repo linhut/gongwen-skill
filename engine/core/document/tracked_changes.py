@@ -101,10 +101,52 @@ def _font_from_rpr(rPr) -> str:
     return ""
 
 
+def _build_diff_ops(original_text: str, optimized_text: str, threshold: float = 0.5) -> list:
+    """构建修订操作列表（模块2.1，P0：整段重写路径）。
+
+    若两段文本相似度低于阈值，直接走整段替换路径（原文整体删除 + 修改文整体插入），
+    避免字符级 diff 产生碎片化标记（B3）。
+
+    Args:
+        original_text: 原文
+        optimized_text: 修改文
+        threshold: 相似度阈值（默认 0.5）
+
+    Returns:
+        ops 列表：[("keep", text), ("delete", text), ("insert", text), ("replace_all", orig, opt)]
+    """
+    from difflib import SequenceMatcher
+
+    ratio = SequenceMatcher(None, original_text, optimized_text).ratio()
+    if ratio < threshold:
+        # 整段替换：原文整体删除 + 修改文整体插入（无碎片化）
+        return [("replace_all", original_text, optimized_text)]
+
+    # 字符级 diff：仅标记实际变化的部分
+    ops = []
+    matcher = SequenceMatcher(None, original_text, optimized_text)
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            ops.append(("keep", original_text[i1:i2]))
+        elif tag == "replace":
+            ops.append(("delete", original_text[i1:i2]))
+            ops.append(("insert", optimized_text[j1:j2]))
+        elif tag == "delete":
+            ops.append(("delete", original_text[i1:i2]))
+        elif tag == "insert":
+            ops.append(("insert", optimized_text[j1:j2]))
+    return ops
+
+
 def inject_tracked_change(para_node, old_text: str, new_text: str,
                           rsid: str, author: str = "公文审校") -> bool:
     """
     在段落中注入修订标记（<w:del> 旧文本 + <w:ins> 新文本）。
+
+    模块2.1/2.2/2.4 修复：基于 _build_diff_ops 的操作序列生成修订——
+    - 相似度 < 0.5 走整段替换路径（原文整体 del + 修改文整体 ins，无碎片化，B3）
+    - 相似度 ≥ 0.5 走字符级 diff（仅标记变化部分，保留未变文字）
+    - 相同文本多次出现时按 diff 偏移定位（G3）
 
     结果结构：
       <w:r w:rsidR="..."><w:t>未改变前缀</w:t></w:r>
@@ -128,7 +170,7 @@ def inject_tracked_change(para_node, old_text: str, new_text: str,
     # NI4 修复：使用 UTC 时间并正确标注
     now = datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
-    # 1. 收集现有 run 及其文本，寻找包含 old_text 的 run
+    # 1. 收集现有 run 及其文本
     runs = []
     offset = 0
     for r in para_node.findall(f'{{{W}}}r'):
@@ -139,10 +181,9 @@ def inject_tracked_change(para_node, old_text: str, new_text: str,
     if not runs:
         return False
 
-    # 2. 找到 old_text 在段落文本中的位置
-    full_text = ''.join(run[3] for run in runs)
-    pos = full_text.find(old_text)
-    if pos < 0:
+    # 2. 构建 diff 操作序列（模块2.1：相似度 <0.5 走整段替换路径）
+    ops = _build_diff_ops(old_text, new_text)
+    if not ops:
         return False
 
     # 3. 保留非 run 子元素（NI3 修复：bookmarkStart/bookmarkEnd 等）
@@ -151,10 +192,6 @@ def inject_tracked_change(para_node, old_text: str, new_text: str,
     # 4. 清空段落现有 run（重建）
     for r in para_node.findall(f'{{{W}}}r'):
         para_node.remove(r)
-
-    # 5. 重建：前缀 + del + ins + 后缀
-    prefix = full_text[:pos]
-    suffix = full_text[pos + len(old_text):]
 
     # 从原文中提取第一个 run 的 rPr 用于新 run（B4+NI2 修复：deepcopy 完整 rPr 保留全部格式）
     source_rPr = None
@@ -177,23 +214,41 @@ def inject_tracked_change(para_node, old_text: str, new_text: str,
         t.text = text
         return r
 
-    # 前缀/后缀 run：完整复制源格式（NI2）
-    if prefix:
-        para_node.append(_cloned_run(prefix))
-    if old_text:
-        del_el = etree.SubElement(para_node, f'{{{W}}}del')
-        del_el.set(f'{{{W}}}id', _next_rev_id())  # B3: 全局唯一 ID
-        del_el.set(f'{{{W}}}author', author)
-        del_el.set(f'{{{W}}}date', now)
-        del_el.append(_cloned_run(old_text, is_deleted=True))
-    if new_text:
-        ins_el = etree.SubElement(para_node, f'{{{W}}}ins')
-        ins_el.set(f'{{{W}}}id', _next_rev_id())  # B3: 全局唯一 ID
-        ins_el.set(f'{{{W}}}author', author)
-        ins_el.set(f'{{{W}}}date', now)
-        ins_el.append(_cloned_run(new_text))
-    if suffix:
-        para_node.append(_cloned_run(suffix))
+    # 5. 按 ops 操作序列重建（模块2.1/2.2/2.4：keep/delete/insert 交替，无碎片化）
+    def _append_op(op_tuple) -> None:
+        op = op_tuple[0]
+        if op == "replace_all":
+            # 整段替换路径：原文整体删除 + 修改文整体插入（B3 修复，无碎片化）
+            _, orig_all, opt_all = op_tuple
+            if orig_all:
+                del_el = etree.SubElement(para_node, f'{{{W}}}del')
+                del_el.set(f'{{{W}}}id', _next_rev_id())
+                del_el.set(f'{{{W}}}author', author)
+                del_el.set(f'{{{W}}}date', now)
+                del_el.append(_cloned_run(orig_all, is_deleted=True))
+            if opt_all:
+                ins_el = etree.SubElement(para_node, f'{{{W}}}ins')
+                ins_el.set(f'{{{W}}}id', _next_rev_id())
+                ins_el.set(f'{{{W}}}author', author)
+                ins_el.set(f'{{{W}}}date', now)
+                ins_el.append(_cloned_run(opt_all))
+        elif op == "keep":
+            para_node.append(_cloned_run(op_tuple[1]))
+        elif op == "delete":
+            del_el = etree.SubElement(para_node, f'{{{W}}}del')
+            del_el.set(f'{{{W}}}id', _next_rev_id())
+            del_el.set(f'{{{W}}}author', author)
+            del_el.set(f'{{{W}}}date', now)
+            del_el.append(_cloned_run(op_tuple[1], is_deleted=True))
+        elif op == "insert":
+            ins_el = etree.SubElement(para_node, f'{{{W}}}ins')
+            ins_el.set(f'{{{W}}}id', _next_rev_id())
+            ins_el.set(f'{{{W}}}author', author)
+            ins_el.set(f'{{{W}}}date', now)
+            ins_el.append(_cloned_run(op_tuple[1]))
+
+    for op_tuple in ops:
+        _append_op(op_tuple)
 
     # 6. 恢复非 run 子元素（NI3 修复）
     for child in non_run_children:
@@ -202,28 +257,38 @@ def inject_tracked_change(para_node, old_text: str, new_text: str,
     return True
 
 
-def inject_tracked_changes(docx_path: str | Path, output_path: str | Path | None,
-                           changes: list[dict], author: str = "公文审校") -> Path:
+def inject_tracked_changes(docx_path: str | Path | "io.BytesIO",
+                           output_path: str | Path | "io.BytesIO" | None,
+                           changes: list[dict], author: str = "公文审校") -> Path | "io.BytesIO":
     """
     对文档注入一批修订标记（每个 change 对应一个段落）。
 
     NEW-I3 修复：入口处重置 RSID/修订 ID 追踪，避免多次调用间集合膨胀。
+    模块4.1（G2 修复）：支持输出到文件对象（BytesIO），消除两步流程的中间落盘。
 
     Args:
-        docx_path: 输入 .docx
-        output_path: 输出 .docx（默认 *_修订版.docx）
+        docx_path: 输入 .docx（路径或文件对象）
+        output_path: 输出 .docx（路径/文件对象；None 默认 *_修订版.docx）
         changes: [{para_index, original_text, optimized_text}]
         author: 修订作者
 
     Returns:
-        输出路径
+        输出路径（或 BytesIO 对象）
     """
+    import io as _io
     _reset_rsid_tracking()  # NEW-I3：每次新文档会话重置追踪
     import shutil
-    src = Path(docx_path)
-    out = Path(output_path) if output_path else src.with_stem(src.stem + "_修订版")
 
-    with zipfile.ZipFile(src) as z:
+    is_src_obj = isinstance(docx_path, _io.BytesIO)
+    is_out_obj = isinstance(output_path, _io.BytesIO)
+    src = docx_path if is_src_obj else Path(docx_path)
+    if is_out_obj:
+        out = output_path
+    else:
+        src_p = Path(docx_path)
+        out = Path(output_path) if output_path else src_p.with_stem(src_p.stem + "_修订版")
+
+    with zipfile.ZipFile(src, 'r') as z:
         entries = {name: z.read(name) for name in z.namelist()}
 
     root = etree.fromstring(entries['word/document.xml'])
@@ -248,6 +313,20 @@ def inject_tracked_changes(docx_path: str | Path, output_path: str | Path | None
 
     entries['word/document.xml'] = etree.tostring(
         root, xml_declaration=True, encoding='UTF-8', standalone=True)
+
+    # 模块2.3（G4 修复）：settings.xml 注入 w:rsids 段（修订会话标识）
+    settings_key = 'word/settings.xml'
+    if settings_key in entries:
+        try:
+            sroot = etree.fromstring(entries[settings_key])
+            if sroot.find(f'{{{W}}}rsids') is None:
+                rsids = etree.SubElement(sroot, f'{{{W}}}rsids')
+                rsidRoot = etree.SubElement(rsids, f'{{{W}}}rsidRoot')
+                rsidRoot.set(f'{{{W}}}val', rsid_mgr.rsid)
+            entries[settings_key] = etree.tostring(
+                sroot, xml_declaration=True, encoding='UTF-8', standalone=True)
+        except Exception as e:
+            logger.debug(f"settings.xml rsids 注入跳过: {e}")
 
     out.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:

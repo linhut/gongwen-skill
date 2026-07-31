@@ -67,9 +67,110 @@ def inject_reviewer_comments(input_path: str | Path,
 
     ann = GongwenAnnotator()
     result = ann.inject_comments(input_path, suggestions, output_path)
-    # I11 修复：集成 persons.xml，使 Word 中五角色批注按颜色区分
+    # I11 修复：集成 persons.xml（w15:people），使 Word 中五角色批注按颜色区分
     _register_persons_xml(result)
+    # 模块3.1（I3 修复）：补全批注基础设施三文件，Word 2019+ 批注可标记已完成/回复
+    _register_comments_infrastructure(result, len(suggestions))
     return result
+
+
+def _register_comments_infrastructure(doc_path: str | Path, comment_count: int) -> None:
+    """模块3.1（I3 修复）：生成 commentsExtended.xml + commentsIds.xml + commentsExtensible.xml。
+
+    这三个文件是 Word 2019+ 批注"标记为已完成 / 回复 / 批注线程"功能的配套部分。
+    """
+    import zipfile
+    from lxml import etree
+    from pathlib import Path
+
+    W15 = 'http://schemas.microsoft.com/office/word/2012/wordml'
+    W16 = 'http://schemas.microsoft.com/office/word/2018/wordml'
+    W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+
+    p = Path(doc_path)
+    if not p.exists():
+        return
+
+    with zipfile.ZipFile(p) as z:
+        entries = {n: z.read(n) for n in z.namelist()}
+        infos = {n: z.getinfo(n) for n in z.namelist()}
+
+    # 1. commentsExtended.xml —— 每条批注的 paraId/textId/dateUtc（支持线程与已完成标记）
+    ext = etree.Element(f'{{{W15}}}commentsEx', nsmap={'w15': W15})
+    for i in range(1, comment_count + 1):
+        cex = etree.SubElement(ext, f'{{{W15}}}commentEx')
+        cex.set(f'{{{W15}}}paraId', f'{i:08X}')
+        cex.set(f'{{{W15}}}done', '0')
+    ext_bytes = etree.tostring(ext, xml_declaration=True, encoding='UTF-8', standalone=True)
+
+    # 2. commentsIds.xml —— 批注 ID 映射
+    ids = etree.Element(f'{{{W15}}}commentsIds', nsmap={'w15': W15})
+    for i in range(1, comment_count + 1):
+        cid = etree.SubElement(ids, f'{{{W15}}}commentId')
+        cid.set(f'{{{W15}}}id', str(i))
+        cid.set(f'{{{W15}}}paraId', f'{i:08X}')
+    ids_bytes = etree.tostring(ids, xml_declaration=True, encoding='UTF-8', standalone=True)
+
+    # 3. commentsExtensible.xml —— 可扩展批注元数据
+    ext2 = etree.Element(f'{{{W16}}}commentsExtensible', nsmap={'w16': W16})
+    ext2_bytes = etree.tostring(ext2, xml_declaration=True, encoding='UTF-8', standalone=True)
+
+    # 注册 Content-Type（三个文件）
+    ct_key = '[Content_Types].xml'
+    if ct_key in entries:
+        ct_root = etree.fromstring(entries[ct_key])
+        for part, ctype in (
+            ('/word/commentsExtended.xml', 'application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml'),
+            ('/word/commentsIds.xml', 'application/vnd.openxmlformats-officedocument.wordprocessingml.commentsIds+xml'),
+            ('/word/commentsExtensible.xml', 'application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtensible+xml'),
+        ):
+            if not any(ov.get('PartName') == part for ov in ct_root):
+                ov = etree.SubElement(ct_root, '{%s}Override' % 'http://schemas.openxmlformats.org/package/2006/content-types')
+                ov.set('PartName', part)
+                ov.set('ContentType', ctype)
+        entries[ct_key] = etree.tostring(ct_root, xml_declaration=True, encoding='UTF-8', standalone=True)
+
+    # 注册关系（document.xml.rels）
+    rels_key = 'word/_rels/document.xml.rels'
+    if rels_key in entries:
+        rels_root = etree.fromstring(entries[rels_key])
+        existing_ids = {r.get('Id', '') for r in rels_root}
+        max_num = 0
+        for rid in existing_ids:
+            if rid.startswith('rId') and rid[3:].isdigit():
+                max_num = max(max_num, int(rid[3:]))
+        PC = 'http://schemas.openxmlformats.org/package/2006/relationships'
+        for target in ('commentsExtended.xml', 'commentsIds.xml', 'commentsExtensible.xml'):
+            if any(r.get('Target', '') == target for r in rels_root):
+                continue
+            max_num += 1
+            rel = etree.SubElement(rels_root, f'{{{PC}}}Relationship')
+            rel.set('Id', f'rId{max_num}')
+            rel.set('Type', f'http://schemas.openxmlformats.org/officeDocument/2006/relationships/{target[:-4]}')
+            rel.set('Target', target)
+        entries[rels_key] = etree.tostring(rels_root, xml_declaration=True, encoding='UTF-8', standalone=True)
+
+    # 写回 ZIP（原子写入）
+    entries['word/commentsExtended.xml'] = ext_bytes
+    entries['word/commentsIds.xml'] = ids_bytes
+    entries['word/commentsExtensible.xml'] = ext2_bytes
+    import tempfile, os as _os
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=str(p.parent), suffix='.tmp', prefix='.gongwen_cmt_')
+    _os.close(tmp_fd)
+    try:
+        with zipfile.ZipFile(tmp_path, 'w', zipfile.ZIP_DEFLATED) as z:
+            for name in infos:
+                z.writestr(name, entries.get(name, b''))
+            for name in ('word/commentsExtended.xml', 'word/commentsIds.xml', 'word/commentsExtensible.xml'):
+                if name not in infos:
+                    z.writestr(name, entries[name])
+        _os.replace(tmp_path, p)
+    except Exception:
+        try:
+            _os.unlink(tmp_path)
+        except Exception:
+            pass
+        raise
 
 
 def _register_persons_xml(doc_path: str | Path) -> None:
@@ -95,50 +196,53 @@ def _register_persons_xml(doc_path: str | Path) -> None:
         entries = {n: z.read(n) for n in z.namelist()}
         infos = {n: z.getinfo(n) for n in z.namelist()}
 
-    # 构建 persons.xml
-    persons = etree.Element(f'{{{W}}}persons', nsmap={'w': W})
-    import hashlib
+    # 构建 people.xml（模块3.2，I4 修复：w:persons 旧标准 → w15:people 微软官方格式）
+    # 官方命名空间：http://schemas.microsoft.com/office/word/2012/wordml
+    W15 = 'http://schemas.microsoft.com/office/word/2012/wordml'
+    people = etree.Element(f'{{{W15}}}people', nsmap={'w15': W15})
     for role, cfg in REVIEWER_MAP.items():
         author = cfg["author"]
         color = cfg["color"]
-        aid = hashlib.md5(author.encode()).hexdigest()[:8].upper()
-        person = etree.SubElement(persons, f'{{{W}}}person')
-        person.set(f'{{{W}}}author', author)
-        person.set(f'{{{W}}}preserve', '1')
-        name = etree.SubElement(person, f'{{{W}}}name')
-        name.set(f'{{{W}}}val', author)
-        c = etree.SubElement(person, f'{{{W}}}color')
-        c.set(f'{{{W}}}val', color)
-        ini = etree.SubElement(person, f'{{{W}}}initials')
-        ini.set(f'{{{W}}}val', role[:1])
+        person = etree.SubElement(people, f'{{{W15}}}person')
+        person.set(f'{{{W15}}}author', author)
+        person.set(f'{{{W15}}}preserve', '1')
+        # presenceInfo 子元素（w15 官方结构要求）
+        etree.SubElement(person, f'{{{W15}}}presenceInfo')
+        name = etree.SubElement(person, f'{{{W15}}}name')
+        name.set(f'{{{W15}}}val', author)
+        # 邮箱/头像占位（官方结构要求，可空）
+        email = etree.SubElement(person, f'{{{W15}}}email')
+        email.set(f'{{{W15}}}val', '')
+        img = etree.SubElement(person, f'{{{W15}}}img')
+        img.set(f'{{{W15}}}val', '')
 
-    persons_bytes = etree.tostring(persons, xml_declaration=True, encoding='UTF-8', standalone=True)
+    persons_bytes = etree.tostring(people, xml_declaration=True, encoding='UTF-8', standalone=True)
 
-    # 注册 Content-Type
+    # 注册 Content-Type（people+xml）
     ct_key = '[Content_Types].xml'
     if ct_key in entries:
         ct_root = etree.fromstring(entries[ct_key])
         exists = False
         for ov in ct_root:
-            if ov.get('PartName') == '/word/persons.xml':
+            if ov.get('PartName') == '/word/people.xml':
                 exists = True
                 break
         if not exists:
             ov = etree.SubElement(ct_root, f'{{{CT}}}Override')
-            ov.set('PartName', '/word/persons.xml')
-            ov.set('ContentType', 'application/vnd.openxmlformats-officedocument.wordprocessingml.persons+xml')
+            ov.set('PartName', '/word/people.xml')
+            ov.set('ContentType', 'application/vnd.openxmlformats-officedocument.wordprocessingml.people+xml')
         entries[ct_key] = etree.tostring(ct_root, xml_declaration=True, encoding='UTF-8', standalone=True)
 
     # 注册关系（NEW-I4/NEW-I7 修复：扫描全部已有 rId 后从最大编号+1 分配，并去重）
     rels_key = 'word/_rels/document.xml.rels'
     if rels_key in entries:
         rels_root = etree.fromstring(entries[rels_key])
-        # NEW-I7：按 Type+Target 双重去重，避免重复注册
-        has_persons = any(
-            r.get('Type', '').endswith('/persons') and r.get('Target', '') == 'persons.xml'
+        # NEW-I7：按 Type+Target 双重去重，避免重复注册（模块3.2：people.xml）
+        has_people = any(
+            r.get('Type', '').endswith('/people') and r.get('Target', '') == 'people.xml'
             for r in rels_root
         )
-        if not has_persons:
+        if not has_people:
             # NEW-I4：收集全部已有 rId（含非数字后缀如 rIdFtrEven），从最大数字编号+1 分配
             existing_ids = {r.get('Id', '') for r in rels_root}
             max_num = 0
@@ -151,21 +255,21 @@ def _register_persons_xml(doc_path: str | Path) -> None:
                 new_rid = f'rId{max_num + 1}'
             rel = etree.SubElement(rels_root, f'{{{PC}}}Relationship')
             rel.set('Id', new_rid)
-            rel.set('Type', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/persons')
-            rel.set('Target', 'persons.xml')
+            rel.set('Type', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/people')
+            rel.set('Target', 'people.xml')
         entries[rels_key] = etree.tostring(rels_root, xml_declaration=True, encoding='UTF-8', standalone=True)
 
-    # 写入 persons.xml 并回写 ZIP（NI6 修复：原子写入，异常时保留原文件）
-    entries['word/persons.xml'] = persons_bytes
+    # 写入 people.xml 并回写 ZIP（NI6 修复：原子写入，异常时保留原文件）
+    entries['word/people.xml'] = persons_bytes
     import tempfile, os as _os
-    tmp_fd, tmp_path = tempfile.mkstemp(dir=str(p.parent), suffix='.tmp', prefix='.gongwen_persons_')
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=str(p.parent), suffix='.tmp', prefix='.gongwen_people_')
     _os.close(tmp_fd)
     try:
         with zipfile.ZipFile(tmp_path, 'w', zipfile.ZIP_DEFLATED) as z:
             for name in infos:
                 z.writestr(name, entries.get(name, b''))
             # 新条目
-            for name in ('word/persons.xml',):
+            for name in ('word/people.xml',):
                 if name not in infos:
                     z.writestr(name, entries[name])
         _os.replace(tmp_path, p)

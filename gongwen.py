@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.22"
+__version__ = "1.12.23"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -736,8 +736,11 @@ def cmd_optimize_content(args):
             "optimized_text": c.get("optimized_text", ""),
         } for c in changes]
         _echo_progress(args, 2, 6, "文本匹配预检", f"{len(tc_changes)}/{len(tc_changes)} 完全匹配")
-        intermediate = Path(str(out_name) + ".tracked_tmp.docx")
-        inject_tracked_changes(args.input, intermediate, tc_changes)
+        # 模块4.1（G2 修复）：内存 BytesIO 中间稿，消除两步流程的中间落盘（单次 ZIP 操作）
+        import io as _io
+        intermediate_buf = _io.BytesIO()
+        inject_tracked_changes(args.input, intermediate_buf, tc_changes)
+        intermediate_buf.seek(0)
         _echo_progress(args, 3, 6, "修订标记注入", f"{len(tc_changes)} 处已注入")
 
         # 2. 修改说明 → 批注（reason/style/reference 写入 comments.xml，按角色 author 区分）
@@ -1233,8 +1236,8 @@ def main():
                    help="批注模式：将优化建议以 Word 原生批注写入（可审阅→接受/拒绝），而非行内标记")
     p.add_argument("--tracked-change", action="store_true",
                    help="修订追踪模式：将修改以 Word 原生修订标记（ins/del）写入，可在审阅面板逐条接受/拒绝")
-    p.add_argument("--mode", default="inline", choices=["inline", "tracked"],
-                   help="输出模式：inline 行内标记（默认）；tracked 修订+批注（Word 审阅面板逐条接受/拒绝，修改说明写入批注）")
+    p.add_argument("--mode", default="tracked", choices=["inline", "tracked"],
+                   help="输出模式：tracked 修订+批注（默认，Word 审阅面板逐条接受/拒绝，修改说明写入批注）；inline 行内标记（显式降级选择）")
     p.add_argument("--reviewers", type=int, default=5, choices=[3, 5],
                    help="审稿角色数：5 完整版（默认）/ 3 精简版，意见作为独立批注按审阅者写入")
     p.add_argument("--background", nargs="*", default=None,

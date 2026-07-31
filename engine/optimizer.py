@@ -373,13 +373,14 @@ def _build_reason_para(
         text_parts.append(f"【依据】{reference}")
     full_text = " ".join(text_parts)
 
-    # 说明文字使用楷体_GB2312 小四号 12pt，灰色 #888888，与正文仿宋 16pt 形成明显区分
+    # 说明文字使用楷体_GB2312 五号 10.5pt，灰色 #999999，与正文仿宋 16pt 形成明显区分
+    # 模块1.5（P1）：字号 12.0 → 10.5（五号）；模块G1：灰色统一 #999999
     return {
         "text": full_text,
         "runs": [{
             "text": full_text, "bold": False,
-            "font_name": "楷体_GB2312", "font_size_pt": 12.0,
-            "color": "888888", "strikethrough": False, "highlight": False,
+            "font_name": "楷体_GB2312", "font_size_pt": 10.5,
+            "color": "999999", "strikethrough": False, "highlight": False,
         }],
         "format": {
             "alignment": "left",
@@ -635,6 +636,15 @@ def create_diff_document(
             new_paragraphs.append(new_para)
 
             # 追加修改说明段（多片段时合并各 fragment 的 reason/reference/style）
+            # 模块1.4（P0）：文本无变化时跳过修改说明生成——仅当存在实际改动且有 reason
+            has_change = False
+            if fragments:
+                for _f in fragments:
+                    _o = _f.get("original_text", "")
+                    _n = _f.get("optimized_text", "")
+                    if _o.strip() != _n.strip():
+                        has_change = True
+                        break
             if len(fragments) == 1:
                 reason = fragments[0].get("reason", "")
                 reference = fragments[0].get("reference", "")
@@ -646,7 +656,7 @@ def create_diff_document(
                 reason = "\n".join(reasons) if reasons else ""
                 reference = "\n".join(references) if references else ""
                 style = "\n".join(styles) if styles else ""
-            if reason:
+            if reason and has_change:
                 reason_para_data = _build_reason_para(reason, reference, style)
                 rr = []
                 for i, rd in enumerate(reason_para_data["runs"]):

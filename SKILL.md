@@ -81,9 +81,15 @@ Licensed under the MIT License. See the LICENSE file for details.
 
 1. 读取 `gongwen.py` 顶部的 `__version__` 常量，获取本地版本号
 2. 告知用户：`当前加载 gongwen-skill v{__version__}`
-3. 如有 git 环境，运行 `git -C <项目目录> describe --tags --abbrev=0` 获取最新 tag；若本地版本 ≠ 最新 tag，提示用户：
+3. 比对**远程最新 tag**（不能只用本地 `git describe`——它只读本地可达 tag，未 fetch 时会误判本地即最新）：
+   ```bash
+   # 查询远程 tag（无需 fetch，直接查远端），取最高版本
+   git ls-remote --tags <origin-url> | awk -F/ '{print $NF}' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1
    ```
-   有更新可用：最新版 {tag}，当前 {version}
+   - 若上述命令不可用（无 git/无网络），**必须明确告知用户"版本自检因无法访问远程而跳过"**，不得静默假设本地即最新
+4. 若远程最新 tag > 本地 `__version__`，提示用户：
+   ```
+   有更新可用：最新版 {远程tag}，当前 {本地version}
    拉取地址：
      GitHub：https://github.com/linhut/gongwen-skill
      GitCode：https://gitcode.com/linhut/gongwen-skill
