@@ -166,7 +166,7 @@ def _build_diff_ops(original_text: str, optimized_text: str,
         elif tag == "insert":
             raw_ops.append(("insert", optimized_text[j1:j2]))
 
-    # 合并优化：相邻 del+ins 合并为一组（F4 4.4）；孤立 delete 转 replace 配对（D2）
+    # 合并优化：相邻 del+ins 合并为一组（F4 4.4）；孤立 delete 保留纯删除（B17）
     merged: list = []
     i = 0
     while i < len(raw_ops):
@@ -175,8 +175,9 @@ def _build_diff_ops(original_text: str, optimized_text: str,
             merged.append(("replace", op[1], raw_ops[i + 1][1]))
             i += 2
         elif op[0] == "delete":
-            # D2：孤立 delete（无后续 insert）→ replace 配对占位，Word 中显示删除→插入意图
-            merged.append(("replace", op[1], DELETE_PLACEHOLDER))
+            # B17 修复：孤立 delete 只生成 w:del 纯删除（不再生成"（删减）"占位插入，
+            # 避免接受修订后占位符残留在正文；Word 修订标记本身已通过删除线清晰展示删除内容）
+            merged.append(("delete", op[1]))
             i += 1
         else:
             merged.append(op)
@@ -481,20 +482,41 @@ def inject_tracked_with_comments(
             if inject_tracked_change_granular(para, c['original_text'], c['optimized_text'], rsid, rev_author):
                 applied += 1
         else:
-            # 多条变更：合并计算最终目标文本 → 还原段落到原始状态 → 一次 diff
-            current_text = _collect_full_text_including_deleted(para)
-            target_text = current_text
+            # B18 修复：检查同段变更是否来自多个修订作者
+            authors_in_group = set()
             for c in c_list:
-                orig = c.get('original_text', '')
-                opt = c.get('optimized_text', '')
-                if orig and orig in target_text:
-                    target_text = target_text.replace(orig, opt, 1)
-            if target_text == current_text:
-                continue
-            _accept_revisions_in_para(para)
-            rev_author = c_list[0].get("revision_author") or author
-            if inject_tracked_change_granular(para, current_text, target_text, rsid, rev_author):
-                applied += len(c_list)
+                authors_in_group.add(c.get("revision_author") or author)
+            if len(authors_in_group) == 1:
+                # 单作者：B16 合并策略——合并计算最终目标文本 → 还原段落 → 一次 diff
+                current_text = _collect_full_text_including_deleted(para)
+                target_text = current_text
+                for c in c_list:
+                    orig = c.get('original_text', '')
+                    opt = c.get('optimized_text', '')
+                    if orig and orig in target_text:
+                        target_text = target_text.replace(orig, opt, 1)
+                if target_text == current_text:
+                    continue
+                _accept_revisions_in_para(para)
+                rev_author = c_list[0].get("revision_author") or author
+                if inject_tracked_change_granular(para, current_text, target_text, rsid, rev_author):
+                    applied += len(c_list)
+            else:
+                # B18：多作者 → 逐条处理，每条用各自作者（借助 B16 还原机制避免 full_text 丢失）
+                for c in c_list:
+                    orig = c.get('original_text', '')
+                    opt = c.get('optimized_text', '')
+                    if not orig or (orig or '').strip() == (opt or '').strip():
+                        continue
+                    rev_author = c.get("revision_author") or author
+                    # 每次处理前还原段落 + 重新收集完整文本
+                    current_text = _collect_full_text_including_deleted(para)
+                    if orig not in current_text:
+                        continue
+                    _accept_revisions_in_para(para)
+                    target_text = current_text.replace(orig, opt, 1)
+                    if inject_tracked_change_granular(para, current_text, target_text, rsid, rev_author):
+                        applied += 1
 
     # 2. 批注锚定（在修订后的段落上）
     for i, sug in enumerate(suggestions, start=1):
