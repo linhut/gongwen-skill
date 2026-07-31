@@ -64,6 +64,8 @@ class TestSemanticCategories:
         assert "事实核验" in CATEGORY_ROLE_MAP
 
     def test_reviewer_map_has_fact_check_role(self):
-        """D5/M2 验证：REVIEWER_MAP 含 6 角色且事实核验员独立。"""
-        assert len(REVIEWER_MAP) == 6
+        """D5/M2/V3 验证：REVIEWER_MAP 含 7 角色（6 批注 + 风格审校），事实核验员独立。"""
+        assert len(REVIEWER_MAP) == 7
         assert get_author("事实核验员") == "事实核验"
+        assert "风格审校员" in REVIEWER_MAP
+        assert get_author("风格审校员") == "风格审校"

@@ -32,6 +32,8 @@ class Entity:
     """从文档中提取的实体。"""
     entity_type: str      # person / org / project / doc_no / data
     entity_name: str      # 实体名（如"覃万成"）
+    doc_attribute: str = ""   # V2 新增：文档中的属性（如"省民宗委党组成员、副主任"）
+    doc_context: str = ""     # V2 新增：完整上下文（如"省民宗委党组成员、副主任覃万成..."）
     context: str = ""     # 上下文片段
     paragraph_index: int = 0
     status: str = "待核验"  # 待核验 / 已确认 / 存疑 / 无法核验
@@ -198,7 +200,8 @@ def extract_entities(paragraphs: list[str]) -> List[Entity]:
     entities: List[Entity] = []
     seen = set()
 
-    def _add(e_type: str, name: str, ctx: str, para_idx: int) -> None:
+    def _add(e_type: str, name: str, ctx: str, para_idx: int,
+             doc_attribute: str = "", doc_context: str = "") -> None:
         if not _is_valid_entity_name(e_type, name):
             return
         key = (e_type, name)
@@ -206,16 +209,18 @@ def extract_entities(paragraphs: list[str]) -> List[Entity]:
             return
         seen.add(key)
         entities.append(Entity(entity_type=e_type, entity_name=name,
-                               context=ctx[:60], paragraph_index=para_idx))
+                               context=ctx[:60], paragraph_index=para_idx,
+                               doc_attribute=doc_attribute, doc_context=doc_context))
 
     for idx, text in enumerate(paragraphs):
         if not text.strip():
             continue
-        # 1. 人名+职务：{职务}XXX（职务在名前）
+        # 1. 人名+职务：{职务}XXX（职务在名前）——V2：保存完整职务到 doc_attribute/doc_context
         for m in re.finditer(
-                r'([\u4e00-\u9fa5]{2,8}(?:' + '|'.join(_TITLE_SUFFIXES) + r'))([\u4e00-\u9fa5]{2,3})',
+                r'([\u4e00-\u9fa5、，]{2,12}(?:' + '|'.join(_TITLE_SUFFIXES) + r'))([\u4e00-\u9fa5]{2,3})',
                 text):
-            _add('person', m.group(2), m.group(0), idx)
+            _add('person', m.group(2), m.group(0), idx,
+                 doc_attribute=m.group(1), doc_context=m.group(0))
         # 2. 人名（常见三字姓名模式：职务后或"听取了……的通报"结构）
         for m in re.finditer(r'听取了([\u4e00-\u9fa5]{2,3})(?:关于|对)', text):
             _add('person', m.group(1), m.group(0), idx)
@@ -310,8 +315,11 @@ def extract_entities_llm(paragraphs: list[str]) -> Optional[List[Entity]]:
                 continue
             pi = int(it.get("paragraph_index", 0) or 0)
             ctx = paragraphs[pi][:60] if 0 <= pi < len(paragraphs) else ""
+            # V2：LLM 的 title 字段 → doc_attribute（职务/属性描述）
             entities.append(Entity(
                 entity_type=etype, entity_name=name, context=ctx, paragraph_index=pi,
+                doc_attribute=str(it.get("title", "") or ""),
+                doc_context=ctx,
             ))
         logger.info(f"LLM 实体提取完成: {len(entities)} 项")
         return entities

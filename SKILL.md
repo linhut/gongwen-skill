@@ -296,6 +296,16 @@ Licensed under the MIT License. See the LICENSE file for details.
 - 每次执行 skill 命令后，必须在回复中记录：调用了哪个命令、参数是什么、输出文件路径
 - 不得省略 skill 命令调用记录，不得只报告最终结果
 
+#### 规则 5：Agent 协作模式（v1.12.33，V1/V4）
+- **Agent 环境中优先用 `--output-tasks` / `--input-tasks` 协作，不依赖 `GONGWEN_LLM_API`**：
+  1. `python gongwen.py optimize-content 文档.docx --changes changes.json --output-tasks tasks.json --apply --mode tracked -t news`
+     → Skill 输出待核验实体 + 风格增强请求到 tasks.json，同时生成基础版文档（内容修订+结构/焦点检查批注）
+  2. Agent 用自身 LLM+搜索能力处理 tasks.json（核验人事信息、生成风格建议），输出 tasks_result.json
+  3. `python gongwen.py optimize-content 文档.docx --changes changes.json --input-tasks tasks_result.json --apply --mode tracked -t news`
+     → Skill 读入回填结果（事实核验修正 status=error+auto_fix / 风格建议），合并到 changes 后执行
+- `--output-tasks` 与 `--input-tasks` 互斥，不能同时指定
+- `GONGWEN_LLM_API` 保留为**降级通道**：CLI 独立使用且配置了 API 时，Skill 内部自行调用（自动优化/风格增强/LLM 实体提取）；未配置则跳过这些环节，不影响确定性工作
+
 #### 规则 5：失败必须上报
 - skill 命令执行失败时，必须向用户报告：
   1. 失败的命令和参数

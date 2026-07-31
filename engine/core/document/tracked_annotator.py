@@ -420,7 +420,9 @@ def inject_tracked_with_comments(
         # D4：未修改段落跳过
         if (orig or '').strip() == (opt or '').strip():
             continue
-        if inject_tracked_change_granular(para_nodes[pi], orig, opt, rsid, author):
+        # V3：per-change revision_author——风格增强等变更可用独立修订作者注入
+        rev_author = c.get("revision_author") or author
+        if inject_tracked_change_granular(para_nodes[pi], orig, opt, rsid, rev_author):
             applied += 1
 
     # 2. 批注锚定（在修订后的段落上）

@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.33"
+__version__ = "1.12.34"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -899,6 +899,50 @@ def cmd_optimize_content(args):
         changes = load_changes_from_json(args.changes)
     _echo_progress(args, 1, 6, "加载变更", f"{len(changes)} 处变更已加载")
 
+    # V1 修复：--output-tasks 与 --input-tasks 互斥
+    if args.output_tasks and args.input_tasks:
+        print("❌ --output-tasks 与 --input-tasks 不能同时指定", file=sys.stderr)
+        return 2
+
+    # V1：--input-tasks 读入 Agent 回填结果，合并到 changes（事实核验修正 + 风格建议）
+    if args.input_tasks:
+        try:
+            import json as _json
+            task_data = _json.loads(Path(args.input_tasks).read_text(encoding="utf-8"))
+            n_merge = 0
+            for task in task_data.get("tasks", []):
+                tid = task.get("task_id", "")
+                if tid == "fact_check":
+                    for r in task.get("results", []):
+                        if r.get("status") == "error" and r.get("auto_fix"):
+                            fix = r["auto_fix"]
+                            changes.append({
+                                "paragraph_index": fix.get("paragraph_index", 0),
+                                "original_text": fix.get("original_text", ""),
+                                "optimized_text": fix.get("optimized_text", ""),
+                                "reason": fix.get("reason", ""),
+                                "category": "事实核验",
+                                "style": style_name if 'style_name' in dir() else "庄重严谨",
+                                "reference": f"Agent事实核验（来源：{r.get('source', '未知')}）",
+                            })
+                            n_merge += 1
+                elif tid == "style_enhance":
+                    for sc in task.get("results", []):
+                        changes.append({
+                            "paragraph_index": sc.get("paragraph_index", 0),
+                            "original_text": sc.get("original_text", ""),
+                            "optimized_text": sc.get("optimized_text", ""),
+                            "reason": sc.get("reason", ""),
+                            "category": sc.get("category", "用语优化"),
+                            "style": style_name if 'style_name' in dir() else "庄重严谨",
+                            "reference": "风格增强（Agent）",
+                        })
+                        n_merge += 1
+            if n_merge:
+                print(f"🤝 --input-tasks: 合并 {n_merge} 条 Agent 回填建议到变更列表")
+        except Exception as e:
+            print(f"  ⚠️ --input-tasks 读取失败（{e}），忽略回填", file=sys.stderr)
+
     # --paragraphs 范围过滤
     if hasattr(args, 'paragraphs') and args.paragraphs:
         indices = set()
@@ -949,16 +993,29 @@ def cmd_optimize_content(args):
     # 执行模式
     out_name = args.output or _build_output_name(args.input, "B", _extract_dominant_style(changes))
 
+    # V3 修复：风格确定 3 级优先级（--style 显式 > changes.style 提取 > doc_type 映射 > 默认）
+    TYPE_STYLE_MAP = {
+        "notice": "庄重严谨", "decision": "庄重严谨", "opinion": "庄重严谨",
+        "letter": "请示商洽", "request": "请示商洽",
+        "report": "宏观概括", "summary": "宏观概括",
+        "minutes": "平实简洁", "regulation": "法规条文",
+        "speech": "会议主持词", "news": "庄重严谨",
+    }
+    style_name = _validate_style(
+        getattr(args, 'style', None)          # 1. --style 显式指定
+        or _extract_dominant_style(changes)    # 2. changes.json style 字段
+        or TYPE_STYLE_MAP.get(doc_type, "")    # 3. doc_type 自动推断
+        or "庄重严谨")                         # 4. 兜底
     # 改进 D：加载风格提示词（供 Agent/LLM 生成建议时参考，输出风格信息）
-    style_name = _validate_style(_extract_dominant_style(changes) or "")
     style_prompt = _load_style_prompt(style_name)
     if style_prompt:
         print(f"🎨 风格: {style_name}（已加载 style-prompts.md 对应提示词 {len(style_prompt)} 字）")
     else:
         print(f"🎨 风格: {style_name}（style-prompts.md 未找到对应段落）")
 
-    # B1（路线 B）：--changes 路径风格增强——LLM 按 style_prompt 追加风格级建议
-    if style_prompt:
+    # B1（路线 B）+ V3：--changes 路径风格增强——LLM 按 style_prompt 追加风格级建议
+    # V3 修复：默认开启，--no-style-enhance 显式禁用
+    if style_prompt and not getattr(args, 'no_style_enhance', False):
         try:
             from auto_optimizer import style_enhance_changes, llm_configured
             if llm_configured():
@@ -967,8 +1024,11 @@ def cmd_optimize_content(args):
                 _se_paras = [p.text for p in _se_model.paragraphs if p.text and p.text.strip()]
                 style_changes = style_enhance_changes(_se_paras, style_prompt, changes)
                 if style_changes:
+                    # V3：风格增强变更以独立修订作者"风格审校"注入
+                    for _sc in style_changes:
+                        _sc["revision_author"] = "风格审校"
                     changes.extend(style_changes)
-                    print(f"🎨 风格增强: 追加 {len(style_changes)} 条风格级建议（用语审校角色）")
+                    print(f"🎨 风格增强: 追加 {len(style_changes)} 条风格级建议（修订作者：风格审校）")
             else:
                 print("🎨 风格增强: 未配置 GONGWEN_LLM_API，跳过（不影响现有流程）")
         except Exception as e:
@@ -1070,29 +1130,82 @@ def cmd_optimize_content(args):
         bg_paths = getattr(args, 'background', None)
         _echo_progress(args, 5, 6, "事实核验",
                        f"{len(bg_paths)} 份背景资料" if bg_paths else "无背景资料，仅互联网核验")
+
+        # V1：--output-tasks 模式——收集待 Agent 处理任务输出 JSON，跳过核验/风格批注注入
+        if args.output_tasks:
+            try:
+                import json as _json
+                # 实体提取（不做互联网核验，交 Agent）
+                from fact_check import extract_entities_hybrid
+                from core.document.parser import parse_docx as _fc_parse
+                _fc_model = _fc_parse(str(args.input))
+                _fc_paras = [p.text for p in _fc_model.paragraphs]
+                _entities = extract_entities_hybrid(_fc_paras)
+                entity_tasks = []
+                for e in _entities:
+                    if e.entity_type not in ('person', 'org'):
+                        continue
+                    entity_tasks.append({
+                        "entity_name": e.entity_name,
+                        "entity_type": e.entity_type,
+                        "paragraph_index": e.paragraph_index,
+                        "doc_attribute": e.doc_attribute,
+                        "doc_context": e.doc_context or (e.context or ""),
+                        "hint": "请核验此" + ("人员职务" if e.entity_type == "person" else "机构全称") + "是否正确，如不正确请提供正确值及权威来源",
+                    })
+                tasks_data = {
+                    "version": 1,
+                    "document": Path(args.input).name,
+                    "doc_type": doc_type,
+                    "style_name": style_name,
+                    "tasks": [
+                        {"task_id": "fact_check", "entities": entity_tasks},
+                        {
+                            "task_id": "style_enhance",
+                            "style_name": style_name,
+                            "style_prompt": style_prompt,
+                            "paragraphs": [{"index": i, "text": t} for i, t in enumerate(_fc_paras) if t.strip()],
+                            "existing_changes_summary": [
+                                {"paragraph_index": c.get("paragraph_index", 0),
+                                 "change": f"{str(c.get('original_text', ''))[:30]}→{str(c.get('optimized_text', ''))[:30]}"}
+                                for c in changes
+                            ],
+                            "hint": "请根据风格要求对文档提出风格级优化建议，不要与已有变更重复",
+                        },
+                    ],
+                }
+                Path(args.output_tasks).write_text(
+                    _json.dumps(tasks_data, ensure_ascii=False, indent=2), encoding="utf-8")
+                print(f"📤 --output-tasks: 已输出 {len(entity_tasks)} 个待核验实体 + 风格增强请求 → {args.output_tasks}")
+                print("   （基础版文档仍生成：含内容修订+结构/焦点检查批注，不含事实核验与风格建议）")
+            except Exception as e:
+                print(f"  ⚠️ --output-tasks 输出失败（{e}），继续默认流程", file=sys.stderr)
+
         fc_report = run_fact_check(str(args.input), list(bg_paths) if bg_paths else None)
         print(fc_report.summary_text())
         fc_author = get_author("事实核验员")  # D5: 独立角色 author（"事实核验"）
-        # N3 修复：事实核验批注合并到统一 suggestions，随 tracked 流程一次注入（不再二次 inject_comments）
-        # R2 修复：按实体名在段落文本中的偏移精确锚定（而非 offset=0 锚定段落起始）
-        fc_para_texts: dict[int, str] = {}
-        try:
-            from core.document.parser import parse_docx
-            _m = parse_docx(str(args.input))
-            fc_para_texts = {i: p.text for i, p in enumerate(_m.paragraphs)}
-        except Exception:
-            pass
-        for e in fc_report.doubtful + fc_report.unverified:
-            s_off = 0
-            e_off = 0
-            para_text = fc_para_texts.get(e.paragraph_index, "")
-            if para_text and e.entity_name:
-                idx = para_text.find(e.entity_name)
-                if idx >= 0:
-                    s_off, e_off = idx, idx + len(e.entity_name)
-            suggestions.append(CommentSuggestion(
-                para_index=e.paragraph_index,
-                start_offset=s_off,
+        # V1：--output-tasks 模式下事实核验结果已交 Agent 处理，不再生成"未经核验"批注
+        if not args.output_tasks:
+            # N3 修复：事实核验批注合并到统一 suggestions，随 tracked 流程一次注入（不再二次 inject_comments）
+            # R2 修复：按实体名在段落文本中的偏移精确锚定（而非 offset=0 锚定段落起始）
+            fc_para_texts: dict[int, str] = {}
+            try:
+                from core.document.parser import parse_docx
+                _m = parse_docx(str(args.input))
+                fc_para_texts = {i: p.text for i, p in enumerate(_m.paragraphs)}
+            except Exception:
+                pass
+            for e in fc_report.doubtful + fc_report.unverified:
+                s_off = 0
+                e_off = 0
+                para_text = fc_para_texts.get(e.paragraph_index, "")
+                if para_text and e.entity_name:
+                    idx = para_text.find(e.entity_name)
+                    if idx >= 0:
+                        s_off, e_off = idx, idx + len(e.entity_name)
+                suggestions.append(CommentSuggestion(
+                    para_index=e.paragraph_index,
+                    start_offset=s_off,
                 end_offset=e_off,
                 comment_text=f"【事实核验⚠️】{e.entity_name}：{e.note}",
                 category="事实核验",
@@ -1179,11 +1292,8 @@ def cmd_optimize_content(args):
                 print(f"  ✅ 批注注入完整: {_actual} 条")
         except Exception:
             pass
-        # L1 修复：tracked 路径补调 persons.xml + comments 三文件注册（7 色方案生效）
-        from core.document.reviewer_comments import _register_persons_xml, _register_comments_infrastructure
-        # P4 修复：注册失败不得静默吞异常——升级为 logger.error + traceback，便于排查
-        # T4 修复：people/comments 扩展已内联进 inject_tracked_with_comments（S1-C+S4-A），
-        # 移除外部冗余 _register_persons_xml/_register_comments_infrastructure 调用，仅保留验证
+        # U2 修复：people/comments 扩展已内联进 inject_tracked_with_comments（S1-C+S4-A），
+        # 移除残留的外部 _register_persons_xml/_register_comments_infrastructure import 与调用，仅保留验证
         try:
             import zipfile as _zip_verify
             with _zip_verify.ZipFile(result) as z:
@@ -1670,6 +1780,14 @@ def main():
                    help="改进 A：输出当前文档类型的内容层规则摘要（structure/focus_checks）")
     p.add_argument("--auto-generate", action="store_true",
                    help="改进 E：无 --changes 时基于内置规则+风格提示词自动生成优化建议（需配置 GONGWEN_LLM_API）")
+    p.add_argument("--output-tasks", default="",
+                   help="V1：将待 Agent 处理的任务（事实核验实体/风格增强请求）输出到 JSON 文件，同时生成基础版文档")
+    p.add_argument("--input-tasks", default="",
+                   help="V1：读入 Agent 回填的 tasks_result.json，将事实核验修正/风格建议合并到 changes 后执行")
+    p.add_argument("--style", default="",
+                   help="V3：语言风格。不指定则自动推断（changes.style → doc_type 映射 → 默认庄重严谨）")
+    p.add_argument("--no-style-enhance", action="store_true",
+                   help="V3：禁用风格增强步骤（默认启用）")
     p.add_argument("--quiet", action="store_true", help="安静模式：仅输出最终结果，不显示分步进度")
     p.add_argument("--verbose", action="store_true", help="详细模式：输出每个 run 的匹配细节")
     p.set_defaults(func=cmd_optimize_content)
