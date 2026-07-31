@@ -23,7 +23,7 @@ import hashlib
 import shutil
 import zipfile
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -171,7 +171,7 @@ class GongwenAnnotator:
             c.set(f'{{{W}}}id', str(cid))
             c.set(f'{{{W}}}author', sug.author)
             # S1 修复：使用 UTC 时间并正确标注（Z 后缀），datetime.now(timezone.utc)
-            c.set(f'{{{W}}}date', datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))
+            c.set(f'{{{W}}}date', datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))
 
             # 批注文本段落（多个 w:t 分属不同 run，符合 OOXML 规范）
             p = etree.SubElement(c, f'{{{W}}}p')

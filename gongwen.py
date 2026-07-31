@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.24"
+__version__ = "1.12.25"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -865,15 +865,23 @@ def cmd_optimize_content(args):
         from core.document.annotator import CommentSuggestion
         from core.document.reviewer_comments import REVIEWER_MAP, get_author
 
-        # F1 修复：修订作者 = skill 名 + "-修订"（Word 中区分"谁做了修改"）
-        REVISION_AUTHOR = "公文技能-修订"
-        # F3 修复：category → 批注角色映射表（不依赖 reason 文本匹配）
+        # F1 + D3 修复：修订作者 = skill 英文名 + "-修订"（与 skill 英文标识统一，保留中文后缀便于中文 Word 用户理解）
+        REVISION_AUTHOR = "GongWen-Skill修订"
+        # F3 + D5 + A2 修复：category → 批注角色映射表（不依赖 reason 文本匹配，扩充常见 category）
         _CATEGORY_ROLE_MAP = {
             "格式优化": "格式审校员",
             "用语优化": "用语审校员",
             "逻辑优化": "逻辑审校员",
             "法规合规": "法规审校员",
-            "事实核验": "综合审校员",
+            "事实核验": "事实核验员",   # D5: 映射独立角色，不再混入综合审校
+            "内容优化": "综合审校员",   # A2: 常见 style 描述补充映射
+            "庄重严谨": "综合审校员",
+            "简洁精炼": "综合审校员",
+            "务实汇报": "综合审校员",
+            "请示恳切": "综合审校员",
+            "动员激励": "综合审校员",
+            "总结回顾": "综合审校员",
+            "逻辑严密": "综合审校员",
         }
         # 按 --reviewers 截取角色子集（3 精简版取前 3）
         reviewers_count = getattr(args, 'reviewers', 5)
@@ -915,29 +923,40 @@ def cmd_optimize_content(args):
             id_offset=1000,
         ))
 
-        # --background：事实核验（问题三）——存疑/未核验实体追加核验批注
+        # D5 修复：事实核验默认执行（不依赖 --background；背景资料仅用于增强基准）
+        from fact_check import run_fact_check
         bg_paths = getattr(args, 'background', None)
-        if bg_paths:
-            from fact_check import run_fact_check
-            _echo_progress(args, 5, 6, "事实核验", f"{len(bg_paths)} 份背景资料")
-            fc_report = run_fact_check(str(args.input), list(bg_paths))
-            print(fc_report.summary_text())
-            extra_suggestions = []
-            for e in fc_report.doubtful + fc_report.unverified:
-                extra_suggestions.append(CommentSuggestion(
-                    para_index=e.paragraph_index,
-                    start_offset=0,
-                    end_offset=0,
-                    comment_text=f"【事实核验⚠️】{e.entity_name}：{e.note}",
-                    category="事实核验",
-                    author="事实核验",
-                ))
-            if extra_suggestions:
-                from core.document.annotator import GongwenAnnotator
-                ann = GongwenAnnotator()
-                result = safe_write_output(Path(out_name), lambda p: ann.inject_comments(
-                    result, extra_suggestions, p))
-                suggestions = suggestions + extra_suggestions
+        _echo_progress(args, 5, 6, "事实核验",
+                       f"{len(bg_paths)} 份背景资料" if bg_paths else "无背景资料，仅互联网核验")
+        fc_report = run_fact_check(str(args.input), list(bg_paths) if bg_paths else None)
+        print(fc_report.summary_text())
+        fc_author = get_author("事实核验员")  # D5: 独立角色 author（"事实核验"）
+        extra_suggestions = []
+        for e in fc_report.doubtful + fc_report.unverified:
+            extra_suggestions.append(CommentSuggestion(
+                para_index=e.paragraph_index,
+                start_offset=0,
+                end_offset=0,
+                comment_text=f"【事实核验⚠️】{e.entity_name}：{e.note}",
+                category="事实核验",
+                author=fc_author,
+            ))
+        # D5: 已确认实体也生成批注（标注"已确认"），让用户看到核验覆盖范围
+        for e in fc_report.confirmed:
+            extra_suggestions.append(CommentSuggestion(
+                para_index=e.paragraph_index,
+                start_offset=0,
+                end_offset=0,
+                comment_text=f"【事实核验✅】{e.entity_name}：{e.note}",
+                category="事实核验",
+                author=fc_author,
+            ))
+        if extra_suggestions:
+            from core.document.annotator import GongwenAnnotator
+            ann = GongwenAnnotator()
+            result = safe_write_output(Path(out_name), lambda p: ann.inject_comments(
+                result, extra_suggestions, p))
+            suggestions = suggestions + extra_suggestions
 
         # 校验：comments.xml 与修订标记存在
         ok = False

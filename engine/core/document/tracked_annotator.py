@@ -119,21 +119,36 @@ def split_sentences(text: str) -> list[str]:
     return sents
 
 
+# D2 修复：纯删除类修改的占位文本（使 Word 中显示"删除:XX → 插入:（删减）"，可配置）
+DELETE_PLACEHOLDER = "（删减）"
+
+
 def _build_diff_ops(original_text: str, optimized_text: str,
-                    merge_gap: int = 3) -> list:
+                    merge_gap: int = 3, similarity_threshold: float = 0.3) -> list:
     """构建片段级 diff 操作列表（F4：句子级 + 相邻合并）。
 
     - 完全相同的文本 → 返回空列表（无修改）
-    - 低相似度（< 0.3）→ 整段替换
-    - 否则 → 句子级 diff + 相邻片段合并（间隔 ≤ merge_gap 字符合并）
+    - 低相似度（< similarity_threshold，短文本自动降阈值）→ 整段替换
+    - 否则 → 字符级 diff + 相邻片段合并 + 孤立 delete 转 replace 配对（D2）
+
+    Args:
+        original_text: 原文
+        optimized_text: 修改文
+        merge_gap: 相邻片段合并间隔（保留，兼容调用）
+        similarity_threshold: 整段替换阈值（Q2 修复：可配置，默认 0.3）
 
     Returns:
-        ops: [("keep", text) | ("delete", text) | ("insert", text) | ("replace_all", orig, opt)]
+        ops: [("keep", text) | ("delete", text) | ("insert", text)
+              | ("replace", old, new) | ("replace_all", orig, opt)]
     """
     if original_text == optimized_text:
         return []
+    # Q2 修复：短文本（< 50 字）降低阈值，避免短段微小差异触发整段替换
+    eff_threshold = similarity_threshold
+    if len(original_text) < 50:
+        eff_threshold = min(similarity_threshold, 0.15)
     ratio = SequenceMatcher(None, original_text, optimized_text).ratio()
-    if ratio < 0.3:
+    if ratio < eff_threshold:
         return [("replace_all", original_text, optimized_text)]
 
     # 字符级 opcodes
@@ -150,7 +165,7 @@ def _build_diff_ops(original_text: str, optimized_text: str,
         elif tag == "insert":
             raw_ops.append(("insert", optimized_text[j1:j2]))
 
-    # 合并优化：相邻 del+ins 合并为一组（F4 4.4）
+    # 合并优化：相邻 del+ins 合并为一组（F4 4.4）；孤立 delete 转 replace 配对（D2）
     merged: list = []
     i = 0
     while i < len(raw_ops):
@@ -158,6 +173,10 @@ def _build_diff_ops(original_text: str, optimized_text: str,
         if op[0] == "delete" and i + 1 < len(raw_ops) and raw_ops[i + 1][0] == "insert":
             merged.append(("replace", op[1], raw_ops[i + 1][1]))
             i += 2
+        elif op[0] == "delete":
+            # D2：孤立 delete（无后续 insert）→ replace 配对占位，Word 中显示删除→插入意图
+            merged.append(("replace", op[1], DELETE_PLACEHOLDER))
+            i += 1
         else:
             merged.append(op)
             i += 1
@@ -335,7 +354,7 @@ def inject_tracked_with_comments(
     changes: list[dict],
     suggestions: list,
     output_path: str | Path,
-    author: str = "公文技能-修订",
+    author: Optional[str] = None,  # Q1 修复：默认 None，由调用方显式传入（如 "GongWen-Skill修订"）
     id_offset: int = 1000,
 ) -> Path:
     """
@@ -346,12 +365,14 @@ def inject_tracked_with_comments(
         changes: [{para_index, original_text, optimized_text}]（F4 granular 修订）
         suggestions: [CommentSuggestion]（批注）
         output_path: 输出 .docx
-        author: 修订作者（F1：skill 名 + "-修订"）
+        author: 修订作者（F1/D3：skill 英文名 + "-修订"），None 时使用默认 "GongWen-Skill修订"
         id_offset: 批注 ID 起始偏移（与修订 ID 隔离，D3 修复）
 
     Returns:
         输出路径
     """
+    if author is None:
+        author = "GongWen-Skill修订"  # Q1：默认值集中管理，避免与调用方双处硬编码
     _reset_rev_counter()
     src = Path(input_path)
     out = Path(output_path)

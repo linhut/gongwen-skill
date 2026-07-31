@@ -16,7 +16,7 @@ from __future__ import annotations
 import copy
 import random
 import zipfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -168,7 +168,7 @@ def inject_tracked_change(para_node, old_text: str, new_text: str,
         return False
 
     # NI4 修复：使用 UTC 时间并正确标注
-    now = datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
     # 1. 收集现有 run 及其文本
     runs = []

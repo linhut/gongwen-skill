@@ -19,14 +19,17 @@ from typing import List
 
 from core.document.annotator import GongwenAnnotator, CommentSuggestion
 
-# 五角色 → Word 批注作者名 + 颜色
+# 六角色 → Word 批注作者名 + 颜色（A4 修复：统一 7 色方案，法规色提亮，新增事实核验员）
 REVIEWER_MAP = {
     "格式审校员": {"author": "格式审校", "color": "2E86C1"},
     "用语审校员": {"author": "用语审校", "color": "27AE60"},
     "逻辑审校员": {"author": "逻辑审校", "color": "E74C3C"},
-    "法规审校员": {"author": "法规审校", "color": "8E44AD"},
+    "法规审校员": {"author": "法规审校", "color": "9B59B6"},   # A4: 8E44AD→9B59B6 提亮
     "综合审校员": {"author": "综合审校", "color": "F39C12"},
+    "事实核验员": {"author": "事实核验", "color": "00BCD4"},   # D5: 独立第 6 角色（青色）
 }
+# A4 修复：修订作者注册颜色（玫红），稳定显示修订标记
+REVISION_AUTHOR_COLOR = "E91E63"
 
 
 def get_author(role: str) -> str:
@@ -200,6 +203,12 @@ def _register_persons_xml(doc_path: str | Path) -> None:
     # 官方命名空间：http://schemas.microsoft.com/office/word/2012/wordml
     W15 = 'http://schemas.microsoft.com/office/word/2012/wordml'
     people = etree.Element(f'{{{W15}}}people', nsmap={'w15': W15})
+
+    # A4 修复：色值唯一性检查（避免未来新增角色时色值重复）
+    _colors = [cfg["color"] for cfg in REVIEWER_MAP.values()]
+    assert len(set(_colors)) == len(_colors), f"REVIEWER_MAP 存在重复色值: {_colors}"
+
+    # 批注角色（六角色）
     for role, cfg in REVIEWER_MAP.items():
         author = cfg["author"]
         color = cfg["color"]
@@ -215,6 +224,18 @@ def _register_persons_xml(doc_path: str | Path) -> None:
         email.set(f'{{{W15}}}val', '')
         img = etree.SubElement(person, f'{{{W15}}}img')
         img.set(f'{{{W15}}}val', '')
+
+    # A4 修复：修订作者注册到 persons.xml（稳定玫红色显示修订标记）
+    rev_person = etree.SubElement(people, f'{{{W15}}}person')
+    rev_person.set(f'{{{W15}}}author', "GongWen-Skill修订")
+    rev_person.set(f'{{{W15}}}preserve', '1')
+    etree.SubElement(rev_person, f'{{{W15}}}presenceInfo')
+    rev_name = etree.SubElement(rev_person, f'{{{W15}}}name')
+    rev_name.set(f'{{{W15}}}val', "GongWen-Skill修订")
+    rev_email = etree.SubElement(rev_person, f'{{{W15}}}email')
+    rev_email.set(f'{{{W15}}}val', '')
+    rev_img = etree.SubElement(rev_person, f'{{{W15}}}img')
+    rev_img.set(f'{{{W15}}}val', '')
 
     persons_bytes = etree.tostring(people, xml_declaration=True, encoding='UTF-8', standalone=True)
 
