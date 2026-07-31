@@ -52,12 +52,17 @@ class RSIDManager:
         self._rsid = seed or self._generate_rsid()
 
     def _generate_rsid(self) -> str:
-        """生成 8 位十六进制 RSID（S2 修复：去重，避免冲突）。"""
-        while True:
+        """生成 8 位十六进制 RSID（S2 修复：去重，避免冲突）。
+
+        NEW-I2 修复：限制最大重试次数，防止 rsid 空间耗尽时无限循环。
+        """
+        max_attempts = 1000
+        for _ in range(max_attempts):
             rsid = f"{random.randint(0, 0xFFFFFFFF):08X}"
             if rsid not in _used_rsids:
                 _used_rsids.add(rsid)
                 return rsid
+        raise RuntimeError(f"RSID 生成失败：{max_attempts} 次尝试后仍未找到唯一 RSID（集合大小 {len(_used_rsids)}）")
 
     @property
     def rsid(self) -> str:
@@ -200,6 +205,8 @@ def inject_tracked_changes(docx_path: str | Path, output_path: str | Path | None
     """
     对文档注入一批修订标记（每个 change 对应一个段落）。
 
+    NEW-I3 修复：入口处重置 RSID/修订 ID 追踪，避免多次调用间集合膨胀。
+
     Args:
         docx_path: 输入 .docx
         output_path: 输出 .docx（默认 *_修订版.docx）
@@ -209,6 +216,7 @@ def inject_tracked_changes(docx_path: str | Path, output_path: str | Path | None
     Returns:
         输出路径
     """
+    _reset_rsid_tracking()  # NEW-I3：每次新文档会话重置追踪
     import shutil
     src = Path(docx_path)
     out = Path(output_path) if output_path else src.with_stem(src.stem + "_修订版")

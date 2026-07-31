@@ -129,19 +129,28 @@ def _register_persons_xml(doc_path: str | Path) -> None:
             ov.set('ContentType', 'application/vnd.openxmlformats-officedocument.wordprocessingml.persons+xml')
         entries[ct_key] = etree.tostring(ct_root, xml_declaration=True, encoding='UTF-8', standalone=True)
 
-    # 注册关系
+    # 注册关系（NEW-I4/NEW-I7 修复：扫描全部已有 rId 后从最大编号+1 分配，并去重）
     rels_key = 'word/_rels/document.xml.rels'
     if rels_key in entries:
         rels_root = etree.fromstring(entries[rels_key])
-        has_persons = any(r.get('Type', '').endswith('/persons') for r in rels_root)
+        # NEW-I7：按 Type+Target 双重去重，避免重复注册
+        has_persons = any(
+            r.get('Type', '').endswith('/persons') and r.get('Target', '') == 'persons.xml'
+            for r in rels_root
+        )
         if not has_persons:
-            max_rid = 0
-            for r in rels_root:
-                rid = r.get('Id', '')
+            # NEW-I4：收集全部已有 rId（含非数字后缀如 rIdFtrEven），从最大数字编号+1 分配
+            existing_ids = {r.get('Id', '') for r in rels_root}
+            max_num = 0
+            for rid in existing_ids:
                 if rid.startswith('rId') and rid[3:].isdigit():
-                    max_rid = max(max_rid, int(rid[3:]))
+                    max_num = max(max_num, int(rid[3:]))
+            new_rid = f'rId{max_num + 1}'
+            while new_rid in existing_ids:  # 防御：极端情况下仍有冲突则递增
+                max_num += 1
+                new_rid = f'rId{max_num + 1}'
             rel = etree.SubElement(rels_root, f'{{{PC}}}Relationship')
-            rel.set('Id', f'rId{max_rid + 1}')
+            rel.set('Id', new_rid)
             rel.set('Type', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/persons')
             rel.set('Target', 'persons.xml')
         entries[rels_key] = etree.tostring(rels_root, xml_declaration=True, encoding='UTF-8', standalone=True)

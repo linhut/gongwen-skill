@@ -528,14 +528,22 @@ def replace_paragraph_text(model: DocumentModel, para_index: int, new_text: str)
                 r.text = ""
             return
         pos = 0
+        prev_r = None
         for r in para.runs:
             orig_len = len(r.text or '')
             if orig_len <= 0:
                 r.text = ""
+                prev_r = r
                 continue
             alloc = round(len(new_text) * orig_len / total_len)
+            # NEW-I5 修复：alloc=0 时跳过该 run（不产生空 run），或并入相邻 run
+            if alloc == 0:
+                r.text = ""
+                prev_r = r
+                continue
             r.text = new_text[pos:pos + alloc]
             pos += alloc
+            prev_r = r
         # 处理舍入误差（剩余字符并入最后一个非空 run）
         if pos < len(new_text):
             for r in reversed(para.runs):

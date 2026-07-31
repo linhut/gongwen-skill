@@ -150,12 +150,30 @@ class GongwenAnnotator:
                 t2.text = f' [{sug.category}]'
         return root
 
+    @staticmethod
+    def _merge_wt_in_run(r) -> str:
+        """
+        NEW-I1 修复：合并 run 内多个 w:t 为一个（OOXML 规范允许单 run 多 w:t，
+        拆分前先合并，避免下游只处理第一个 w:t 导致文本丢失）。
+        """
+        ts = r.findall(f'{{{W}}}t')
+        if len(ts) <= 1:
+            return ''.join(t.text or '' for t in ts)
+        full = ''.join(t.text or '' for t in ts)
+        # 保留第一个 w:t，其余删除；文本合并到第一个
+        for t in ts[1:]:
+            r.remove(t)
+        ts[0].text = full
+        return full
+
     def _split_run_at(self, p, runs: list, char_offset: int) -> list:
         """
         在指定字符偏移处拆分 run（NB1/NI1 修复：复用同一拆分逻辑）。
 
         若 char_offset 落在某个 run 内部（非边界），将该 run 拆为两个：
           [偏移前文本] + [偏移后文本]（复制原 rPr 格式）。
+
+        NEW-B1 修复：先合并 run 内多 w:t，避免拆分后其余 w:t 文本丢失。
 
         Args:
             p: <w:p> 节点
@@ -167,6 +185,14 @@ class GongwenAnnotator:
         """
         for i, (r, rstart, rend, rtext) in enumerate(runs):
             if rstart < char_offset < rend:
+                # NEW-I1：先合并多 w:t，保证下方只操作单个 w:t
+                merged = self._merge_wt_in_run(r)
+                if merged != rtext:
+                    # 合并后文本可能变化，重新计算（防御性）
+                    rtext = merged
+                    rend = rstart + len(merged)
+                if char_offset >= rend:
+                    continue
                 # 拆成 [偏移前] + [偏移后]
                 keep_text = rtext[:char_offset - rstart]
                 rest_text = rtext[char_offset - rstart:]
@@ -193,7 +219,7 @@ class GongwenAnnotator:
 
     @staticmethod
     def _collect_runs(p) -> list:
-        """收集段落的文本 run（含字符偏移）。"""
+        """收集段落的文本 run（含字符偏移）。NEW-I1：收集时先合并多 w:t。"""
         W_ = W
         runs = []
         offset = 0
@@ -255,6 +281,18 @@ class GongwenAnnotator:
                 start_run_el = runs[0][0]
             if end_run_el is None:
                 end_run_el = runs[-1][0]
+
+            # NEW-B2 修复：回退后验证 start ≤ end，倒挂则跳过该条批注（避免生成损坏锚定）
+            start_ok = start_run_el is not None
+            end_ok = end_run_el is not None
+            if start_ok and end_ok:
+                # 若 start/end 定位到同一 run 且倒挂（start 偏移 ≥ end 偏移），跳过
+                if start > end:
+                    logger.warning(f"批注 #{cid} 倒挂锚定（start={start} > end={end}），已跳过")
+                    continue
+            else:
+                logger.warning(f"批注 #{cid} 无法定位 run（start_ok={start_ok}, end_ok={end_ok}），已跳过")
+                continue
 
             # 4. commentRangeStart 插到 start run 之前
             crs = etree.Element(f'{{{W}}}commentRangeStart')
