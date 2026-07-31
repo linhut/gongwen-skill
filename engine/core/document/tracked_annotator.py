@@ -213,8 +213,28 @@ def inject_tracked_change_granular(para_node, old_text: str, new_text: str,
 
     full_text = ''.join(r[3] for r in runs)
 
+    # B22 修复：优先使用 old_text 参数作为 diff 基准（确保与 changes 中的文本一致）
+    # 仅当 old_text 与 full_text 一致时使用 old_text；引号编码差异时标准化后判定
+    diff_base = full_text
+    new_text_norm = new_text
+    if old_text:
+        if old_text == full_text:
+            diff_base = full_text
+        else:
+            norm_old = _normalize_quotes(old_text)
+            norm_full = _normalize_quotes(full_text)
+            if norm_old == norm_full:
+                # 引号编码差异：以文档原始编码为基准，同步标准化 new_text
+                diff_base = full_text
+                new_text_norm = _normalize_quotes(new_text)
+            else:
+                diff_base = full_text
+    # 统一 new_text 引号为文档基准编码（避免 diff 产生虚假引号替换修订）
+    if new_text_norm is new_text:
+        new_text_norm = _normalize_quotes(new_text)
+
     # 片段级 diff ops（对原文整体做 diff，非分句对齐——分句仅用于合并启发）
-    ops = _build_diff_ops(full_text, new_text)
+    ops = _build_diff_ops(diff_base, new_text_norm)
     if not ops:
         return True
 
@@ -420,6 +440,17 @@ def _collect_full_text_including_deleted(para_node) -> str:
     return ''.join(parts)
 
 
+def _normalize_quotes(text: str) -> str:
+    """B22 修复：标准化引号编码——将弯引号 U+201C/U+201D 转为直引号 U+0022。
+
+    Word 文档 w:t 中通常为直引号，而 changes.json（LLM 生成）可能使用弯引号，
+    编码不一致会导致文本匹配/替换失败、整条变更被跳过（如覃万成职务修正丢失）。
+    """
+    if not text:
+        return text
+    return text.replace('\u201c', '"').replace('\u201d', '"')
+
+
 def inject_tracked_with_comments(
     input_path: str | Path,
     changes: list[dict],
@@ -447,6 +478,14 @@ def inject_tracked_with_comments(
     _reset_rev_counter()
     src = Path(input_path)
     out = Path(output_path)
+
+    # B22 修复：入口对 changes 的 original_text/optimized_text 做引号标准化
+    # （Word 文档 w:t 为直引号，changes.json 可能为弯引号——编码不一致导致匹配失败、整条变更被跳过）
+    for c in changes:
+        if c.get('original_text'):
+            c['original_text'] = _normalize_quotes(c['original_text'])
+        if c.get('optimized_text'):
+            c['optimized_text'] = _normalize_quotes(c['optimized_text'])
 
     with zipfile.ZipFile(src) as z:
         entries = {name: z.read(name) for name in z.namelist()}
@@ -502,18 +541,22 @@ def inject_tracked_with_comments(
                 if inject_tracked_change_granular(para, current_text, target_text, rsid, rev_author):
                     applied += len(c_list)
             else:
-                # B18：多作者 → 逐条处理，每条用各自作者（借助 B16 还原机制避免 full_text 丢失）
+                # B18+B19：多作者 → 逐条处理，每条用各自作者
+                # B19 修复：先还原段落（接受所有已有修订），再从干净状态收集 current_text，
+                # 避免 current_text（含 delText）与还原后段落文本不一致导致 diff 错误/占位符残留
                 for c in c_list:
                     orig = c.get('original_text', '')
                     opt = c.get('optimized_text', '')
                     if not orig or (orig or '').strip() == (opt or '').strip():
                         continue
                     rev_author = c.get("revision_author") or author
-                    # 每次处理前还原段落 + 重新收集完整文本
+                    # B19：先还原段落到原始状态（丢弃已有 w:del，保留 w:ins）
+                    _accept_revisions_in_para(para)
+                    # B19：从还原后的干净段落收集 current_text（不含已删除文本）
                     current_text = _collect_full_text_including_deleted(para)
                     if orig not in current_text:
+                        # B19：orig 已被前一条变更修改/生效，该变更在其他修订中已体现，跳过
                         continue
-                    _accept_revisions_in_para(para)
                     target_text = current_text.replace(orig, opt, 1)
                     if inject_tracked_change_granular(para, current_text, target_text, rsid, rev_author):
                         applied += 1

@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.37"
+__version__ = "1.12.38"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -1268,6 +1268,12 @@ def cmd_optimize_content(args):
         fc_report = run_fact_check(str(args.input), list(bg_paths) if bg_paths else None)
         print(fc_report.summary_text())
         fc_author = get_author("事实核验员")  # D5: 独立角色 author（"事实核验"）
+        # B21 修复：confirmed_entities 直接过滤 fc_report 列表（--input-tasks 回填的 confirmed 实体
+        # 不再进入 doubtful/unverified，避免"未经核验"批注与 Agent 已确认状态冲突）
+        _confirmed = getattr(args, '_confirmed_entities', set())
+        if _confirmed:
+            fc_report.doubtful = [e for e in fc_report.doubtful if e.entity_name not in _confirmed]
+            fc_report.unverified = [e for e in fc_report.unverified if e.entity_name not in _confirmed]
         # V1：--output-tasks 模式下事实核验结果已交 Agent 处理，不再生成"未经核验"批注
         if not args.output_tasks:
             # N3 修复：事实核验批注合并到统一 suggestions，随 tracked 流程一次注入（不再二次 inject_comments）
