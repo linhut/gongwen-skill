@@ -371,6 +371,54 @@ def _build_comments_xml(suggestions: list, id_offset: int = 0) -> etree._Element
     return root
 
 
+def _accept_revisions_in_para(para_node) -> None:
+    """B16（方案C）：将段落中的所有修订标记"接受"，还原为纯文本段落。
+
+    删除 w:del 子元素（丢弃删除文本），将 w:ins 内的 run 提升到段落级别（保留插入文本），
+    保留 pPr 与普通 run。用于同段多次变更前还原段落到原始状态，避免基于残缺 full_text 做 diff。
+    """
+    pPr = para_node.find(f'{{{W}}}pPr')
+    # 收集应保留的子元素（普通 run + ins 内的 run）
+    keep_children = []
+    for child in list(para_node):
+        if child is pPr:
+            continue
+        tag = etree.QName(child.tag).localname if child.tag else ''
+        if tag == 'del':
+            continue  # 丢弃删除标记
+        elif tag == 'ins':
+            for r in child.findall(f'{{{W}}}r'):
+                # 清理 ins 标记属性（rsidAuthor 等），避免残留
+                for attr in list(r.attrib):
+                    if 'rsid' in attr.lower():
+                        del r.attrib[attr]
+                keep_children.append(r)
+            continue
+        elif tag == 'r':
+            keep_children.append(child)
+        # 其他元素（bookmarkStart 等）保留
+        else:
+            keep_children.append(child)
+    # 重建段落：pPr + 保留的 run
+    for child in list(para_node):
+        para_node.remove(child)
+    if pPr is not None:
+        para_node.append(pPr)
+    for child in keep_children:
+        para_node.append(child)
+
+
+def _collect_full_text_including_deleted(para_node) -> str:
+    """B16（方案A/C）：收集段落完整原始文本（含 w:delText 还原）。"""
+    parts = []
+    for r in para_node.iter(f'{{{W}}}r'):
+        for t in r.findall(f'{{{W}}}t'):
+            parts.append(t.text or '')
+        for dt in r.findall(f'{{{W}}}delText'):
+            parts.append(dt.text or '')
+    return ''.join(parts)
+
+
 def inject_tracked_with_comments(
     input_path: str | Path,
     changes: list[dict],
@@ -410,20 +458,43 @@ def inject_tracked_with_comments(
     import random
     rsid = f"{random.randint(0, 0xFFFFFFFF):08X}"
 
-    applied = 0
+    # B16（方案A分组 + 方案C还原）：同段多次变更合并为一次 diff，避免 full_text 重建不完整导致内容丢失
+    from collections import defaultdict
+    para_changes: dict = defaultdict(list)
     for c in changes:
         pi = c.get('para_index', -1)
+        if not (0 <= pi < len(para_nodes)):
+            continue
         orig = c.get('original_text', '')
         opt = c.get('optimized_text', '')
-        if not (0 <= pi < len(para_nodes)) or not orig:
-            continue
-        # D4：未修改段落跳过
-        if (orig or '').strip() == (opt or '').strip():
-            continue
-        # V3：per-change revision_author——风格增强等变更可用独立修订作者注入
-        rev_author = c.get("revision_author") or author
-        if inject_tracked_change_granular(para_nodes[pi], orig, opt, rsid, rev_author):
-            applied += 1
+        if not orig or (orig or '').strip() == (opt or '').strip():
+            continue  # D4：未修改/空变更跳过
+        para_changes[pi].append(c)
+
+    applied = 0
+    for pi, c_list in para_changes.items():
+        para = para_nodes[pi]
+        if len(c_list) == 1:
+            # 单条变更：直接处理（首次修改，段落无修订标记，full_text 即原始文本）
+            c = c_list[0]
+            rev_author = c.get("revision_author") or author
+            if inject_tracked_change_granular(para, c['original_text'], c['optimized_text'], rsid, rev_author):
+                applied += 1
+        else:
+            # 多条变更：合并计算最终目标文本 → 还原段落到原始状态 → 一次 diff
+            current_text = _collect_full_text_including_deleted(para)
+            target_text = current_text
+            for c in c_list:
+                orig = c.get('original_text', '')
+                opt = c.get('optimized_text', '')
+                if orig and orig in target_text:
+                    target_text = target_text.replace(orig, opt, 1)
+            if target_text == current_text:
+                continue
+            _accept_revisions_in_para(para)
+            rev_author = c_list[0].get("revision_author") or author
+            if inject_tracked_change_granular(para, current_text, target_text, rsid, rev_author):
+                applied += len(c_list)
 
     # 2. 批注锚定（在修订后的段落上）
     for i, sug in enumerate(suggestions, start=1):
