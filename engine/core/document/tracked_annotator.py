@@ -342,10 +342,13 @@ def _build_comments_xml(suggestions: list, id_offset: int = 0) -> etree._Element
         r = etree.SubElement(p, f'{{{W}}}r')
         t = etree.SubElement(r, f'{{{W}}}t')
         t.text = sug.comment_text
+        # N4 修复：仅语义类别（事实核验等）追加到正文，风格类（庄重严谨等）不显示，避免冗余噪音
         if getattr(sug, 'category', ''):
-            r2 = etree.SubElement(p, f'{{{W}}}r')
-            t2 = etree.SubElement(r2, f'{{{W}}}t')
-            t2.text = f' [{sug.category}]'
+            _SEMANTIC_CATEGORIES = ("事实核验", "格式优化", "用语优化", "逻辑优化", "法规合规")
+            if sug.category in _SEMANTIC_CATEGORIES:
+                r2 = etree.SubElement(p, f'{{{W}}}r')
+                t2 = etree.SubElement(r2, f'{{{W}}}t')
+                t2.text = f'（修改类别：{sug.category}）'
     return root
 
 

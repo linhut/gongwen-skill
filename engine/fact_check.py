@@ -102,13 +102,43 @@ _TITLE_SUFFIXES = [
 # 机构常见后缀
 _ORG_SUFFIXES = [
     "办公室", "委员会", "联合会", "协会", "研究院", "设计院", "集团",
-    "公司", "部", "厅", "局", "处", "办", "中心", "学校", "大学", "医院",
+    "有限公司", "公司", "部", "厅", "局", "处", "办", "中心", "学校", "大学", "医院",
 ]
+# N2 修复：常见动词/助词组合（过滤非实体片段，如"会议听取""以...护航"）
+_NON_ENTITY_PATTERNS = [
+    r'^会议听取', r'^会议指出', r'^会议认为', r'^会议强调', r'^会议要求',
+    r'^以', r'^为', r'^通过', r'^围绕', r'^聚焦', r'^持续', r'^不断',
+    r'^推动', r'^加快', r'^实现', r'^强化', r'^深化', r'^健全', r'^完善',
+    r'^确保', r'^坚持', r'^充分', r'^切实', r'^全力',
+]
+# 机构名最小长度（避免"限公司"这类截断残片）
+_ORG_MIN_LEN = 4
+
+
+def _is_valid_entity_name(e_type: str, name: str) -> bool:
+    """N2 修复：实体名有效性过滤（长度/动词片段/截断残片）。"""
+    if not name:
+        return False
+    if e_type in ('person', 'org'):
+        if not (2 <= len(name) <= 20):
+            return False
+    if e_type == 'org' and len(name) < _ORG_MIN_LEN:
+        return False
+    # 动词/助词开头 → 非实体（如"限公司""表分别"）
+    for pat in _NON_ENTITY_PATTERNS:
+        if re.match(pat, name):
+            return False
+    # 截断残片：以"限公司""表"等结尾但缺少前半部分
+    if re.match(r'^(限公司|表|钟扬关|分别)', name):
+        return False
+    return True
 
 
 def extract_entities(paragraphs: list[str]) -> List[Entity]:
     """
     Step 1：从文档段落提取关键实体。
+
+    N2 修复：提取后经 _is_valid_entity_name 过滤，剔除动词片段/截断残片等非实体。
 
     Args:
         paragraphs: 文档段落文本列表
@@ -120,6 +150,8 @@ def extract_entities(paragraphs: list[str]) -> List[Entity]:
     seen = set()
 
     def _add(e_type: str, name: str, ctx: str, para_idx: int) -> None:
+        if not _is_valid_entity_name(e_type, name):
+            return
         key = (e_type, name)
         if key in seen:
             return

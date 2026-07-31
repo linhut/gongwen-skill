@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.25"
+__version__ = "1.12.26"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -867,22 +867,41 @@ def cmd_optimize_content(args):
 
         # F1 + D3 修复：修订作者 = skill 英文名 + "-修订"（与 skill 英文标识统一，保留中文后缀便于中文 Word 用户理解）
         REVISION_AUTHOR = "GongWen-Skill修订"
-        # F3 + D5 + A2 修复：category → 批注角色映射表（不依赖 reason 文本匹配，扩充常见 category）
+        # L2 + L3 修复：仅保留"语义类别 → 角色"映射；风格描述（庄重严谨等）不再进入映射表
         _CATEGORY_ROLE_MAP = {
             "格式优化": "格式审校员",
             "用语优化": "用语审校员",
             "逻辑优化": "逻辑审校员",
             "法规合规": "法规审校员",
             "事实核验": "事实核验员",   # D5: 映射独立角色，不再混入综合审校
-            "内容优化": "综合审校员",   # A2: 常见 style 描述补充映射
-            "庄重严谨": "综合审校员",
-            "简洁精炼": "综合审校员",
-            "务实汇报": "综合审校员",
-            "请示恳切": "综合审校员",
-            "动员激励": "综合审校员",
-            "总结回顾": "综合审校员",
-            "逻辑严密": "综合审校员",
+            "内容优化": "综合审校员",
         }
+        # L2 修复：从 reason 文本提取语义类别（【文字校对】→用语优化 等），供无 category 字段时兜底
+        _REASON_CATEGORY_HINTS = [
+            ("【文字校对】", "用语优化"),
+            ("【用语审校】", "用语优化"),
+            ("【事实核验】", "事实核验"),
+            ("【业务审核】", "逻辑优化"),
+            ("【逻辑审校】", "逻辑优化"),
+            ("【法规审校】", "法规合规"),
+            ("【格式审校】", "格式优化"),
+        ]
+
+        def _resolve_role(c: dict) -> tuple[str, str]:
+            """解析批注的 (category, author)。优先 category 字段 → reason 提示 → 综合审校。"""
+            category = c.get("category") or c.get("style", "内容优化")
+            role_name = _CATEGORY_ROLE_MAP.get(category)
+            if not role_name:
+                reason = c.get("reason", "") or ""
+                for hint, cat in _REASON_CATEGORY_HINTS:
+                    if hint in reason:
+                        category, role_name = cat, _CATEGORY_ROLE_MAP[cat]
+                        break
+            if not role_name:
+                category, role_name = "内容优化", "综合审校员"
+            author = get_author(role_name) if role_name in _ACTIVE_ROLES else "综合审校"
+            return category, author
+
         # 按 --reviewers 截取角色子集（3 精简版取前 3）
         reviewers_count = getattr(args, 'reviewers', 5)
         _ACTIVE_ROLES = list(REVIEWER_MAP.keys())[:reviewers_count]
@@ -894,12 +913,10 @@ def cmd_optimize_content(args):
         } for c in changes]
         _echo_progress(args, 2, 6, "文本匹配预检", f"{len(tc_changes)}/{len(tc_changes)} 完全匹配")
 
-        # 批注建议（F3：按 category 映射角色 author）
+        # 批注建议（L2：category 优先，语义类别决定角色）
         suggestions = []
         for c in changes:
-            category = c.get("style", "内容优化")
-            role_name = _CATEGORY_ROLE_MAP.get(category)
-            author = get_author(role_name) if role_name and role_name in _ACTIVE_ROLES else "综合审校"
+            category, author = _resolve_role(c)
             reason = c.get("reason", "") or ""
             comment_text = f"建议修改：{c.get('optimized_text', '')}｜{reason}"
             ref = c.get("reference", "")
@@ -915,14 +932,6 @@ def cmd_optimize_content(args):
             ))
         _echo_progress(args, 3, 6, "修订+批注注入", f"{len(tc_changes)} 处修订 / {len(suggestions)} 条批注")
 
-        # F2 修复：单次 ZIP 操作（修订注入 + 批注锚定 + comments.xml 一次打包，无中间文件）
-        # F5 修复：输出文件被占用时自动重命名 _v2/_v3…
-        result = safe_write_output(Path(out_name), lambda p: inject_tracked_with_comments(
-            args.input, tc_changes, suggestions, p,
-            author=REVISION_AUTHOR,
-            id_offset=1000,
-        ))
-
         # D5 修复：事实核验默认执行（不依赖 --background；背景资料仅用于增强基准）
         from fact_check import run_fact_check
         bg_paths = getattr(args, 'background', None)
@@ -931,9 +940,9 @@ def cmd_optimize_content(args):
         fc_report = run_fact_check(str(args.input), list(bg_paths) if bg_paths else None)
         print(fc_report.summary_text())
         fc_author = get_author("事实核验员")  # D5: 独立角色 author（"事实核验"）
-        extra_suggestions = []
+        # N3 修复：事实核验批注合并到统一 suggestions，随 tracked 流程一次注入（不再二次 inject_comments）
         for e in fc_report.doubtful + fc_report.unverified:
-            extra_suggestions.append(CommentSuggestion(
+            suggestions.append(CommentSuggestion(
                 para_index=e.paragraph_index,
                 start_offset=0,
                 end_offset=0,
@@ -943,7 +952,7 @@ def cmd_optimize_content(args):
             ))
         # D5: 已确认实体也生成批注（标注"已确认"），让用户看到核验覆盖范围
         for e in fc_report.confirmed:
-            extra_suggestions.append(CommentSuggestion(
+            suggestions.append(CommentSuggestion(
                 para_index=e.paragraph_index,
                 start_offset=0,
                 end_offset=0,
@@ -951,12 +960,20 @@ def cmd_optimize_content(args):
                 category="事实核验",
                 author=fc_author,
             ))
-        if extra_suggestions:
-            from core.document.annotator import GongwenAnnotator
-            ann = GongwenAnnotator()
-            result = safe_write_output(Path(out_name), lambda p: ann.inject_comments(
-                result, extra_suggestions, p))
-            suggestions = suggestions + extra_suggestions
+
+        # N3 修复：所有批注（内容优化 + 事实核验）统一经 tracked 路径一次注入
+        result = safe_write_output(Path(out_name), lambda p: inject_tracked_with_comments(
+            args.input, tc_changes, suggestions, p,
+            author=REVISION_AUTHOR,
+            id_offset=1000,
+        ))
+        # L1 修复：tracked 路径补调 persons.xml + comments 三文件注册（7 色方案生效）
+        from core.document.reviewer_comments import _register_persons_xml, _register_comments_infrastructure
+        try:
+            _register_persons_xml(result)
+            _register_comments_infrastructure(result, len(suggestions))
+        except Exception as e:
+            print(f"  ⚠️ 批注颜色/扩展注册失败: {e}")
 
         # 校验：comments.xml 与修订标记存在
         ok = False

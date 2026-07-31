@@ -27,12 +27,12 @@ def _validate_rgb_color(v) -> str:
 
 
 def _validate_heading_level(v) -> int | None:
-    """S7 修复：heading_level 限制在 1-9（Word 标题层级范围）。"""
+    """N1 修复：heading_level 允许 0-9（0=公文大标题，1-9=Word 标题层级）。"""
     if v is None:
         return None
     v = int(v)
-    if not (1 <= v <= 9):
-        raise ValueError(f"heading_level 必须在 1-9 之间，实际 {v}")
+    if not (0 <= v <= 9):
+        raise ValueError(f"heading_level 必须在 0-9 之间，实际 {v}")
     return v
 
 
