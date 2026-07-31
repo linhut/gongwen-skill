@@ -27,8 +27,6 @@ NSMAP = {'w': W}
 
 # 全局修订 ID 计数器（B3 修复：w:id 必须全文档唯一）
 _rev_id_counter = [0]
-# 已用 RSID 集合（S2 修复：避免冲突）
-_used_rsids: set = set()
 # NS3 修复：RSID 集合上限，防止无界增长
 _RSID_SET_MAX = 4096
 
@@ -40,29 +38,33 @@ def _next_rev_id() -> str:
 
 
 def _reset_rsid_tracking() -> None:
-    """NS3 修复：重置 RSID 追踪（新文档会话开始时调用）。"""
-    _used_rsids.clear()
+    """NS3 修复：重置修订 ID 追踪（新文档会话开始时调用）。"""
     _rev_id_counter[0] = 0
 
 
 class RSIDManager:
-    """修订会话 ID 管理器。"""
+    """修订会话 ID 管理器（NEW-S20-2 修复：RSID 集合为实例属性，避免模块级全局竞态）。"""
 
     def __init__(self, seed: Optional[str] = None):
+        self._used_rsids: set = set()
         self._rsid = seed or self._generate_rsid()
 
     def _generate_rsid(self) -> str:
         """生成 8 位十六进制 RSID（S2 修复：去重，避免冲突）。
 
         NEW-I2 修复：限制最大重试次数，防止 rsid 空间耗尽时无限循环。
+        NEW-I20-2 修复：_RSID_SET_MAX 上限淘汰——集合超限时自动清空，防止无界增长。
         """
+        # NEW-I20-2：集合超上限时自动淘汰（避免 _RSID_SET_MAX 形同虚设）
+        if len(self._used_rsids) >= _RSID_SET_MAX:
+            self._used_rsids.clear()
         max_attempts = 1000
         for _ in range(max_attempts):
             rsid = f"{random.randint(0, 0xFFFFFFFF):08X}"
-            if rsid not in _used_rsids:
-                _used_rsids.add(rsid)
+            if rsid not in self._used_rsids:
+                self._used_rsids.add(rsid)
                 return rsid
-        raise RuntimeError(f"RSID 生成失败：{max_attempts} 次尝试后仍未找到唯一 RSID（集合大小 {len(_used_rsids)}）")
+        raise RuntimeError(f"RSID 生成失败：{max_attempts} 次尝试后仍未找到唯一 RSID（集合大小 {len(self._used_rsids)}）")
 
     @property
     def rsid(self) -> str:

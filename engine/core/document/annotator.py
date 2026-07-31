@@ -29,6 +29,8 @@ from typing import List, Optional
 
 from lxml import etree
 
+from utils.logger import logger  # NEW-S20-1 修复：logger 导入缺失，倒挂场景 NameError
+
 W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 CT = 'http://schemas.openxmlformats.org/package/2006/content-types'
@@ -282,13 +284,22 @@ class GongwenAnnotator:
             if end_run_el is None:
                 end_run_el = runs[-1][0]
 
-            # NEW-B2 修复：回退后验证 start ≤ end，倒挂则跳过该条批注（避免生成损坏锚定）
+            # NEW-B2 + NEW-I20-3 修复：回退后验证锚定合法性——数值序 + XML 元素序双重检查
             start_ok = start_run_el is not None
             end_ok = end_run_el is not None
             if start_ok and end_ok:
-                # 若 start/end 定位到同一 run 且倒挂（start 偏移 ≥ end 偏移），跳过
+                # 数值倒挂：start 偏移 ≥ end 偏移
                 if start > end:
-                    logger.warning(f"批注 #{cid} 倒挂锚定（start={start} > end={end}），已跳过")
+                    logger.warning(f"批注 #{cid} 数值倒挂（start={start} > end={end}），已跳过")
+                    continue
+                # NEW-I20-3：XML 元素顺序倒挂——start_run_el 必须位于 end_run_el 之前
+                try:
+                    if list(p).index(start_run_el) > list(p).index(end_run_el):
+                        logger.warning(f"批注 #{cid} XML 顺序倒挂（start 元素位于 end 元素之后），已跳过")
+                        continue
+                except ValueError:
+                    # 任一元素不在 p 中（异常情况），安全跳过
+                    logger.warning(f"批注 #{cid} 锚定元素缺失（不在段落中），已跳过")
                     continue
             else:
                 logger.warning(f"批注 #{cid} 无法定位 run（start_ok={start_ok}, end_ok={end_ok}），已跳过")
