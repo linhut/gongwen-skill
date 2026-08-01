@@ -662,7 +662,8 @@ def create_diff_document(
                 reference = "\n".join(references) if references else ""
                 style = "\n".join(styles) if styles else ""
             if reason and has_change:
-                reason_para_data = _build_reason_para(reason, reference, style)
+                # B30 修复：传递 perspective（inline 模式【视角】标注）
+                reason_para_data = _build_reason_para(reason, reference, style, perspective=perspective)
                 rr = []
                 for i, rd in enumerate(reason_para_data["runs"]):
                     rr.append(Run(
@@ -749,6 +750,11 @@ def load_changes_from_json(json_path: str) -> list[dict]:
             continue
     changes = data.get("changes", data) if isinstance(data, dict) else data
     # I12 修复：仅核心字段必填，style/reference 可选（后续默认填充）
+    # B38 设计说明：此处硬校验（核心字段缺失 → ValueError 中断）与 gongwen.py
+    # _validate_changes_schema 软过滤（必填/类型/空文本 → 跳过警告）职责分工：
+    #   - load_changes_from_json：保证 JSON 结构合法（核心字段存在），解析层兜底
+    #   - _validate_changes_schema：语义过滤（paragraph_index 类型、空文本等），业务层兜底
+    #   两者互补，非冗余；未来可统一为单一入口（设计优化项，暂不实施）
     required = {"paragraph_index", "original_text", "optimized_text"}
     for c in changes:
         if not required.issubset(c.keys()):

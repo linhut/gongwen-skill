@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.42"
+__version__ = "1.12.43"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -624,9 +624,9 @@ def _validate_changes_schema(changes: list[dict], source: str = "") -> list[dict
         if not isinstance(c.get("paragraph_index"), int):
             print(f"  ⚠️ changes[{i}] paragraph_index 非整数，跳过", file=sys.stderr)
             continue
-        # original_text / optimized_text 非空
-        if not c["original_text"].strip() or not c["optimized_text"].strip():
-            print(f"  ⚠️ changes[{i}] original_text/optimized_text 为空，跳过", file=sys.stderr)
+        # B36 修复：仅两端同时为空才拒绝（允许整段删除 original 有/optimized 空、整段新增反之）
+        if not c["original_text"].strip() and not c["optimized_text"].strip():
+            print(f"  ⚠️ changes[{i}] original_text 和 optimized_text 均为空，跳过", file=sys.stderr)
             continue
         valid.append(c)
     if len(valid) < len(changes):
@@ -1019,7 +1019,7 @@ def safe_backup_input(input_path: Path) -> Path:
 
     全部操作基于备份文件（而非原文件），输出成功后清理，失败时保留作为恢复点。
     """
-    import tempfile, datetime as _dt
+    import tempfile, datetime as _dt, shutil  # B28 修复：补 import shutil（下方使用 copy2）
     backup_dir = Path(tempfile.gettempdir()) / "gongwen_backup"
     backup_dir.mkdir(parents=True, exist_ok=True)
     ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1208,7 +1208,7 @@ def cmd_optimize_content(args):
     # 改进 E：无 changes.json 时，基于内置规则 + 风格提示词自动生成优化建议
     if not getattr(args, 'changes', None) and getattr(args, 'auto_generate', False):
         from auto_optimizer import auto_generate_changes, llm_configured
-        style_name_e = _validate_style(_extract_dominant_style(changes) or "") if 'changes' in dir() and changes else "庄重严谨"
+        style_name_e = _validate_style(_extract_dominant_style(changes) or "") if changes else "庄重严谨"  # B35：'changes' in dir() 永远为 True，仅保留 and changes
         style_prompt_e = _load_style_prompt(style_name_e)
         if not llm_configured():
             print("⚠️ LLM 未配置（设置 GONGWEN_LLM_API 或 GONGWEN_OPTIMIZE_LLM_API 可启用），仅生成规则级结构建议")
@@ -1220,6 +1220,11 @@ def cmd_optimize_content(args):
         )
         print(f"🤖 基于内置规则自动生成 {len(changes)} 处优化建议")
     else:
+        # B27 修复：既未指定 --changes 也未启用 --auto-generate 时友好提示，而非 FileNotFoundError
+        if not args.changes:
+            print("❌ 未指定 --changes 且未启用 --auto-generate，无法加载变更", file=sys.stderr)
+            print("   用法：python gongwen.py optimize-content 原文.docx --changes changes.json [--apply]")
+            return 2
         changes = load_changes_from_json(args.changes)
     _echo_progress(args, 1, 6, "加载变更", f"{len(changes)} 处变更已加载")
 
@@ -1238,6 +1243,21 @@ def cmd_optimize_content(args):
     if args.output_tasks and args.input_tasks:
         print("❌ --output-tasks 与 --input-tasks 不能同时指定", file=sys.stderr)
         return 2
+
+    # B29 修复：style_name 提前计算（仅依赖 args.style/changes/doc_type，均已就绪）
+    # ——必须位于 --input-tasks 分支之前，否则该分支内引用 style_name 触发 NameError
+    TYPE_STYLE_MAP = {
+        "notice": "庄重严谨", "decision": "庄重严谨", "opinion": "庄重严谨",
+        "letter": "请示商洽", "request": "请示商洽",
+        "report": "宏观概括", "summary": "宏观概括",
+        "minutes": "平实简洁", "regulation": "法规条文",
+        "speech": "会议主持词", "news": "庄重严谨",
+    }
+    style_name = _validate_style(
+        getattr(args, 'style', None)          # 1. --style 显式指定
+        or _extract_dominant_style(changes)    # 2. changes.json style 字段
+        or TYPE_STYLE_MAP.get(doc_type, "")    # 3. doc_type 自动推断
+        or "庄重严谨")                         # 4. 兜底
 
     # V1：--input-tasks 读入 Agent 回填结果，合并到 changes（事实核验修正 + 风格建议）
     # B3 修复：合并前按 (paragraph_index, original_text) 去重 + 整段/局部包含检查
@@ -1290,7 +1310,7 @@ def cmd_optimize_content(args):
                                 "optimized_text": fix.get("optimized_text", ""),
                                 "reason": fix.get("reason", ""),
                                 "category": "事实核验",
-                                "style": style_name if 'style_name' in dir() else "庄重严谨",
+                                "style": style_name,  # B29：style_name 已提前计算，不再用 dir() 判断
                                 "reference": f"Agent事实核验（来源：{r.get('source', '未知')}）",
                             })
                             seen_keys.add(key)
@@ -1338,7 +1358,7 @@ def cmd_optimize_content(args):
                             "optimized_text": sc_opt,
                             "reason": sc.get("reason", ""),
                             "category": sc.get("category", "风格优化"),  # B8：默认风格优化
-                            "style": style_name if 'style_name' in dir() else "庄重严谨",
+                            "style": style_name,  # B29：style_name 已提前计算，不再用 dir() 判断
                             "reference": "风格增强（Agent）",
                             "revision_author": "风格审校",  # B4：独立修订作者
                         })
@@ -1415,20 +1435,8 @@ def cmd_optimize_content(args):
     # 执行模式
     out_name = args.output or _build_output_name(args.input, "B", _extract_dominant_style(changes))
 
-    # V3 修复：风格确定 3 级优先级（--style 显式 > changes.style 提取 > doc_type 映射 > 默认）
-    TYPE_STYLE_MAP = {
-        "notice": "庄重严谨", "decision": "庄重严谨", "opinion": "庄重严谨",
-        "letter": "请示商洽", "request": "请示商洽",
-        "report": "宏观概括", "summary": "宏观概括",
-        "minutes": "平实简洁", "regulation": "法规条文",
-        "speech": "会议主持词", "news": "庄重严谨",
-    }
-    style_name = _validate_style(
-        getattr(args, 'style', None)          # 1. --style 显式指定
-        or _extract_dominant_style(changes)    # 2. changes.json style 字段
-        or TYPE_STYLE_MAP.get(doc_type, "")    # 3. doc_type 自动推断
-        or "庄重严谨")                         # 4. 兜底
     # 改进 D：加载风格提示词（供 Agent/LLM 生成建议时参考，输出风格信息）
+    # B29 修复：style_name 已在上方（--input-tasks 之前）提前计算，此处不再重复
     style_prompt = _load_style_prompt(style_name)
     if style_prompt:
         print(f"🎨 风格: {style_name}（已加载 style-prompts.md 对应提示词 {len(style_prompt)} 字）")
@@ -1562,6 +1570,10 @@ def cmd_optimize_content(args):
             ref = c.get("reference", "")
             if ref:
                 comment_text += f"｜依据：{ref}"
+            # B31 修复：tracked 模式批注嵌入 perspective（优化视角/风格方向）
+            _persp = getattr(args, 'perspective', '')
+            if _persp:
+                comment_text += f"｜视角：{_persp}"
             suggestions.append(CommentSuggestion(
                 para_index=c.get("paragraph_index", 0),
                 start_offset=anchor_start,
@@ -1764,7 +1776,9 @@ def cmd_optimize_content(args):
 
         # 改进 B+C+F：结构完整性检查 + focus_checks 自动检查 → 批注注入
         # B6 修复：_m 预初始化 + 结构检查前确保可用（parse_docx 异常时不再 UnboundLocalError）
-        if '_m' not in dir() or _m is None:
+        # B34 修复：'_m' not in dir() 在函数体内永远为 True（编译期注册局部变量），
+        # 直接用 _m is None 判断（_m 已在本函数前面路径赋值或未赋值）
+        if _m is None:
             _m = None
             try:
                 from core.document.parser import parse_docx
@@ -1928,6 +1942,10 @@ def cmd_full_review(args):
 
     # 2. 路径 B：内容优化（加载变更）
     changes = load_changes_from_json(args.changes) if args.changes else []
+    # B37 修复：cmd_full_review 路径补齐 P5 schema 校验 + P4 零修改过滤（与其他路径一致）
+    changes = _validate_changes_schema(changes, source=args.changes)
+    changes = [c for c in changes
+               if c.get("optimized_text", "").strip() != c.get("original_text", "").strip()]
     print(f"🔧 步骤2/3 内容优化（路径 B，{len(changes)} 处变更）...")
 
     # 3. 批注输出（中间稿用内存 BytesIO，避免落盘 I/O）

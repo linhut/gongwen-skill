@@ -445,6 +445,8 @@ def _web_verify(entity_name: str, entity_type: str) -> Optional[str]:
         核验说明（找到官方来源）或 None（无法核验）
     """
     import os
+    import urllib.parse  # B32 修复：补 import（L457 使用 urllib.parse.quote）
+    import urllib.request  # B32 修复：补 import（L461-462 使用 urllib.request）
     # P2：环境变量控制——默认关闭（受限网络环境爬取易失败），显式开启才执行
     if os.environ.get("GONGWEN_WEB_VERIFY", "0") != "1":
         logger.info("互联网核验未启用（设置 GONGWEN_WEB_VERIFY=1 可开启）")

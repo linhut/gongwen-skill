@@ -349,7 +349,7 @@ def make_revision_model(
                 if diff.note:
                     note_parts.append(f"【修改说明】{diff.note}")
                 if perspective:
-                    note_parts.append(f"【风格】{perspective}")
+                    note_parts.append(f"【视角】{perspective}")
                 if background:
                     note_parts.append(f"【依据】{background}")
                 if note_parts:
