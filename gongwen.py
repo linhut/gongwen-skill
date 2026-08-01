@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.39"
+__version__ = "1.12.40"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -623,6 +623,120 @@ def _extract_content_rules(rules: dict) -> dict:
         "title_patterns": rules.get("title", {}).get("patterns", []),
         "title_max_length": rules.get("title", {}).get("max_length", None),
     }
+
+
+class _SimplePara:
+    """路径B v2：轻量段落包装（供 structure_checker/focus_checker 使用，含 .text 属性）。"""
+    __slots__ = ("text",)
+
+    def __init__(self, text: str):
+        self.text = text
+
+
+def _infer_paragraph_roles(doc_type: str, content_rules: dict, paragraphs: list) -> list:
+    """路径B v2：根据文档类型规则和段落内容，推断每个段落在全文结构中的角色。
+
+    复用 structure_checker._locate_section 和 _SECTION_KEYWORDS，数据驱动，不硬编码关键词。
+
+    Args:
+        doc_type: 文档类型（如 "news"）
+        content_rules: 内容层规则（structure/focus_checks）
+        paragraphs: 段落文本列表
+
+    Returns:
+        段落角色列表 [{"index", "role", "required_elements", "missing_elements"}, ...]
+    """
+    from structure_checker import _locate_section, _check_elements
+
+    structure = content_rules.get("structure", [])
+    roles = []
+
+    # 为每个结构段定义定位段落
+    para_role_map = {}  # paragraph_index → (role_name, required_elements, section_def)
+    for section_def in structure:
+        found, para_idx = _locate_section(paragraphs, section_def)
+        if found and para_idx is not None:
+            para_role_map[para_idx] = (
+                section_def.get("name", ""),
+                section_def.get("elements", []),
+                section_def,
+            )
+
+    # 构建角色列表
+    for i, text in enumerate(paragraphs):
+        if not text or not text.strip():
+            roles.append({"index": i, "role": "空段落", "required_elements": [], "missing_elements": []})
+            continue
+
+        if i in para_role_map:
+            role_name, elements, section_def = para_role_map[i]
+            # 检查要素完整性（复用 _check_elements）
+            missing = _check_elements(_SimplePara(text), section_def)
+            roles.append({
+                "index": i,
+                "role": role_name,
+                "required_elements": elements,
+                "missing_elements": missing,
+            })
+        else:
+            roles.append({"index": i, "role": "正文", "required_elements": [], "missing_elements": []})
+
+    return roles
+
+
+def _compute_style_scores(paragraphs: list, content_rules: dict,
+                          paragraph_roles: list, structure_issues: list,
+                          focus_issues: list, existing_changes: list) -> list:
+    """路径B v2：基于规则检查结果计算段落风格评分（数据驱动，不硬编码关键词）。
+
+    评分维度：
+    - completeness：结构完整度（基于 structure_issues 的缺失要素）
+    - compliance：焦点合规度（基于 focus_check_issues 的违规项）
+    - change_density：已有变更密度（间接反映段落"问题集中度"）
+
+    与风格提示词的语义偏差评分交给 Agent（LLM）判断，skill 只输出数据供 Agent 分析。
+    """
+    struct_by_para = {}
+    for issue in structure_issues:
+        pi = issue.get("paragraph_index", -1)
+        if pi >= 0:
+            struct_by_para.setdefault(pi, []).append(issue)
+
+    focus_by_para = {}
+    for issue in focus_issues:
+        pi = issue.get("paragraph_index", -1)
+        if pi >= 0:
+            focus_by_para.setdefault(pi, []).append(issue)
+
+    changes_by_para = {}
+    for c in existing_changes:
+        pi = c.get("paragraph_index", 0)
+        changes_by_para.setdefault(pi, []).append(c)
+
+    scores = []
+    for role_info in paragraph_roles:
+        idx = role_info["index"]
+
+        # 结构完整度（10 - 缺失要素数 × 2）
+        missing_count = len(role_info.get("missing_elements", []))
+        completeness = max(0, 10 - missing_count * 2)
+
+        # 焦点合规度（10 - 违规项数 × 2）
+        focus_count = len(focus_by_para.get(idx, []))
+        compliance = max(0, 10 - focus_count * 2)
+
+        # 变更密度（已有变更多 = 段落问题集中）
+        change_count = len(changes_by_para.get(idx, []))
+
+        scores.append({
+            "index": idx,
+            "role": role_info["role"],
+            "completeness": completeness,
+            "compliance": compliance,
+            "existing_changes_count": change_count,
+        })
+
+    return scores
 
 
 def _merge_style_mapped(change: dict, sc_orig: str, sc_opt: str) -> tuple:
@@ -1402,8 +1516,33 @@ def cmd_optimize_content(args):
                         "doc_context": e.doc_context or (e.context or ""),
                         "hint": "请核验此" + ("人员职务" if e.entity_type == "person" else "机构全称") + "是否正确，如不正确请提供正确值及权威来源",
                     })
+                # ====== 路径B v2：增强版 --output-tasks（复用已有检查能力，数据驱动） ======
+                from structure_checker import check_structure, _locate_section, _check_elements
+                from focus_checker import run_focus_checks
+
+                # 段落角色推断（复用 _locate_section + _SECTION_KEYWORDS，不硬编码）
+                _fc_simple_paras = [_SimplePara(t) for t in _fc_paras]
+                paragraph_roles = _infer_paragraph_roles(doc_type, content_rules, _fc_paras)
+
+                # 结构/焦点检查（复用已有检查能力）
+                struct_issues = check_structure(_fc_simple_paras, content_rules.get("structure", []))
+                focus_issues = run_focus_checks(_fc_simple_paras, content_rules.get("focus_checks", []), doc_type)
+
+                # 风格评分（数据驱动）
+                style_scores = _compute_style_scores(
+                    _fc_paras, content_rules, paragraph_roles,
+                    [{"severity": i.severity, "section_name": i.section_name,
+                      "issue_type": i.issue_type, "message": i.message,
+                      "elements": i.elements, "paragraph_index": i.paragraph_index}
+                     for i in struct_issues],
+                    [{"severity": i.severity, "check_name": i.check_name,
+                      "message": i.message, "paragraph_index": i.paragraph_index}
+                     for i in focus_issues],
+                    changes,
+                )
+
                 tasks_data = {
-                    "version": 1,
+                    "version": 2,  # v2: 增强版
                     "document": Path(args.input).name,
                     "doc_type": doc_type,
                     "style_name": style_name,
@@ -1413,18 +1552,70 @@ def cmd_optimize_content(args):
                             "task_id": "style_enhance",
                             "style_name": style_name,
                             "style_prompt": style_prompt,
-                            "paragraphs": [{"index": i, "text": t} for i, t in enumerate(_fc_paras) if t.strip()],
-                            "existing_changes_summary": [
+                            # ====== 新增：上下文信号（与路径C对齐） ======
+                            "doc_type_display": content_rules.get("doc_type_display", doc_type),
+                            "paragraph_roles": paragraph_roles,
+                            "content_rules_summary": {
+                                "doc_type_display": content_rules.get("doc_type_display", doc_type),
+                                "structure": [
+                                    {
+                                        "name": s.get("name"),
+                                        "required": s.get("required", False),
+                                        "elements": s.get("elements", []),
+                                        "modes": [
+                                            {"name": m.get("name"), "elements": m.get("elements", []),
+                                             "logic": m.get("logic", "")}
+                                            for m in s.get("modes", [])
+                                        ] if s.get("modes") else None,
+                                    }
+                                    for s in content_rules.get("structure", [])
+                                ],
+                                "focus_checks": content_rules.get("focus_checks", []),
+                                "skip_checks": content_rules.get("skip_checks", []),
+                                "title_patterns": [
+                                    {"name": tp.get("name"), "template": tp.get("template"),
+                                     "example": tp.get("example"), "applicable": tp.get("applicable")}
+                                    for tp in content_rules.get("title_patterns", [])
+                                ],
+                            },
+                            "structure_issues": [
+                                {"severity": i.severity, "section_name": i.section_name,
+                                 "issue_type": i.issue_type, "message": i.message,
+                                 "missing_elements": i.elements, "paragraph_index": i.paragraph_index}
+                                for i in struct_issues
+                            ],
+                            "focus_check_issues": [
+                                {"severity": i.severity, "check_name": i.check_name,
+                                 "message": i.message, "paragraph_index": i.paragraph_index}
+                                for i in focus_issues
+                            ],
+                            "style_scores": style_scores,
+                            # ====== 已有变更完整摘要（不再截断30字符） ======
+                            "existing_changes": [
                                 {"paragraph_index": c.get("paragraph_index", 0),
-                                 "change": f"{str(c.get('original_text', ''))[:30]}→{str(c.get('optimized_text', ''))[:30]}"}
+                                 "original_text": c.get("original_text", ""),
+                                 "optimized_text": c.get("optimized_text", ""),
+                                 "category": c.get("category", ""),
+                                 "reason": c.get("reason", "")}
                                 for c in changes
                             ],
-                            "hint": "请根据风格要求对文档提出风格级优化建议，不要与已有变更重复",
+                            # ====== 原有字段保留 ======
+                            "paragraphs": [{"index": i, "text": t} for i, t in enumerate(_fc_paras) if t.strip()],
+                            "hint": (
+                                "请根据风格要求对文档提出风格级优化建议，不要与已有变更重复。\n"
+                                "建议策略：\n"
+                                "1. 优先关注 paragraph_roles 中有 missing_elements 的段落，补充缺失要素\n"
+                                "2. 优先关注 style_scores 中 completeness/compliance 较低的段落\n"
+                                "3. 参考 content_rules_summary 中的文档类型规范做针对性调整\n"
+                                "4. 参考 focus_check_issues 中的已有违规项做风格修复\n"
+                                "5. 基于 style_prompt 的语义要求判断段落与目标风格的偏差方向"
+                            ),
                         },
                     ],
                 }
                 Path(args.output_tasks).write_text(
                     _json.dumps(tasks_data, ensure_ascii=False, indent=2), encoding="utf-8")
+                print(f"📤 --output-tasks(v2): 已输出 {len(entity_tasks)} 个待核验实体 + 风格增强请求（含段落角色/规则摘要/结构焦点问题/风格评分）→ {args.output_tasks}")
                 print(f"📤 --output-tasks: 已输出 {len(entity_tasks)} 个待核验实体 + 风格增强请求 → {args.output_tasks}")
                 print("   （基础版文档仍生成：含内容修订+结构/焦点检查批注，不含事实核验与风格建议）")
             except Exception as e:
