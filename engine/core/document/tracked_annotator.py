@@ -541,25 +541,37 @@ def inject_tracked_with_comments(
                 if inject_tracked_change_granular(para, current_text, target_text, rsid, rev_author):
                     applied += len(c_list)
             else:
-                # B18+B19：多作者 → 逐条处理，每条用各自作者
-                # B19 修复：先还原段落（接受所有已有修订），再从干净状态收集 current_text，
-                # 避免 current_text（含 delText）与还原后段落文本不一致导致 diff 错误/占位符残留
+                # B18+B23：多作者 → 按作者分组，逐组处理（防御性重构）
+                # B23 修复：逐条 accept 会丢失前一条修订标记、后一条 orig 匹配不上被跳过。
+                # 改为按作者分组：同组变更合并计算目标文本一次 diff，每组生成一组完整修订标记。
+                # 顺序：先非默认作者（auto-accept），再默认作者。
+                from collections import defaultdict as _dd
+                author_groups = _dd(list)
                 for c in c_list:
-                    orig = c.get('original_text', '')
-                    opt = c.get('optimized_text', '')
-                    if not orig or (orig or '').strip() == (opt or '').strip():
-                        continue
-                    rev_author = c.get("revision_author") or author
-                    # B19：先还原段落到原始状态（丢弃已有 w:del，保留 w:ins）
+                    a = c.get("revision_author") or author
+                    author_groups[a].append(c)
+
+                sorted_authors = sorted(author_groups.keys(),
+                                        key=lambda a: 0 if a == author else -1)
+
+                for a in sorted_authors:
+                    a_changes = author_groups[a]
+                    # 还原段落（接受前一轮修订）
                     _accept_revisions_in_para(para)
-                    # B19：从还原后的干净段落收集 current_text（不含已删除文本）
                     current_text = _collect_full_text_including_deleted(para)
-                    if orig not in current_text:
-                        # B19：orig 已被前一条变更修改/生效，该变更在其他修订中已体现，跳过
+
+                    target_text = current_text
+                    for c in a_changes:
+                        orig = c.get('original_text', '')
+                        opt = c.get('optimized_text', '')
+                        if orig and orig in target_text:
+                            target_text = target_text.replace(orig, opt, 1)
+
+                    if target_text == current_text:
                         continue
-                    target_text = current_text.replace(orig, opt, 1)
-                    if inject_tracked_change_granular(para, current_text, target_text, rsid, rev_author):
-                        applied += 1
+
+                    if inject_tracked_change_granular(para, current_text, target_text, rsid, a):
+                        applied += len(a_changes)
 
     # 2. 批注锚定（在修订后的段落上）
     for i, sug in enumerate(suggestions, start=1):

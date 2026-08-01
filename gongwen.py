@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.38"
+__version__ = "1.12.39"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -625,6 +625,155 @@ def _extract_content_rules(rules: dict) -> dict:
     }
 
 
+def _merge_style_mapped(change: dict, sc_orig: str, sc_opt: str) -> tuple:
+    """B24 R1 合入增强：当 sc_orig 在 change.original_text 中但不在 optimized_text 中时，
+    用 difflib 映射 sc_orig 到 optimized_text 中的对应区间，将风格修改合入。
+
+    核心逻辑：
+    1. 在 original_text 中找到 sc_orig 的位置
+    2. 用 SequenceMatcher 找到 sc_orig 在 optimized_text 中的映射区间 [first_j:last_j]
+    3. mapped_text = optimized_text[first_j:last_j]（sc_orig 经 change 修改后的版本）
+    4. 建立 sc_orig 字符 → (mapped_text 位置, 是否被 change 修改) 的映射表
+    5. 将风格 diff（sc_orig→sc_opt）"重放"到 mapped_text 上
+    6. 风格审校优先：当 change 的 replace 和风格修改重叠时，风格修改覆盖 change 的修改
+
+    Returns:
+        (success, new_optimized_text)
+    """
+    from difflib import SequenceMatcher
+
+    ex_orig = change.get("original_text", "")
+    ex_opt = change.get("optimized_text", "")
+
+    if sc_orig in ex_opt:
+        return True, ex_opt.replace(sc_orig, sc_opt, 1)
+
+    if sc_orig not in ex_orig:
+        return False, ex_opt
+
+    pos = ex_orig.find(sc_orig)
+    sc_start = pos
+    sc_end = pos + len(sc_orig)
+
+    # 找 sc_orig 在 ex_opt 中的映射区间
+    sm = SequenceMatcher(None, ex_orig, ex_opt)
+    opcodes = sm.get_opcodes()
+
+    first_j = last_j = None
+    for tag, i1, i2, j1, j2 in opcodes:
+        if i2 <= sc_start or i1 >= sc_end:
+            continue
+        if first_j is None:
+            first_j = j1
+        last_j = j2
+
+    if first_j is None:
+        return False, ex_opt
+
+    mapped_text = ex_opt[first_j:last_j]
+
+    # 建立 sc_orig 位置 → (mapped_text 位置, 是否被 change 修改) 的字符映射表
+    char_map = {}  # sc_orig_pos → (mapped_pos, is_modified_by_c)
+    for tag, i1, i2, j1, j2 in opcodes:
+        if i2 <= sc_start or i1 >= sc_end:
+            continue
+        overlap_start = max(i1, sc_start) - sc_start  # sc_orig 中的偏移
+        overlap_end = min(i2, sc_end) - sc_start
+        if tag == 'equal':
+            for k in range(overlap_start, overlap_end):
+                opt_pos = j1 + (sc_start + k - i1)
+                mapped_pos = opt_pos - first_j
+                char_map[k] = (mapped_pos, False)
+        elif tag in ('replace', 'delete'):
+            for k in range(overlap_start, overlap_end):
+                char_map[k] = (None, True)
+
+    # 分析风格 diff（sc_orig→sc_opt）
+    style_sm = SequenceMatcher(None, sc_orig, sc_opt)
+    style_ops = style_sm.get_opcodes()
+
+    # 对 mapped_text 应用风格修改，构建修改列表
+    modifications = []  # [(mapped_start, mapped_end, replacement)]
+
+    def _c_mod_span(ck: int):
+        """返回 sc_orig 位置 ck 对应的 change 修改在 mapped_text 中的区间（如有）。"""
+        for otag, oi1, oi2, oj1, oj2 in opcodes:
+            if oi1 <= sc_start + ck < oi2 and otag == 'replace':
+                return (oj1 - first_j, oj2 - first_j)
+        return None
+
+    for tag, i1, i2, j1, j2 in style_ops:
+        if tag == 'equal':
+            continue
+        if tag == 'delete':
+            mapped_positions = []
+            for k in range(i1, i2):
+                if k in char_map:
+                    mpos, is_modified = char_map[k]
+                    if not is_modified and mpos is not None:
+                        mapped_positions.append(mpos)
+            if mapped_positions:
+                modifications.append((min(mapped_positions), max(mapped_positions) + 1, ''))
+        elif tag == 'replace':
+            replacement = sc_opt[j1:j2]
+            mapped_positions = []
+            has_modified = False
+            for k in range(i1, i2):
+                if k in char_map:
+                    mpos, is_modified = char_map[k]
+                    if is_modified:
+                        has_modified = True
+                    elif mpos is not None:
+                        mapped_positions.append(mpos)
+            if mapped_positions:
+                m_start = min(mapped_positions)
+                m_end = max(mapped_positions) + 1
+                if has_modified:
+                    for ck in range(i1, i2):
+                        span = _c_mod_span(ck)
+                        if span:
+                            m_start = min(m_start, span[0])
+                            m_end = max(m_end, span[1])
+                            break
+                modifications.append((m_start, m_end, replacement))
+            elif has_modified:
+                # 所有字符都被 change 修改：风格审校覆盖 change 的修改区间
+                for ck in range(i1, i2):
+                    span = _c_mod_span(ck)
+                    if span:
+                        modifications.append((span[0], span[1], replacement))
+                        break
+        elif tag == 'insert':
+            m_pos = None
+            if i1 in char_map and not char_map[i1][1]:
+                m_pos = char_map[i1][0]
+            elif i1 > 0 and (i1 - 1) in char_map:
+                mp, is_mod = char_map[i1 - 1]
+                if not is_mod and mp is not None:
+                    m_pos = mp + 1
+            if m_pos is not None:
+                modifications.append((m_pos, m_pos, sc_opt[j1:j2]))
+
+    # 合并重叠/相邻的修改
+    modifications.sort()
+    merged_mods = []
+    for m_start, m_end, repl in modifications:
+        if merged_mods:
+            prev_start, prev_end, prev_repl = merged_mods[-1]
+            if m_start <= prev_end:
+                merged_mods[-1] = (prev_start, max(prev_end, m_end), prev_repl + repl)
+                continue
+        merged_mods.append((m_start, m_end, repl))
+
+    # 从后向前应用修改
+    result = mapped_text
+    for m_start, m_end, repl in reversed(merged_mods):
+        result = result[:m_start] + repl + result[m_end:]
+
+    new_opt = ex_opt[:first_j] + result + ex_opt[last_j:]
+    return True, new_opt
+
+
 # 改进 D：合法风格集合（style-prompts.md 6 套 + SKILL.md 风格词典兼容别名）
 _VALID_STYLES = {
     "庄重严谨", "平实简洁", "宏观概括", "请示商洽", "法规条文",
@@ -966,16 +1115,32 @@ def cmd_optimize_content(args):
                         sc_orig = sc.get("original_text", "") or ""
                         sc_opt = sc.get("optimized_text", "") or ""
                         key = (sc_pi, sc_orig)
-                        # R1：风格增强直接合入同段已有变更的 optimized_text（auto-accept）
+                        # R1+B24：风格增强直接合入同段已有变更的 optimized_text（auto-accept）
+                        # B24 增强：sc_orig 在 c.original_text 中但不在 optimized_text 中时，
+                        # 用 difflib 映射 sc_orig 到 optimized_text 对应区间，风格审校覆盖用语优化
                         merged = False
                         if sc_orig:
                             for c in changes:
-                                if c.get("paragraph_index", 0) == sc_pi and sc_orig in c.get("optimized_text", ""):
-                                    c["optimized_text"] = c["optimized_text"].replace(sc_orig, sc_opt, 1)
+                                if c.get("paragraph_index", 0) != sc_pi:
+                                    continue
+                                ex_opt = c.get("optimized_text", "")
+                                # Case 1：精确匹配（原逻辑）
+                                if sc_orig in ex_opt:
+                                    c["optimized_text"] = ex_opt.replace(sc_orig, sc_opt, 1)
                                     merged = True
                                     n_style_auto_accept += 1
                                     print(f"  ℹ️ R1: 风格增强直接合入 pi={sc_pi}: {sc_orig[:20]}→{sc_opt[:20]}")
                                     break
+                                # Case 2（B24）：sc_orig 在 original_text 中但不在 optimized_text 中
+                                # → change 的修改改变了 sc_orig 部分内容，difflib 映射后合入
+                                if sc_orig in c.get("original_text", ""):
+                                    _ok, _new_opt = _merge_style_mapped(c, sc_orig, sc_opt)
+                                    if _ok:
+                                        c["optimized_text"] = _new_opt
+                                        merged = True
+                                        n_style_auto_accept += 1
+                                        print(f"  ℹ️ R1+B24: 风格增强映射合入 pi={sc_pi}: {sc_orig[:20]}→{sc_opt[:20]}")
+                                        break
                         if merged:
                             continue
                         if key in seen_keys or _is_covered_by_existing(sc):
