@@ -220,7 +220,15 @@ python gongwen.py rule-list notice
 - **路径 B**：内容优化（润色文字，Word 原生修订+批注 / 差异对比版）
 - **路径 C**：生成公文（从零创建，四步流水线）
 
-Agent 加载 skill 后必须执行**多渠道版本自检**（`python gongwen.py check-update`），比对 GitHub/GitCode/AtomGit 三仓库最新 tag，确保使用最新版本。
+### 🔄 版本追新（Agent 加载 skill 后必须执行）
+
+Agent 加载 skill 后**必须执行版本追新自检**，确保使用最新版本：
+
+1. **多渠道远程自检**（首选）：`python gongwen.py check-update`——自动查询 GitHub/GitCode/AtomGit 三仓库最新 tag，取最高版本比对本地；任一渠道可达即不遗漏，全部不可达时明确告知"版本自检跳过"
+2. **本地 git tag 对比**（补充）：对 skill 安装目录执行 `git -C "<skill安装目录>" describe --tags --abbrev=0`；若安装目录不在 git 管理下，应告知用户"无法执行版本对比，建议手动检查 GitHub 更新"
+3. **落后则警告**：发现本地版本落后于最新 tag 时，**必须在执行前警告用户**并提示更新（`cd <gongwen-skill目录> && git pull && git fetch --tags`），不得静默使用旧版本
+
+> 严禁只用本地 `git describe` 判断版本——它只读本地可达 tag，未 fetch 时会误判本地即最新。
 
 ## 🤖 通过 Agent 调用
 
