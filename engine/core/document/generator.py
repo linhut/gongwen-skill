@@ -28,7 +28,58 @@ from core.document.font_utils import (
 from utils.logger import logger
 
 
-def generate_docx(model: DocumentModel, output_path: Path | str | "io.BytesIO") -> Path | "io.BytesIO":
+def _accept_all_revisions(body_elem) -> int:
+    """接受文档中的所有修订（tracked changes），产出干净文档（P3）。
+
+    1. 删除所有 <w:del> 元素及其内容（被删除的文本直接移除）
+    2. 将 <w:ins> 子元素提升为正式内容（解包，其内 <w:r> 上移为父级直接子元素）
+    3. 清理 <w:rPrChange>/<w:pPrChange> 等修订属性元素
+
+    Args:
+        body_elem: 文档 body 元素（doc.element.body）
+
+    Returns:
+        处理的修订元素数量
+    """
+    if body_elem is None:
+        return 0
+    ns = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+    count = 0
+
+    # 1. 删除 <w:del>（含 <w:delText>，即已删除内容，接受修订=最终删除）
+    for del_elem in body_elem.findall(f'.//{ns}del'):
+        parent = del_elem.getparent()
+        if parent is not None:
+            parent.remove(del_elem)
+            count += 1
+
+    # 2. 解包 <w:ins>：将其子元素按原顺序提升到父级（接受修订=保留插入内容）
+    for ins_elem in body_elem.findall(f'.//{ns}ins'):
+        parent = ins_elem.getparent()
+        if parent is not None:
+            idx = list(parent).index(ins_elem)
+            for child in list(ins_elem):
+                ins_elem.remove(child)
+                parent.insert(idx, child)
+                idx += 1
+            parent.remove(ins_elem)
+            count += 1
+
+    # 3. 清理修订属性元素（属性级修订，接受=保留新值删除旧记录）
+    for change_elem in (body_elem.findall(f'.//{ns}rPrChange')
+                        + body_elem.findall(f'.//{ns}pPrChange')):
+        parent = change_elem.getparent()
+        if parent is not None:
+            parent.remove(change_elem)
+            count += 1
+
+    if count:
+        logger.info(f"_accept_all_revisions: cleaned {count} tracked-change elements")
+    return count
+
+
+def generate_docx(model: DocumentModel, output_path: Path | str | "io.BytesIO",
+                  no_ai_declaration: bool = False) -> Path | "io.BytesIO":
     """
     Generate a .docx file from a DocumentModel.
 
@@ -44,6 +95,7 @@ def generate_docx(model: DocumentModel, output_path: Path | str | "io.BytesIO") 
     Args:
         model: The document model to generate from
         output_path: Path where the .docx file should be saved，或文件对象（BytesIO，内存输出）
+        no_ai_declaration: 为 True 时跳过 AI 声明段追加（P1，默认 False 保持原行为）
 
     Returns:
         Path to the generated file（或 BytesIO 对象）
@@ -105,63 +157,67 @@ def generate_docx(model: DocumentModel, output_path: Path | str | "io.BytesIO") 
         logger.warning(f"Found {len(font_issues)} font issues, auto-fixing...")
         _auto_fix_fonts(doc, font_issues)
 
-    # 7. AI 声明（去重+添加，所有路径产出文档末尾统一）
-    ai_variants = [
-        "（内容由GongWen-skill-AI生成，仅供参考）",
-        "（内容由AI生成，仅供参考）",
-    ]
-    ai_text = ai_variants[0]
+    # 7. AI 声明（去重+添加，所有路径产出文档末尾统一；P1: no_ai_declaration=True 时跳过）
+    if not no_ai_declaration:
+        ai_variants = [
+            "（内容由GongWen-skill-AI生成，仅供参考）",
+            "（内容由AI生成，仅供参考）",
+        ]
+        ai_text = ai_variants[0]
 
-    # 去重：在 doc 中移除多余声明段落（从后往前删避免索引偏移）
-    ai_doc_indices = [i for i, p in enumerate(doc.paragraphs)
-                      if any(v in (p.text or "") for v in ai_variants)]
-    if len(ai_doc_indices) > 1:
-        body = doc.element.body
-        for idx in reversed(ai_doc_indices[:-1]):
-            p_elem = doc.paragraphs[idx]._element
-            body.remove(p_elem)
+        # 去重：在 doc 中移除多余声明段落（从后往前删避免索引偏移）
+        ai_doc_indices = [i for i, p in enumerate(doc.paragraphs)
+                          if any(v in (p.text or "") for v in ai_variants)]
+        if len(ai_doc_indices) > 1:
+            body = doc.element.body
+            for idx in reversed(ai_doc_indices[:-1]):
+                p_elem = doc.paragraphs[idx]._element
+                body.remove(p_elem)
 
-    # 检查是否已有声明；如有则修正其格式，无则添加
-    from core.document.font_utils import set_run_font
-    existing_ai_para = None
-    for p in doc.paragraphs:
-        if any(v in (p.text or "") for v in ai_variants):
-            existing_ai_para = p
-            break
+        # 检查是否已有声明；如有则修正其格式，无则添加
+        from core.document.font_utils import set_run_font
+        existing_ai_para = None
+        for p in doc.paragraphs:
+            if any(v in (p.text or "") for v in ai_variants):
+                existing_ai_para = p
+                break
 
-    if existing_ai_para:
-        # 修正已有声明的字体格式
-        existing_ai_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        # 标记为 AI 注释段落，避免 check 误判为标题
-        p_elem = existing_ai_para._element
-        from lxml import etree
-        pPr = p_elem.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
-        if pPr is None:
-            pPr = etree.SubElement(p_elem, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
-        # 添加 pStyle 标记段落样式（不依赖 role，仅用于 check 时跳过）
-        pStyle = pPr.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pStyle')
-        if pStyle is None:
+        if existing_ai_para:
+            # 修正已有声明的字体格式
+            existing_ai_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            # 标记为 AI 注释段落，避免 check 误判为标题
+            p_elem = existing_ai_para._element
+            from lxml import etree
+            pPr = p_elem.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
+            if pPr is None:
+                pPr = etree.SubElement(p_elem, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
+            # 添加 pStyle 标记段落样式（不依赖 role，仅用于 check 时跳过）
+            pStyle = pPr.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pStyle')
+            if pStyle is None:
+                pStyle = etree.SubElement(pPr, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pStyle')
+            pStyle.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', 'Annotation')
+            for r in existing_ai_para.runs:
+                set_run_font(r, '楷体_GB2312')
+                r.font.size = Pt(9)
+                r.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
+        else:
+            ai_para = doc.add_paragraph()
+            ai_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            # 通过 pStyle 标记为注释，避免 check 误判
+            p_elem = ai_para._element
+            from lxml import etree
+            pPr = p_elem.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
+            if pPr is None:
+                pPr = etree.SubElement(p_elem, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
             pStyle = etree.SubElement(pPr, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pStyle')
-        pStyle.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', 'Annotation')
-        for r in existing_ai_para.runs:
-            set_run_font(r, '楷体_GB2312')
-            r.font.size = Pt(9)
-            r.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
-    else:
-        ai_para = doc.add_paragraph()
-        ai_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        # 通过 pStyle 标记为注释，避免 check 误判
-        p_elem = ai_para._element
-        from lxml import etree
-        pPr = p_elem.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
-        if pPr is None:
-            pPr = etree.SubElement(p_elem, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
-        pStyle = etree.SubElement(pPr, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pStyle')
-        pStyle.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', 'Annotation')
-        ai_run = ai_para.add_run(ai_text)
-        set_run_font(ai_run, '楷体_GB2312')
-        ai_run.font.size = Pt(9)
-        ai_run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
+            pStyle.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', 'Annotation')
+            ai_run = ai_para.add_run(ai_text)
+            set_run_font(ai_run, '楷体_GB2312')
+            ai_run.font.size = Pt(9)
+            ai_run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
+
+    # 7.5. P3: 保存前接受所有修订（tracked changes），产出干净文档
+    _accept_all_revisions(doc.element.body)
 
     # 8. Save（支持路径或文件对象 BytesIO）
     doc.save(out_obj)

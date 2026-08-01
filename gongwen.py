@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.43"
+__version__ = "1.12.44"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -295,11 +295,13 @@ def cmd_optimize(args):
     # 清理路径 B 遗留的修改说明段落和删除线标记（确保干净成品）
     from core.document.modifier import clean_path_b_markers
     cleaned = clean_path_b_markers(fixed)
-    generate_docx(fixed, str(out))
+    generate_docx(fixed, str(out), no_ai_declaration=getattr(args, "remove_ai_declaration", False))
     print(f"✅ 优化完成: {out}")
     print(f"  修复 {len(issues)} 项 (P0:{len(p0)}, P1:{len(p1)}, P2:{len(p2)})")
     if cleaned:
         print(f"  清理 {cleaned} 处路径B标记")
+    if getattr(args, "remove_ai_declaration", False):
+        print("  AI声明段: 已移除（--remove-ai-declaration）")
 
     if getattr(args, "layout", None):
         layout = json.loads(Path(args.layout).read_text(encoding="utf-8"))
@@ -490,13 +492,21 @@ def cmd_md2docx(args):
             format=RunFormat(font_name='仿宋_GB2312', font_size_pt=16.0),
         ))
 
-    # 落款与日期
+    # 落款与日期（P10: 署名前增加2个空行；P4: 署名段居中 18pt）
+    if signer or doc_date:
+        for _ in range(2):
+            idx = len(model.paragraphs)
+            model.paragraphs.append(Paragraph(
+                index=idx, text="", role="body",
+                runs=[],
+                format=ParagraphFormat(line_spacing_pt=28.95),
+            ))
     if signer:
         idx = len(model.paragraphs)
         model.paragraphs.append(Paragraph(
             index=idx, text=signer, role="signature",
-            runs=[Run(index=0, text=signer, format=RunFormat(font_name="仿宋_GB2312", font_size_pt=16.0))],
-            format=ParagraphFormat(alignment="right", line_spacing_pt=28.95),
+            runs=[Run(index=0, text=signer, format=RunFormat(font_name="仿宋_GB2312", font_size_pt=18.0))],
+            format=ParagraphFormat(alignment="center", line_spacing_pt=28.95),
         ))
     if doc_date:
         idx = len(model.paragraphs)
@@ -519,13 +529,13 @@ def cmd_md2docx(args):
             format=ParagraphFormat(alignment="justify", line_spacing_pt=28.95),
         ))
 
-    # 生成 docx
+    # 生成 docx（P1: --no-ai-declaration 跳过 AI 声明段）
     if args.output:
         out = Path(args.output)
     else:
         today = _dt.today().strftime("%Y-%m-%d")
         out = Path(f"修订版+{doc_type}-草稿+{today}+v1.docx")
-    generate_docx(model, str(out))
+    generate_docx(model, str(out), no_ai_declaration=getattr(args, "no_ai_declaration", False))
 
     print(f"公文已生成: {out}")
     print(f"  类型: {doc_type}, 段落: {len(model.paragraphs)}, Markdown 转换: {changes} 处")
@@ -1994,6 +2004,113 @@ def cmd_bold_first(args):
     print(f"  共加粗 {changes} 个段落")
 
 
+def cmd_fix_common(args):
+    """一键修复常见格式问题（路径D，P7）：
+
+    7步流程：
+      [1/7] 解析文档
+      [2/7] 清理路径B标记
+      [3/7] 段落类型检测与格式修正（对齐/缩进/字号/加粗）
+      [4/7] 编号段落自动拆分（一是/二是/三是...）
+      [5/7] 首句加粗（段落类型感知：称呼/导语/过渡/署名/会议日期不加粗）
+      [6/7] 加粗范围修复
+      [7/7] 生成文档（no_ai_declaration=True，不含AI声明段）
+
+    与 optimize 的区别：不依赖规则引擎，走 modifier 独立修复逻辑，
+    适合对"干净中间稿"做最终格式规范化。
+    """
+    import shutil
+    import time
+    from core.document.parser import parse_docx
+    from core.document.generator import generate_docx
+    from core.document.modifier import (
+        clean_path_b_markers, split_numbered_paragraphs,
+        bold_first_sentence_of_body, fix_bold_range,
+        detect_paragraph_type, _select_paragraphs,
+        PARAGRAPH_TYPE_SALUTATION, PARAGRAPH_TYPE_INTRODUCTION,
+        PARAGRAPH_TYPE_TRANSITION, PARAGRAPH_TYPE_MEETING_DATE,
+        PARAGRAPH_TYPE_SIGNATURE,
+    )
+
+    t0 = time.time()
+    input_path = Path(args.input)
+    out = Path(args.output) if args.output else input_path.with_stem(input_path.stem + "_fix-common")
+
+    # [1/7] 解析文档
+    print(f"[1/7] 解析文档: {input_path.name}")
+    model = parse_docx(str(input_path))
+
+    # [2/7] 清理路径B标记
+    n_markers = clean_path_b_markers(model)
+    print(f"[2/7] 清理路径B标记: {n_markers} 处")
+
+    # [3/7] 段落类型检测与格式修正（对齐/缩进/字号/加粗）
+    # 与规则引擎 FIX-C041~C044 对应的独立实现（方案 L4：fix-common 走独立代码）
+    n_fmt = 0
+    for para in model.paragraphs:
+        if para.role == 'annotation' or para.is_heading:
+            continue
+        ptype = detect_paragraph_type(para.text, para.role)
+        pfmt = para.format
+        if ptype == PARAGRAPH_TYPE_SALUTATION:
+            # 称呼段：左对齐、无首行缩进、不加粗
+            if pfmt.alignment != 'left':
+                pfmt.alignment = 'left'; n_fmt += 1
+            if pfmt.first_line_indent_pt:
+                pfmt.first_line_indent_pt = None; n_fmt += 1
+            for r in para.runs:
+                if r.format.bold:
+                    r.format.bold = False; n_fmt += 1
+        elif ptype in (PARAGRAPH_TYPE_INTRODUCTION, PARAGRAPH_TYPE_TRANSITION):
+            # 导语/过渡段：不加粗（保持正文对齐缩进）
+            for r in para.runs:
+                if r.format.bold:
+                    r.format.bold = False; n_fmt += 1
+        elif ptype == PARAGRAPH_TYPE_MEETING_DATE:
+            # 会议日期段：居中、仿宋_GB2312、18pt、不加粗
+            if pfmt.alignment != 'center':
+                pfmt.alignment = 'center'; n_fmt += 1
+            if pfmt.first_line_indent_pt:
+                pfmt.first_line_indent_pt = None; n_fmt += 1
+            for r in para.runs:
+                if r.format.font_name and r.format.font_name != '仿宋_GB2312':
+                    r.format.font_name = '仿宋_GB2312'; n_fmt += 1
+                if r.format.font_size_pt and abs(r.format.font_size_pt - 18.0) > 0.5:
+                    r.format.font_size_pt = 18.0; n_fmt += 1
+                if r.format.bold:
+                    r.format.bold = False; n_fmt += 1
+        elif ptype == PARAGRAPH_TYPE_SIGNATURE:
+            # 署名段：居中、18pt、不加粗（P4）
+            if pfmt.alignment != 'center':
+                pfmt.alignment = 'center'; n_fmt += 1
+            for r in para.runs:
+                if r.format.font_size_pt and abs(r.format.font_size_pt - 18.0) > 0.5:
+                    r.format.font_size_pt = 18.0; n_fmt += 1
+                if r.format.bold:
+                    r.format.bold = False; n_fmt += 1
+    print(f"[3/7] 段落类型格式修正: {n_fmt} 处")
+
+    # [4/7] 编号段落自动拆分
+    n_split = split_numbered_paragraphs(model)
+    print(f"[4/7] 编号段落拆分: {n_split} 个新段落")
+
+    # [5/7] 首句加粗（段落类型感知）
+    n_bold = bold_first_sentence_of_body(model)
+    print(f"[5/7] 首句加粗: {n_bold} 处")
+
+    # [6/7] 加粗范围修复
+    n_range = fix_bold_range(model)
+    print(f"[6/7] 加粗范围修复: {n_range} 处")
+
+    # [7/7] 生成文档（no_ai_declaration=True，不含AI声明段）
+    generate_docx(model, str(out), no_ai_declaration=True)
+    print(f"[7/7] 生成文档: {out}")
+
+    print(f"✅ fix-common 完成: {out}")
+    print(f"  格式修正 {n_fmt} 处 + 编号拆分 {n_split} 段 + 首句加粗 {n_bold} 处 + "
+          f"加粗范围修复 {n_range} 处（耗时 {time.time() - t0:.1f}s）")
+
+
 def cmd_rule_export(args):
     """导出某类型的合并规则为 YAML。"""
     from core.rules.manager import load_rules_merged
@@ -2282,6 +2399,8 @@ def main():
     p.add_argument("--selected-rules", help="仅应用指定修复规则 ID，逗号分隔")
     p.add_argument("--layout", help="版式注入 JSON 配置（含 header/footer/page_number）")
     p.add_argument("--apply", action="store_true", help="确认执行修复（默认预览）")
+    p.add_argument("--remove-ai-declaration", action="store_true",
+                   help="P1: 生成文档不追加 AI 声明段（默认追加）")
     p.set_defaults(func=cmd_optimize)
 
     p = sub.add_parser("generate", help="从 DocumentModel JSON 生成 .docx")
@@ -2325,6 +2444,8 @@ def main():
     p.add_argument("--signer", default="", help="落款单位")
     p.add_argument("--date", default="", help="成文日期")
     p.add_argument("--attachments", nargs="*", help="附件列表")
+    p.add_argument("--no-ai-declaration", action="store_true",
+                   help="P1: 生成文档不追加 AI 声明段（默认追加）")
     p.set_defaults(func=cmd_md2docx)
 
     p = sub.add_parser("optimize-content", help="内容优化差异对比：原文灰色+删除线，修改后红色高亮，每段附修改说明与依据")
@@ -2372,6 +2493,11 @@ def main():
     p.add_argument("input", help="输入 .docx 路径")
     p.add_argument("-o", "--output", help="输出 .docx 路径（默认输入_加粗首句.docx）")
     p.set_defaults(func=cmd_bold_first)
+
+    p = sub.add_parser("fix-common", help="一键修复常见格式问题（路径D）：段落类型修正/编号拆分/首句加粗/加粗范围修复，不含AI声明段")
+    p.add_argument("input", help="输入 .docx 路径")
+    p.add_argument("-o", "--output", help="输出 .docx 路径（默认输入_fix-common.docx）")
+    p.set_defaults(func=cmd_fix_common)
 
     p = sub.add_parser("rule-export", help="导出合并后的规则为 YAML")
     p.add_argument("type", help="公文类型")

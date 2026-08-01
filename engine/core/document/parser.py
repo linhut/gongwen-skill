@@ -634,13 +634,21 @@ def _assign_paragraph_roles(paragraphs: list[Paragraph]) -> None:
         date_idx = date_indices[-1]
         for i in range(len(non_empty)):
             idx, para = non_empty[i]
-            if idx == date_idx - 1 and not para.is_heading:
+            if idx == date_idx - 1:
                 text = para.text.strip()
+                is_sig = False
                 if len(text) < 20:
-                    para.role = 'signature'
+                    is_sig = True
                 elif any(kw in text for kw in ['人民政府', '委员会', '办公厅', '办公室', '管理局', '局', '部']):
                     if len(text) < 40:
-                        para.role = 'signature'
+                        is_sig = True
+                if is_sig:
+                    para.role = 'signature'
+                    # P4 修复：居中署名段（如"陈龙"）可能被 B-0 启发式误判为标题，
+                    # 落款区识别后清除标题标记，避免 optimize 套用标题格式破坏署名段
+                    if para.is_heading:
+                        para.is_heading = False
+                        para.heading_level = None
 
     # 主送机关：标题后第一段，以冒号结尾
     if len(non_empty) >= 2:

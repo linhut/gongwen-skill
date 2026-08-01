@@ -120,11 +120,12 @@ Licensed under the MIT License. See the LICENSE file for details.
 
 ## 顶层路由：三点式入口
 
-### 这个 Skill 做三件事
+### 这个 Skill 做四件事
 
 - **路径 A - 格式修复**：用户有文档，只需排版标准化（GB/T 9704），不改文字内容
 - **路径 B - 内容优化**：用户有文档，需要润色文字并生成修订对比版（原稿 vs 优化稿，红色标注修改处）
 - **路径 C - 生成公文**：用户没有文档，根据背景和要求从零生成新的公文。四步流程：编写 Markdown 草稿 → md2docx 转换 → 引用路径 A optimize 套国标格式 → check 验证交付。
+- **路径 D - 一键格式修复**（`fix-common`，v1.12.44 新增）：用户有文档，只需快速规范化常见格式问题（段落类型修正/编号拆分/首句加粗/加粗范围修复），一步到位，输出不含 AI 声明段的干净文档。与路径 A 的区别：不依赖规则引擎、不追加 AI 声明段，适合对"干净中间稿"做最终格式规范化。
 
 ### 路径判断规则
 
@@ -134,6 +135,7 @@ Licensed under the MIT License. See the LICENSE file for details.
 | 上传/指定了文档 | "润色"/"改写"/"对比"/"修改"/"改一下"/"措辞" | **B** |
 | 上传/指定了文档 + 明确要改内容 | "优化"/"调一下"（需先追问消歧） | **B** |
 | 没有文档 | "写一份"/"生成"/"起草"/"帮我写" + 公文类型 | **C** |
+| 上传/指定了文档 + 只要格式规范化 | "规范一下"/"整理格式"/"格式不对"/"一键修复" | **D**（fix-common） |
 
 **「优化」消歧强制规则**：
 用户说"优化一下""帮我改改""调整内容"等模糊表述时，Agent **必须先追问**：
@@ -146,12 +148,13 @@ Licensed under the MIT License. See the LICENSE file for details.
 
 ### 路径选择决策树（Agent 加载 Skill 后必须执行）
 
-**前置步骤（不可跳过）**：Agent 必须先向用户介绍三条路径的能力范围，使用以下简洁模板：
+**前置步骤（不可跳过）**：Agent 必须先向用户介绍四条路径的能力范围，使用以下简洁模板：
 
-> 本工具支持三种处理方式：
+> 本工具支持四种处理方式：
 > - **格式优化**（路径 A）：不改文字，只修排版——字体/字号/页边距/行距/缩进按国标标准化，输出干净成品
 > - **内容优化**（路径 B）：润色文字表达，生成带红色标注+删除线的对比版，每段附修改说明
 > - **生成公文**（路径 C）：从零生成新的公文，四步流程：草稿→转换→套格式→验证
+> - **一键格式修复**（路径 D）：快速规范化常见格式问题（段落类型/编号拆分/首句加粗/加粗范围），一步到位，输出不含 AI 声明段的干净文档
 
 介绍完毕后再按以下决策树判断路径：
 
@@ -167,6 +170,10 @@ Licensed under the MIT License. See the LICENSE file for details.
   ├─ 包含"排版/格式/红头/标准化" + 指定了已有文档
   │   └── 识别为路径 A（格式修复）
   │       └── 必须使用 check → optimize → check
+  │
+  ├─ 包含"规范一下/整理格式/格式不对/一键修复" + 指定了已有文档（只需快速规范化）
+  │   └── 识别为路径 D（一键格式修复）
+  │       └── 必须使用 fix-common 命令（不含 AI 声明段）
   │
   ├─ 包含"生成/写/起草" + 未指定已有文档
   │   └── 识别为路径 C（生成公文）
@@ -719,6 +726,60 @@ python gongwen.py header 文件.docx --org-name 单位全称 --doc-number "发�
 python gongwen.py footer 文件.docx --cc 抄送单位 --printer 印发单位 --print-date 印发日期
 python gongwen.py pagenum 文件.docx --alignment center
 ```
+
+---
+
+## 路径 D：一键格式修复（fix-common，v1.12.44+）
+
+**快速规范化常见格式问题，一步到位。** 使用 `fix-common` 命令，输出**不含 AI 声明段**的干净文档。
+
+> ⚠️ **执行前检查清单（必须逐项确认，缺一不可）：**
+> - □ 用户有现成 .docx 文档
+> - □ 用户只需快速规范常见格式问题（段落类型/编号拆分/首句加粗/加粗范围）
+> - □ 已告知用户：路径 D 产出不含 AI 声明段的干净文档
+> - □ 若文档可能含修订标记（tracked changes），路径 D 会自动接受全部修订（P3）
+
+### 命令
+
+```bash
+python gongwen.py fix-common 文件.docx -o 成品.docx
+```
+
+7 步修复流程（内部自动执行）：
+1. **解析文档**
+2. **清理路径B标记**（修改说明段落/删除线标记）
+3. **段落类型检测与格式修正**：称呼段左对齐无缩进、导语/过渡段不加粗、会议日期段居中 18pt、署名段居中 18pt（P4/P5/P8）
+4. **编号段落自动拆分**：同一段内"一是…二是…三是…"拆分为独立段落（P6）
+5. **首句加粗（段落类型感知）**：仅编号正文/普通正文加粗，称呼/导语/过渡/署名/会议日期不加粗（P2）
+6. **加粗范围修复**（fix_bold_range）
+7. **生成文档**（no_ai_declaration=True，不含 AI 声明段）
+
+### 与路径 A 的区别
+
+| 维度 | 路径 A（optimize） | 路径 D（fix-common） |
+|------|-------------------|---------------------|
+| 修复引擎 | 规则引擎（check_rules/fix_rules） | modifier 独立修复逻辑 |
+| AI 声明段 | 默认追加 | 不追加 |
+| 适用场景 | 完整格式合规（含页边距/字体检查） | 快速规范化常见问题 |
+
+### OOXML 编辑规范（P7，所有路径强制）
+
+- **严禁使用 PowerShell 操作 docx 的 XML**（`System.IO.Compression` / `[xml]` 解析等不可靠，P7 已证实）
+- 所有 .docx 的解析/修改/生成**必须走 Python 代码路径**（`engine/core/document/*` 或 `gongwen.py` 子命令）
+- 需编辑 OOXML 层时使用 Python `python-docx` + `lxml`（项目内 `engine/core/document/generator.py` 的 `_accept_all_revisions` 即为参考实现）
+- 违反此规范的操作视为不合格执行
+
+### AI 声明段控制（v1.12.44+）
+
+默认所有生成文档末尾会追加 AI 声明段（"（内容由GongWen-skill-AI生成，仅供参考）"，楷体 9pt 居中，pStyle=Annotation 避免 check 误判）。以下参数可控制：
+
+| 命令 | 参数 | 效果 |
+|------|------|------|
+| `md2docx` | `--no-ai-declaration` | 生成的文档不追加 AI 声明段 |
+| `optimize` | `--remove-ai-declaration` | 修复输出的文档不追加 AI 声明段 |
+| `fix-common` | （内置） | 固定不追加 AI 声明段 |
+
+若文档中已存在 AI 声明段，`generate_docx` 会先**去重**（保留最后一段）再统一格式；未传上述参数时默认行为不变（保留 AI 声明段），向后兼容。
 
 ---
 
@@ -2735,6 +2796,7 @@ Agent: 是否需要对此对比文档走格式优化，生成排版合规的无�
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
+| v2.11 | 2026-08-02 | 对应代码 v1.12.44 优化方案修复（P1-P10 + N1-N3 全部）：AI 声明段可选删除（--no-ai-declaration/--remove-ai-declaration）；段落类型感知的首句加粗（detect_paragraph_type，称呼/导语/过渡/署名/会议日期不加粗）；tracked changes 自动接受清理（_accept_all_revisions）；署名段居中 18pt；称呼段左对齐无缩进；编号段落自动拆分；新增 fix-common 一键修复命令（路径D，7步流程）；会议日期段格式；页码 WPS 兼容（MERGEFORMAT）；署名前 2 空行；fix_paragraph_type 规则引擎 action + 5 个段落类型 target；新增 OOXML 编辑规范（禁用 PowerShell 操作 docx） |
 | v2.10 | 2026-07-31 | 对应代码 v1.12.19 审计修复：批注拆分多 w:t 合并预处理（NEW-B1/I1）、倒挂锚定防护（NEW-B2）、RSID 重试上限与重置调用（NEW-I2/I3）、.rels ID 冲突与去重（NEW-I4/I7）、比例分配空 run（NEW-I5）；audit 文档与实现对齐（NI12）、版本体系说明（NI11） |
 | v2.9 | 2026-07-31 | 对应代码 v1.12.18 全面审计修复：批注 end 边界字符级锚定、五角色审阅者区分（author 从 reason 提取）、修订追踪完整格式保留、persons.xml 集成、原子写入、ZIP 炸弹防护、值解析/错误处理统一；新增 utils/parse.py 与 utils/errors.py |
 | v2.8 | 2026-07-31 | 新增批注模式（optimize-content --comment-mode，Word 原生批注可接受/拒绝）；新增完整审校（full-review 一条命令：格式修复+内容优化+批注）；新增样式学习（style-learn/style-list，从标准文档学习排版样式生成命名模板，含字间距等细微属性）；新增修订追踪（tracked-change，ins/del 修订标记）；模板存储于 ~/.gongwen-skill/user_rules/（仓库外，更新不丢失） |

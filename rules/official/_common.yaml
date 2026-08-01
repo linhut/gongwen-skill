@@ -77,13 +77,12 @@ body:
   first_line_indent: 2em
   align: justify
 
-# --- 落款区 ---
+# --- 落款区（P4：署名段居中、18pt、不加粗）---
 signature:
   font: "仿宋_GB2312"
   font_fallback: "FangSong"
-  size: 16pt
-  align: right
-  right_indent: 4em
+  size: 18pt
+  align: center
 
 # --- 日期 ---
 date:
@@ -93,6 +92,41 @@ date:
   format: "YYYY年MM月DD日"
   align: right
   right_indent: 4em
+
+# --- 称呼段（P5：左对齐、无首行缩进）---
+salutation:
+  font: "仿宋_GB2312"
+  font_fallback: "FangSong"
+  size: 16pt
+  align: left
+  first_line_indent: 0
+  bold: false
+
+# --- 导语段（P2：按照/根据/为贯彻...开头，首句不加粗）---
+introduction:
+  font: "仿宋_GB2312"
+  font_fallback: "FangSong"
+  size: 16pt
+  align: justify
+  first_line_indent: 2em
+  bold: false
+
+# --- 过渡段（P2：针对/基于/综上...开头，首句不加粗）---
+transition:
+  font: "仿宋_GB2312"
+  font_fallback: "FangSong"
+  size: 16pt
+  align: justify
+  first_line_indent: 2em
+  bold: false
+
+# --- 会议日期段（P8：居中、仿宋_GB2312、18pt、不加粗）---
+meeting_date:
+  font: "仿宋_GB2312"
+  font_fallback: "FangSong"
+  size: 18pt
+  align: center
+  bold: false
 
 # --- 表格格式 ---
 table:
@@ -308,11 +342,11 @@ check_rules:
 
   # --- 落款和日期检查 (CHK-C016~C017, C039~C040) ---
   - id: CHK-C016
-    name: "落款右空四字检查"
+    name: "署名段对齐检查"
     severity: P1
     field: signature.align
-    expected: "right"
-    message: "落款应右空四字对齐（GB/T 9704标准）"
+    expected: "center"
+    message: "署名段应居中编排（P4：署名段居中、18pt、不加粗）"
 
   - id: CHK-C017
     name: "日期右空四字检查"
@@ -334,6 +368,42 @@ check_rules:
     field: date.font
     expected: "仿宋_GB2312"
     message: "成文日期应使用三号仿宋_GB2312（GB/T 9704标准）"
+
+  # --- 段落类型格式检查 (P5/P8: CHK-C041~C045) ---
+  - id: CHK-C041
+    name: "称呼段格式检查"
+    severity: P2
+    field: salutation.align
+    expected: "left"
+    message: "称呼段（如'尊敬的各位领导'）应左对齐、无首行缩进"
+
+  - id: CHK-C042
+    name: "导语段首句加粗检查"
+    severity: P2
+    field: introduction.bold
+    expected: false
+    message: "导语段（如'按照''根据'开头）首句不应加粗"
+
+  - id: CHK-C043
+    name: "过渡段首句加粗检查"
+    severity: P2
+    field: transition.bold
+    expected: false
+    message: "过渡段（如'针对''综上'开头）首句不应加粗"
+
+  - id: CHK-C044
+    name: "编号正文首句加粗检查"
+    severity: P2
+    field: numbered_body.bold
+    expected: true
+    message: "编号正文段（如'一是''二是'开头）首句应加粗"
+
+  - id: CHK-C045
+    name: "会议日期段格式检查"
+    severity: P2
+    field: meeting_date.align
+    expected: "center"
+    message: "会议日期段（如'于2026年8月3日'）应居中、仿宋_GB2312、18pt、不加粗"
 
   # --- 标题加粗检查 (CHK-C025) ---
   - id: CHK-C025
@@ -567,7 +637,7 @@ fix_rules:
     ref_check: CHK-C016
     action: set_alignment
     target: signature
-    value: "right"
+    value: "center"
 
   - id: FIX-C038
     ref_check: CHK-C039
@@ -617,3 +687,47 @@ fix_rules:
       size: 14pt
       alignment: "center"
       format: "— {PAGE} —"
+
+  # --- 段落类型格式修复 (P4/P5/P8: FIX-C013b/FIX-C041~C044) ---
+  - id: FIX-C013b
+    ref_check: CHK-C040
+    action: set_size
+    target: signature
+    value: 18pt
+
+  - id: FIX-C041
+    ref_check: CHK-C041
+    action: fix_paragraph_type
+    target: salutation
+    value:
+      alignment: left
+      first_line_indent: 0
+      bold: false
+
+  - id: FIX-C042
+    ref_check: CHK-C042
+    action: fix_paragraph_type
+    target: introduction
+    value:
+      alignment: justify
+      first_line_indent: 2em
+      bold: false
+
+  - id: FIX-C043
+    ref_check: CHK-C043
+    action: fix_paragraph_type
+    target: transition
+    value:
+      alignment: justify
+      first_line_indent: 2em
+      bold: false
+
+  - id: FIX-C044
+    ref_check: CHK-C045
+    action: fix_paragraph_type
+    target: meeting_date
+    value:
+      alignment: center
+      font: "仿宋_GB2312"
+      size: 18pt
+      bold: false

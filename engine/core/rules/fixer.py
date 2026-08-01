@@ -54,6 +54,7 @@ _ACTION_MAP = {
     "normalize_punctuation": lambda model, _target, _value, _rules: normalize_punctuation(model),
     "normalize_headings": lambda model, _target, _value, _rules: normalize_heading_content(model),
     "set_page_number": lambda model, target, value, _rules: _apply_page_number(model, target, value),
+    "fix_paragraph_type": lambda model, target, value, _rules: _apply_fix_paragraph_type(model, target, value),
 }
 
 
@@ -181,3 +182,33 @@ def _apply_page_number(model: DocumentModel, target: str, value: dict) -> None:
             ],
         )
         model.footers.append(hf)
+
+
+def _apply_fix_paragraph_type(model: DocumentModel, target: str, value: Any) -> None:
+    """
+    Apply paragraph-type-specific format fixes (N1: FIX-C041~C044 等规则).
+
+    value format (dict):
+        {
+            "alignment": "left|center|right|justify",
+            "bold": true|false,
+            "font": "仿宋_GB2312",
+            "size": "18pt",
+            "first_line_indent": "0" | "2em" | "28pt",
+        }
+    依次调用已有 modifier 函数，仅设置 value 中出现的字段。
+    """
+    if not isinstance(value, dict):
+        logger.warning(f"fix_paragraph_type: value must be a dict, got {type(value)}")
+        return
+
+    if value.get("alignment"):
+        modify_alignment(model, target, str(value["alignment"]))
+    if value.get("bold") is not None:
+        modify_bold(model, target, bool(value["bold"]))
+    if value.get("font"):
+        modify_font(model, target, str(value["font"]))
+    if value.get("size"):
+        modify_size(model, target, _parse_pt_value(value["size"]))
+    if value.get("first_line_indent") is not None:
+        modify_first_line_indent(model, target, _parse_indent_value(value["first_line_indent"]))

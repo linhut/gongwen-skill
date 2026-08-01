@@ -81,6 +81,9 @@ def _select_paragraphs(model: DocumentModel, target: str) -> list[Paragraph]:
             return role_date
         non_empty = [p for p in model.paragraphs if p.text.strip()]
         return non_empty[-1:] if non_empty else []
+    elif target in ('salutation', 'introduction', 'transition', 'meeting_date', 'numbered_body'):
+        # N2: 段落类型 target —— 使用 detect_paragraph_type 内容匹配
+        return [p for p in model.paragraphs if detect_paragraph_type(p.text, p.role) == target]
     elif target == "all":
         # 排除注释段落（annotation），禁止格式化覆盖修订说明段
         return [p for p in model.paragraphs if p.role != "annotation"]
@@ -273,6 +276,206 @@ BLANK_LINE_MODE_DELETE_SINGLE = 'delete_single'
 BLANK_LINE_MODE_KEEP_SINGLE = 'keep_single'
 
 
+# ---------------------------------------------------------------------------
+#  段落类型检测（P2: 段落类型感知的首句加粗 / P5/P8: 称呼段、会议日期段识别）
+# ---------------------------------------------------------------------------
+
+# 段落类型常量
+PARAGRAPH_TYPE_SALUTATION = 'salutation'        # 称呼段：尊敬的各位...
+PARAGRAPH_TYPE_INTRODUCTION = 'introduction'    # 导语段：按照/根据/为贯彻...
+PARAGRAPH_TYPE_TRANSITION = 'transition'        # 过渡段：针对/基于/综上...
+PARAGRAPH_TYPE_NUMBERED_BODY = 'numbered_body'  # 编号正文：一是/二是/第三...
+PARAGRAPH_TYPE_SIGNATURE = 'signature'          # 署名段（落款/日期）
+PARAGRAPH_TYPE_MEETING_DATE = 'meeting_date'    # 会议日期段：于XXXX年X月X日
+PARAGRAPH_TYPE_BODY = 'body'                    # 默认正文
+
+# 首句加粗规则：True=应加粗首句，False=不应加粗
+PARAGRAPH_TYPE_RULES: dict[str, bool] = {
+    PARAGRAPH_TYPE_SALUTATION: False,
+    PARAGRAPH_TYPE_INTRODUCTION: False,
+    PARAGRAPH_TYPE_TRANSITION: False,
+    PARAGRAPH_TYPE_NUMBERED_BODY: True,
+    PARAGRAPH_TYPE_BODY: True,
+    PARAGRAPH_TYPE_SIGNATURE: False,
+    PARAGRAPH_TYPE_MEETING_DATE: False,
+}
+
+# 各段落类型的开头正则模式
+_SALUTATION_RE = re.compile(r'^\s*(尊敬的|各位|同志们|女士们|先生们)')
+_INTRODUCTION_RE = re.compile(
+    r'^\s*(按照|根据|遵照|依据|为贯彻|为落实|为认真|为深入|为切实|为全面)'
+)
+_TRANSITION_RE = re.compile(r'^\s*(针对|基于|鉴于|综上|为此|对此|结合|围绕|就\S+问题)')
+_NUMBERED_RE = re.compile(
+    r'^\s*(一是|二是|三是|四是|五是|六是|七是|八是|九是|'
+    r'一要|二要|三要|四要|五要|'
+    r'首先|其次|再次|最后|'
+    r'第[一二三四五六七八九十百]+\s*[、，,]|'
+    r'[（(]\s*\d+\s*[）)])'
+)
+_MEETING_DATE_RE = re.compile(r'^\s*于\s*\d{3,4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日')
+_SIGNATURE_RE = re.compile(r'^\s*[一二三四五六七八九十\d]+\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日\s*$')
+
+
+def detect_paragraph_type(text: str | None, role: str | None = None) -> str:
+    """基于正则匹配和 role 字段推断段落类型（P2）。
+
+    优先级：
+    1. role 字段强类型（signature/date/recipient/title/annotation）
+    2. 内容正则匹配（salutation/introduction/transition/numbered_body/meeting_date）
+    3. 默认 body
+
+    Args:
+        text: 段落文本（可为空）
+        role: 段落 role 字段（可为空）
+
+    Returns:
+        段落类型常量之一
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return PARAGRAPH_TYPE_BODY
+
+    # role 字段优先（强类型）
+    if role in ('signature', 'date'):
+        return PARAGRAPH_TYPE_SIGNATURE
+    if role == 'recipient':
+        # N3: 公文解析器将称呼段标为 recipient，映射为 salutation
+        return PARAGRAPH_TYPE_SALUTATION
+    if role == 'title':
+        return 'title'
+    if role == 'annotation':
+        return 'annotation'
+
+    # 内容正则匹配（按优先级）
+    if _SALUTATION_RE.match(raw):
+        return PARAGRAPH_TYPE_SALUTATION
+    if _NUMBERED_RE.match(raw):
+        return PARAGRAPH_TYPE_NUMBERED_BODY
+    if _MEETING_DATE_RE.match(raw):
+        return PARAGRAPH_TYPE_MEETING_DATE
+    if _INTRODUCTION_RE.match(raw):
+        return PARAGRAPH_TYPE_INTRODUCTION
+    if _TRANSITION_RE.match(raw):
+        return PARAGRAPH_TYPE_TRANSITION
+    if _SIGNATURE_RE.match(raw):
+        return PARAGRAPH_TYPE_SIGNATURE
+
+    return PARAGRAPH_TYPE_BODY
+
+
+def should_bold_first_sentence(text: str | None, role: str | None = None) -> bool:
+    """判断段落是否应执行首句加粗（P2）。
+
+    称呼/导语/过渡/署名/会议日期段 → False（不加粗）；
+    编号正文/普通正文 → True（首句加粗）。
+    """
+    para_type = detect_paragraph_type(text, role)
+    return PARAGRAPH_TYPE_RULES.get(para_type, True)
+
+
+# 编号拆分模式（P6：一是/二是/三是、一要/二要、第X，、（X）等）
+_NUMBERED_SPLIT_RE = re.compile(
+    r'((?:一是|二是|三是|四是|五是|六是|七是|八是|九是|'
+    r'一要|二要|三要|四要|五要|'
+    r'第[一二三四五六七八九十百]+\s*[、，,]|'
+    r'[（(]\s*\d+\s*[）)]))'
+)
+
+
+def split_numbered_paragraphs(model: DocumentModel) -> int:
+    """将同一段内合并的多条编号内容拆分为独立段落（P6）。
+
+    例如"一是坚持政治引领。二是聚焦主责主业。三是强化队伍建设。"
+    拆分为3个独立段落，拆分后的段落继承原段落的格式与 role。
+
+    Returns:
+        拆分后新增的段落数（原段改写为第一段，不计入新增）
+    """
+    rebuilt: list[Paragraph] = []
+    changes = 0
+    for para in model.paragraphs:
+        text = para.text or ""
+        if not text.strip():
+            rebuilt.append(para)
+            continue
+
+        # 收集所有编号起始位置（跳过段首位置：段首是第一个编号时不拆分）
+        starts = [m.start() for m in _NUMBERED_SPLIT_RE.finditer(text)]
+        if len(starts) <= 1:
+            rebuilt.append(para)
+            continue
+
+        # 段边界：从第二个编号起拆分，最后一段到文本末尾
+        bounds = [0] + starts[1:] + [len(text)]
+        seg_count = len(bounds) - 1
+
+        # 按字符偏移把原 runs 分配到各 segment（保留各自格式）
+        seg_runs: list[list[Run]] = [[] for _ in range(seg_count)]
+        pos = 0
+        for r in para.runs:
+            run_start, run_end = pos, pos + len(r.text)
+            pos = run_end
+            for i in range(seg_count):
+                bs, be = bounds[i], bounds[i + 1]
+                a, b = max(run_start, bs), min(run_end, be)
+                if b > a:
+                    part = r.text[a - run_start: b - run_start]
+                    if part:
+                        seg_runs[i].append(Run(
+                            index=len(seg_runs[i]),
+                            text=part,
+                            format=copy.deepcopy(r.format),
+                        ))
+
+        # 合并文本与 runs，过滤空段
+        merged = [
+            (text[bs:be].strip(), seg_runs[i])
+            for i, (bs, be) in enumerate(zip(bounds, bounds[1:]))
+            if text[bs:be].strip() or seg_runs[i]
+        ]
+        if len(merged) <= 1:
+            rebuilt.append(para)
+            continue
+
+        # P2 配合：编号正文（一是/二是/三是）是正文而非标题——
+        # 解析器可能因领句加粗（楷体+加粗）将其误判为 heading_level=2，
+        # 拆分时统一重置标题标记，否则 bold_first_sentence_of_body 会跳过它们
+        is_numbered_body = detect_paragraph_type(para.text, para.role) == PARAGRAPH_TYPE_NUMBERED_BODY
+        if is_numbered_body:
+            para.is_heading = False
+            para.heading_level = None
+
+        # 第一段：复用原段落对象（保留原格式与 role）
+        first_text, first_runs = merged[0]
+        para.text = first_text
+        para.runs = first_runs
+        rebuilt.append(para)
+        for seg_text, runs in merged[1:]:
+            rebuilt.append(Paragraph(
+                index=0,
+                text=seg_text,
+                style_name=para.style_name,
+                is_heading=False if is_numbered_body else para.is_heading,
+                heading_level=None if is_numbered_body else para.heading_level,
+                role=para.role,
+                runs=runs,
+                format=copy.deepcopy(para.format),
+                page_break=False,
+            ))
+            changes += 1
+
+    # 统一重排段落与 run 索引
+    for i, p in enumerate(rebuilt):
+        p.index = i
+        for j, r in enumerate(p.runs):
+            r.index = j
+    model.paragraphs = rebuilt
+    if changes:
+        logger.info(f"split_numbered_paragraphs: {changes} new paragraph(s) created")
+    return changes
+
+
 def fix_bold_range(model: DocumentModel) -> int:
     """
     正文段落加粗范围修复：
@@ -291,6 +494,13 @@ def fix_bold_range(model: DocumentModel) -> int:
         if not para.text.strip() or len(para.text.strip()) <= 30:
             continue
         if not para.runs or not all(r.format.bold for r in para.runs if r.text.strip()):
+            continue
+
+        # P2: 段落类型感知——称呼/导语/过渡等段落类型不应加粗，整段取消加粗
+        if not should_bold_first_sentence(para.text, para.role):
+            for run in para.runs:
+                run.format.bold = False
+            changes += 1
             continue
 
         full_text = para.text
@@ -1073,6 +1283,10 @@ def bold_first_sentence_of_body(model: DocumentModel) -> int:
         if not text or len(text) < 4:
             continue
 
+        # P2: 段落类型感知——称呼/导语/过渡/署名/会议日期段不执行首句加粗
+        if not should_bold_first_sentence(para.text, para.role):
+            continue
+
         # 找到首句结束位置（。！？：；）
         m = re.search(r'[。！？：；]', text)
         if not m:
@@ -1124,7 +1338,8 @@ def bold_first_sentence_of_body(model: DocumentModel) -> int:
                 new_runs.append(deepcopy(run))
             pos = run_end
 
-        if split_happened:
-            para.runs = new_runs
+        # 修复：无论是否发生跨边界拆分，都要写回 new_runs——
+        # 否则"整个 run 完全在首句内"的段落（split_happened=False）加粗会丢失
+        para.runs = new_runs
 
     return changes

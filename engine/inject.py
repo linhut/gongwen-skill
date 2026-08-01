@@ -420,7 +420,9 @@ def _apply_page_number_elements(para_elem, elements: list) -> None:
             r2.append(rPr2)
             instr = OxmlElement('w:instrText')
             instr.set(qn('xml:space'), 'preserve')
-            instr.text = f' {field_name} '
+            # P9: 添加 \* MERGEFORMAT 后缀，WPS 保存后会自动追加该开关，
+            # 提前写入可避免 WPS 二次保存产生格式漂移
+            instr.text = f' {field_name} \\* MERGEFORMAT '
             r2.append(instr)
             para_elem.append(r2)
 
