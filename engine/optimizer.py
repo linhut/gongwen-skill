@@ -353,22 +353,26 @@ def _build_reason_para(
     reference: str = "",
     style: str = "",
     base_font: str = "仿宋_GB2312",
+    perspective: str = "",  # P2 修复：优化视角/风格方向
 ) -> dict:
     """
     构建修改说明段落（五号字，灰色，楷体_GB2312）。
 
     格式：与正文仿宋 16pt 形成字体/字号/颜色三重区分。
-    说明文本按【修改说明】→【风格】→【依据】三段式排列。
+    说明文本按【修改说明】→【风格】→【依据】→【视角】四段式排列。
 
     Args:
         reason: 修改说明（具体修改点描述）
         reference: 公文写作规范依据
         style: 行文风格标签（如"庄重严谨""简洁明快"）
         base_font: 底字体（保留参数兼容性，实际使用楷体_GB2312）
+        perspective: 优化视角/风格方向（P2）
     """
     text_parts = [f"【修改说明】{reason}"]
     if style:
         text_parts.append(f"【风格】{style}")
+    if perspective:
+        text_parts.append(f"【视角】{perspective}")
     if reference:
         text_parts.append(f"【依据】{reference}")
     full_text = " ".join(text_parts)
@@ -397,6 +401,7 @@ def create_diff_document(
     keep_format: bool = True,
     disclaimer: str | None = None,
     force: bool = False,
+    perspective: str = "",  # P2 修复：优化视角/风格方向，写入修改说明
 ) -> None:
     """
     从原文 .docx 和优化变更列表，生成带差异标注的 .docx。

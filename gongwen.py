@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.41"
+__version__ = "1.12.42"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -606,6 +606,35 @@ def _echo_progress(args, step: int, total: int, label: str, detail: str = "") ->
     print(line)
 
 
+def _validate_changes_schema(changes: list[dict], source: str = "") -> list[dict]:
+    """P5 修复：校验 changes.json schema，返回有效条目列表。
+
+    校验项：必填字段缺失 / paragraph_index 非整数 / 文本字段为空。
+    仅过滤无效条目并输出警告，不中断正常流程。
+    """
+    REQUIRED_FIELDS = ("paragraph_index", "original_text", "optimized_text", "reason")
+    valid = []
+    for i, c in enumerate(changes):
+        # 缺失必填字段（paragraph_index 单独校验类型）
+        missing = [f for f in REQUIRED_FIELDS if f != "paragraph_index" and not c.get(f, "")]
+        if missing:
+            print(f"  ⚠️ changes[{i}] 缺少必填字段 {missing}，跳过", file=sys.stderr)
+            continue
+        # paragraph_index 类型检查
+        if not isinstance(c.get("paragraph_index"), int):
+            print(f"  ⚠️ changes[{i}] paragraph_index 非整数，跳过", file=sys.stderr)
+            continue
+        # original_text / optimized_text 非空
+        if not c["original_text"].strip() or not c["optimized_text"].strip():
+            print(f"  ⚠️ changes[{i}] original_text/optimized_text 为空，跳过", file=sys.stderr)
+            continue
+        valid.append(c)
+    if len(valid) < len(changes):
+        print(f"  ℹ️ schema 校验：{len(changes)} 条中 {len(valid)} 条有效"
+              f"（过滤 {len(changes) - len(valid)} 条）{f'（来源：{source}）' if source else ''}")
+    return valid
+
+
 def _extract_content_rules(rules: dict) -> dict:
     """改进 A：从合并规则中提取内容层字段（structure/focus_checks/skip_checks/title 等）。
 
@@ -1194,6 +1223,17 @@ def cmd_optimize_content(args):
         changes = load_changes_from_json(args.changes)
     _echo_progress(args, 1, 6, "加载变更", f"{len(changes)} 处变更已加载")
 
+    # P5 修复：schema 校验（必填字段/类型/空文本），仅保留有效条目
+    changes = _validate_changes_schema(changes, source=args.changes)
+
+    # P4 修复：预检过滤零修改条目（optimized_text == original_text，无意义）
+    _valid_before = len(changes)
+    changes = [c for c in changes
+               if c.get("optimized_text", "").strip() != c.get("original_text", "").strip()]
+    _n_filtered = _valid_before - len(changes)
+    if _n_filtered > 0:
+        print(f"  ℹ️ 预检过滤：移除 {_n_filtered} 条零修改条目（optimized_text == original_text）")
+
     # V1 修复：--output-tasks 与 --input-tasks 互斥
     if args.output_tasks and args.input_tasks:
         print("❌ --output-tasks 与 --input-tasks 不能同时指定", file=sys.stderr)
@@ -1591,6 +1631,7 @@ def cmd_optimize_content(args):
                     "document": Path(args.input).name,
                     "doc_type": doc_type,
                     "style_name": style_name,
+                    "perspective": getattr(args, 'perspective', ''),  # P2 修复：优化视角/风格方向（供 Agent 回填参考）
                     "tasks": [
                         {"task_id": "fact_check", "entities": entity_tasks},
                         {
@@ -1853,6 +1894,9 @@ def cmd_optimize_content(args):
         kwargs['disclaimer'] = args.disclaimer
     if hasattr(args, 'force') and args.force:
         kwargs['force'] = True
+    # P2 修复：传递优化视角/风格方向（写入修改说明【视角】标注）
+    if hasattr(args, 'perspective') and args.perspective:
+        kwargs['perspective'] = args.perspective
     create_diff_document(
         args.input,
         out_name,
@@ -2285,6 +2329,8 @@ def main():
                    help="审稿角色数：6 完整版（默认，含事实核验员）/ 5 完整版（历史兼容，同6）/ 3 精简版，意见作为独立批注按审阅者写入")
     p.add_argument("--background", nargs="*", default=None,
                    help="背景资料路径（事实核验用，支持多个）：.docx / .pdf / .md / .txt / URL，与 --mode tracked 配合对存疑人事信息生成批注提醒")
+    p.add_argument("--perspective", default="",
+                   help="P2 修复：优化视角/风格方向（路径B第0步确认，影响审稿方向和修改说明标注），如 '务实客观，数据驱动，避免主观评价和万能结论'")
     p.add_argument("--show-confirmed", action="store_true",
                    help="P7 修复：对已确认实体也生成「✅已确认」批注（默认不生成，避免噪音）")
     p.add_argument("-t", "--doc-type", default="", help="改进 A：显式指定公文类型（默认自动检测）")

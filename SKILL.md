@@ -97,6 +97,13 @@ Licensed under the MIT License. See the LICENSE file for details.
    ```
    - 三个仓库取其中**最高版本**作为最新版（多渠道互相校验，任一渠道可达即不遗漏）
    - 若全部渠道均不可用（无 git/无网络），**必须明确告知用户"版本自检因无法访问远程而跳过"**，不得静默假设本地即最新
+3.5. **本地 git tag 对比**（P6，Agent 执行版本确认时补充）：
+   - 优先对 skill 安装目录执行 git tag 对比：
+     ```bash
+     git -C "<skill安装目录>" describe --tags --abbrev=0
+     ```
+   - 若 skill 目录不在 git 管理下，应告知用户"无法执行版本对比，建议手动检查 GitHub 更新"
+   - 版本对比结果若发现本地版本落后于最新 tag，应在执行前**警告用户**
 4. 若多渠道最高版本 > 本地 `__version__`，提示用户：
    ```
    有更新可用：最新版 {远程tag}，当前 {本地version}
@@ -738,9 +745,32 @@ python gongwen.py pagenum 文件.docx --alignment center
       特别注意：经过 bold-first 处理的段落可能被拆分 run，
       但 para.text 仍是完整文本，应直接使用 para.text 的值。
       严禁凭记忆或脑记直接写 original_text。
+
+      **JSON 生成规范**（P5，避免 PowerShell 编码问题）：
+      - 必须使用 Python `json.dump()` 直接写出 JSON 文件，禁止在 PowerShell 中内嵌含特殊字符的字符串
+      - 推荐方式：
+        ```python
+        import json, pathlib
+        pathlib.Path("changes.json").write_text(json.dumps(changes, ensure_ascii=False, indent=2), encoding="utf-8")
+        ```
+      - 生成后必须删除 optimized_text == original_text 的零修改条目（skill 端也会预检过滤，但应源头避免）
+      - 每条 change 必须含 paragraph_index(int)/original_text/optimized_text/reason 四个必填字段
+
+      **背景与视角**（P1/P2）：确认背景后**必须**将背景信息以 `--background` 传入
+      （背景描述写入 `.temp/background.txt` 后传文件路径），并**必须**传入
+      `--perspective "..."`（优化视角/风格方向，如"务实客观，数据驱动，避免主观评价和万能结论"）
+
 第1步：LLM 逐段分析 → 确认修订后的文本内容
-第2步：python gongwen.py optimize-content 原文.docx -o 修订版.docx -f 修订后.md --background "..." --perspective "..."
+第2步：python gongwen.py optimize-content 原文.docx -o 修订版.docx -f 修订后.md --background ".temp/background.txt" --perspective "..."
       → 行内修订文档（自动继承原文档格式 + 红色标注 + 删除线 + 楷体修改说明）
+
+第3步：产出验证（P3，强制步骤，严禁跳过）
+      **必须**对产出文件执行格式合规验证：
+      ```bash
+      python gongwen.py check "产出文件.docx" -t <doc_type> --json
+      ```
+      - check 含 ERROR 级别问题 → 交付时向用户报告
+      - check 含 WARNING 级别问题 → 交付时附注提醒
 ```
 
 **路径 B 到此结束。** 行内修订文档即为最终交付物。
