@@ -28,6 +28,7 @@ title:
 structure:
   - name: 导语段
     required: true
+    keywords: ["召开", "在", "会议", "今天"]
     elements: [日期, 地点, 会议全称, 简称定义, 主持领导(职务+姓名+动作), 参会单位]
     rules:
       - 会议全称首次出现时须定义简称（"以下简称'XX'"）
@@ -36,6 +37,7 @@ structure:
 
   - name: 听取/通报段
     required: true
+    keywords: ["听取了", "通报了", "汇报了", "汇报"]
     # 两种详略模式
     modes:
       - name: 详写式
@@ -49,6 +51,7 @@ structure:
 
   - name: 指出/肯定段
     required: false
+    keywords: ["会议指出", "会议认为", "会议充分肯定", "指出", "认为"]
     elements: [成绩/意义, 号召]
     # 两种写法
     patterns:
@@ -61,6 +64,7 @@ structure:
 
   - name: 强调段
     required: false
+    keywords: ["会议强调", "强调"]
     # 两种逻辑模式
     modes:
       - name: 问题导向式
@@ -74,6 +78,7 @@ structure:
 
   - name: 要求段
     required: false
+    keywords: ["会议要求", "要求"]
     # 与强调段形成配套
     modes:
       - name: 部署式（配套问题导向强调段）
@@ -85,6 +90,7 @@ structure:
 
   - name: 稿源/编辑信息
     required: true
+    keywords: ["稿源", "编辑"]
     elements: [稿源单位, 编辑姓名]
     example: "稿源：省民宗委共同发展处  编辑：赖泳源"
 

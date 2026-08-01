@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.40"
+__version__ = "1.12.41"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -684,27 +684,56 @@ def _infer_paragraph_roles(doc_type: str, content_rules: dict, paragraphs: list)
     return roles
 
 
+# E2 修复：风格提示词 → 偏差方向映射（轻量模式匹配，不调 LLM）
+_STYLE_DEVIATION_HINTS = {
+    "庄重": "关注口语化/网络用语/夸张修饰，建议替换为正式表述",
+    "严谨": "关注模糊量词/主观判断/缺乏依据的断言，建议补充数据或限定条件",
+    "简洁": "关注冗余修饰/重复表达/长句嵌套，建议精简删减",
+    "有力": "关注被动句/模糊动词/弱化语气，建议改用主动语态和明确动词",
+    "朴实": "关注套话/空话/口号式表述，建议用具体事实替代",
+    "自然": "关注生硬书面语/过度格式化表述，建议改为流畅叙述",
+}
+
+
+def _build_style_deviation_hint(style_prompt: str, paragraph_text: str = "") -> str:
+    """E2 修复：基于 style_prompt 关键词提取偏差方向提示（不调 LLM）。
+
+    仅提供方向锚点，最终语义偏差评估由 Agent LLM 完成。
+    """
+    hints = []
+    for keyword, hint in _STYLE_DEVIATION_HINTS.items():
+        if keyword in style_prompt:
+            hints.append(hint)
+    return "；".join(hints) if hints else "请基于风格要求判断段落偏差方向"
+
+
 def _compute_style_scores(paragraphs: list, content_rules: dict,
                           paragraph_roles: list, structure_issues: list,
-                          focus_issues: list, existing_changes: list) -> list:
+                          focus_issues: list, existing_changes: list,
+                          style_prompt: str = "") -> list:
     """路径B v2：基于规则检查结果计算段落风格评分（数据驱动，不硬编码关键词）。
 
     评分维度：
     - completeness：结构完整度（基于 structure_issues 的缺失要素）
     - compliance：焦点合规度（基于 focus_check_issues 的违规项）
     - change_density：已有变更密度（间接反映段落"问题集中度"）
+    - style_deviation_hint（E2）：风格偏差方向提示（基于 style_prompt 关键词，不调 LLM）
 
     与风格提示词的语义偏差评分交给 Agent（LLM）判断，skill 只输出数据供 Agent 分析。
     """
     struct_by_para = {}
     for issue in structure_issues:
-        pi = issue.get("paragraph_index", -1)
+        # B25 修复：key 存在但值为 None 时返回 -1（dict.get 只在 key 不存在时用默认值）
+        pi = issue.get("paragraph_index")
+        pi = pi if pi is not None else -1
         if pi >= 0:
             struct_by_para.setdefault(pi, []).append(issue)
 
     focus_by_para = {}
     for issue in focus_issues:
-        pi = issue.get("paragraph_index", -1)
+        # B25 修复：同上
+        pi = issue.get("paragraph_index")
+        pi = pi if pi is not None else -1
         if pi >= 0:
             focus_by_para.setdefault(pi, []).append(issue)
 
@@ -734,6 +763,9 @@ def _compute_style_scores(paragraphs: list, content_rules: dict,
             "completeness": completeness,
             "compliance": compliance,
             "existing_changes_count": change_count,
+            # E2 新增：风格偏差方向提示（基于 style_prompt 关键词，不调 LLM）
+            "style_deviation_hint": _build_style_deviation_hint(
+                style_prompt, paragraphs[idx] if idx < len(paragraphs) else ""),
         })
 
     return scores
@@ -1276,8 +1308,20 @@ def cmd_optimize_content(args):
                 print(f"🤝 --input-tasks: 合并 {n_merge} 条 Agent 回填建议到变更列表")
             if n_style_auto_accept:
                 print(f"🎨 R1: {n_style_auto_accept} 条风格建议已自动应用（合入已有变更，不生成独立修订）")
+            # E3 修复：收集 Agent 风格建议中 fixes_issue_id 标记（表明该 structure_issue 已被风格建议修复）
+            fixed_issue_ids = set()
+            for task in task_data.get("tasks", []):
+                if task.get("task_id") == "style_enhance":
+                    for sc in task.get("results", []):
+                        fix_id = sc.get("fixes_issue_id")
+                        if fix_id:
+                            fixed_issue_ids.add(fix_id)
+            if fixed_issue_ids:
+                print(f"🔗 E3: 检测到 {len(fixed_issue_ids)} 条已被风格建议修复的结构问题（将跳过重复批注）")
             # B5：将已确认实体集合传递到后续事实核验（供批注生成过滤）
             args._confirmed_entities = confirmed_entities
+            # E3：将已修复结构问题集合传递到结构检查批注生成（供过滤）
+            args._fixed_issue_ids = fixed_issue_ids
         except Exception as e:
             print(f"  ⚠️ --input-tasks 读取失败（{e}），忽略回填", file=sys.stderr)
 
@@ -1533,12 +1577,13 @@ def cmd_optimize_content(args):
                     _fc_paras, content_rules, paragraph_roles,
                     [{"severity": i.severity, "section_name": i.section_name,
                       "issue_type": i.issue_type, "message": i.message,
-                      "elements": i.elements, "paragraph_index": i.paragraph_index}
+                      "elements": i.elements, "paragraph_index": i.paragraph_index if i.paragraph_index is not None else -1}
                      for i in struct_issues],
                     [{"severity": i.severity, "check_name": i.check_name,
-                      "message": i.message, "paragraph_index": i.paragraph_index}
+                      "message": i.message, "paragraph_index": i.paragraph_index if i.paragraph_index is not None else -1}
                      for i in focus_issues],
                     changes,
+                    style_prompt=style_prompt,  # E2：传入风格提示词供偏差方向提示
                 )
 
                 tasks_data = {
@@ -1579,14 +1624,17 @@ def cmd_optimize_content(args):
                                 ],
                             },
                             "structure_issues": [
-                                {"severity": i.severity, "section_name": i.section_name,
+                                {"issue_id": f"{i.section_name}:{i.issue_type}",  # E3：唯一标识，供 Agent 引用
+                                 "severity": i.severity, "section_name": i.section_name,
                                  "issue_type": i.issue_type, "message": i.message,
-                                 "missing_elements": i.elements, "paragraph_index": i.paragraph_index}
+                                 "missing_elements": i.elements,
+                                 "paragraph_index": i.paragraph_index if i.paragraph_index is not None else -1}  # B25
                                 for i in struct_issues
                             ],
                             "focus_check_issues": [
                                 {"severity": i.severity, "check_name": i.check_name,
-                                 "message": i.message, "paragraph_index": i.paragraph_index}
+                                 "message": i.message,
+                                 "paragraph_index": i.paragraph_index if i.paragraph_index is not None else -1}  # B25
                                 for i in focus_issues
                             ],
                             "style_scores": style_scores,
@@ -1608,7 +1656,8 @@ def cmd_optimize_content(args):
                                 "2. 优先关注 style_scores 中 completeness/compliance 较低的段落\n"
                                 "3. 参考 content_rules_summary 中的文档类型规范做针对性调整\n"
                                 "4. 参考 focus_check_issues 中的已有违规项做风格修复\n"
-                                "5. 基于 style_prompt 的语义要求判断段落与目标风格的偏差方向"
+                                "5. 基于 style_prompt 的语义要求判断段落与目标风格的偏差方向\n"
+                                "6. 若你的风格建议修复了某条 structure_issues，请在回填结果中标注 fixes_issue_id（如\"导语段:要素缺失\"），Skill 将自动跳过该问题的重复批注"  # E3
                             ),
                         },
                     ],
@@ -1685,7 +1734,11 @@ def cmd_optimize_content(args):
             from structure_checker import check_structure
             from focus_checker import run_focus_checks
             # F1：结构完整性检查批注
+            # E3 修复：跳过已被 Agent 风格建议修复的结构问题（fixes_issue_id 标记）
+            _fixed_ids = getattr(args, '_fixed_issue_ids', set())
             for issue in check_structure(_m.paragraphs if _m is not None else [], content_rules.get("structure", [])):
+                if _fixed_ids and f"{issue.section_name}:{issue.issue_type}" in _fixed_ids:
+                    continue  # E3：已被 Agent 风格建议修复，跳过重复批注
                 if issue.issue_type == "缺失":
                     cat, role = "格式优化", "格式审校员"
                 elif issue.issue_type == "要素缺失":

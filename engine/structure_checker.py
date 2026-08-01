@@ -40,25 +40,58 @@ _SECTION_KEYWORDS: dict[str, list[str]] = {
 
 
 def _locate_section(paragraphs: list, section_def: dict) -> tuple[bool, Optional[int]]:
-    """在文档段落中定位结构段。
+    """在文档段落中定位结构段（多候选评分，选择最佳匹配）。
+
+    E1：优先读取 rules YAML 中 structure 段的 keywords 字段，未定义时 fallback 到 _SECTION_KEYWORDS。
+    E4/B26：多候选评分——命中关键词数/总关键词数 × 10 + 位置权重 - 标题段惩罚，
+    避免标题段（P0 短文本）被误标为导语段等结构段。
 
     Args:
         paragraphs: 文档段落列表（含 .text 属性）
-        section_def: 结构段定义 {name, required, elements, ...}
+        section_def: 结构段定义 {name, required, elements, keywords, ...}
 
     Returns:
         (是否找到, 段落索引或 None)
     """
     section_name = section_def.get("name", "")
-    keywords = _SECTION_KEYWORDS.get(section_name, [])
+    # E1：优先读取 YAML 中的 keywords，否则 fallback 到硬编码字典
+    keywords = section_def.get("keywords") or _SECTION_KEYWORDS.get(section_name, [])
+    if not keywords:
+        return False, None
+
+    candidates = []
     for idx, p in enumerate(paragraphs):
         text = p.text.strip() if hasattr(p, 'text') else str(p).strip()
         if not text:
             continue
-        # 关键词匹配（取至少 1 个关键词命中）
-        if any(kw in text for kw in keywords):
-            return True, idx
-    return False, None
+
+        hit_count = sum(1 for kw in keywords if kw in text)
+        if hit_count == 0:
+            continue
+
+        # E4：评分 = 命中率 × 10 + 位置权重 - 标题段惩罚
+        hit_ratio = hit_count / len(keywords)
+        # B26/E4：P0 标题段惩罚（短文本 ≤80 字符且非标点结尾）
+        title_penalty = 0
+        if idx == 0 and len(text) <= 80 and not text.endswith(('，', '。', '；', '：', '、')):
+            title_penalty = 3
+        position_weight = max(0, 5 - idx * 0.5)
+        score = hit_ratio * 10 + position_weight - title_penalty
+
+        candidates.append((score, idx))
+
+    if not candidates:
+        return False, None
+
+    # 选择评分最高的候选
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    best_score, best_idx = candidates[0]
+
+    # 最低评分阈值：至少命中 1 个关键词
+    if best_score <= 0:
+        return False, None
+
+    return True, best_idx
 
 
 def _check_elements(para, section_def: dict) -> List[str]:
