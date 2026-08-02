@@ -23,15 +23,32 @@ class RuleEngine:
 
     def __init__(self):
         self._rules_cache: dict[str, dict[str, Any]] = {}
+        # P3-9：记录每个 doc_type 加载时的规则文件 mtime，文件变更后自动重载
+        self._rules_mtime: dict[str, float] = {}
 
     def load_rules(self, doc_type: str) -> dict[str, Any]:
         """
         Load rules for a document type (with priority: user > custom > official).
+
+        P3-9 修复：缓存感知规则文件变更——若规则文件 mtime 已变化则自动重载，
+        无需手动调用 clear_cache。
         """
-        if doc_type not in self._rules_cache:
+        try:
+            from config import RULES_DIR
+            newest = max((p.stat().st_mtime for p in RULES_DIR.glob("*.yaml")
+                          if p.stat().st_size > 0), default=0.0)
+        except Exception:
+            newest = 0.0
+        if doc_type not in self._rules_cache or self._rules_mtime.get(doc_type, -1) < newest:
             self._rules_cache[doc_type] = load_rules_merged(doc_type)
+            self._rules_mtime[doc_type] = newest
             logger.info(f"Loaded and cached rules for type: {doc_type}")
         return self._rules_cache[doc_type]
+
+    def clear_cache(self):
+        self._rules_cache.clear()
+        self._rules_mtime.clear()
+        logger.info("Rules cache cleared")
 
     def check(self, model: DocumentModel, doc_type: str) -> list[CheckIssue]:
         rules = self.load_rules(doc_type)
@@ -52,10 +69,6 @@ class RuleEngine:
         fixed_model = apply_fixes(model, rules, selected_rule_ids)
         logger.info(f"Applied fixes for type: {doc_type}")
         return issues, fixed_model
-
-    def clear_cache(self):
-        self._rules_cache.clear()
-        logger.info("Rules cache cleared")
 
     def available_types(self) -> list[str]:
         from core.rules.loader import list_available_types

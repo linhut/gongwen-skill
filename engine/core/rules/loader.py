@@ -28,26 +28,6 @@ def load_common_rules() -> dict[str, Any]:
     return load_rule_file(RULES_DIR / "_common.yaml")
 
 
-def load_rules_for_type(doc_type: str) -> dict[str, Any]:
-    """
-    Load type-specific rules merged on top of common rules.
-
-    Args:
-        doc_type: One of notice, request, report, letter, meeting,
-                  decision, announcement, notice_public.
-
-    Returns:
-        Merged rule dictionary.
-    """
-    common = load_common_rules()
-    type_file = RULES_DIR / f"{doc_type}.yaml"
-    type_rules = load_rule_file(type_file)
-
-    # Deep merge: type-specific overrides common
-    merged = _deep_merge(common, type_rules)
-    return merged
-
-
 def list_available_types() -> list[str]:
     """Return a list of document type identifiers that have rule files."""
     types = []
@@ -56,14 +36,3 @@ def list_available_types() -> list[str]:
             continue
         types.append(f.stem)
     return sorted(types)
-
-
-def _deep_merge(base: dict, override: dict) -> dict:
-    """Recursively merge override into base (override wins)."""
-    result = base.copy()
-    for key, val in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(val, dict):
-            result[key] = _deep_merge(result[key], val)
-        else:
-            result[key] = val
-    return result

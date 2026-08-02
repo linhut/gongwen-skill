@@ -38,6 +38,11 @@ BODY_FONT_FALLBACK = "FangSong"
 # 公文西文/数字字体（固定）
 LATIN_FONT = "Times New Roman"
 
+# 页码字体规范（GB/T 9704：四号宋体 14pt，P2-5 统一入口）
+PAGE_NUMBER_FONT = "宋体"
+PAGE_NUMBER_LATIN_FONT = "Times New Roman"
+PAGE_NUMBER_SIZE_PT = 14.0
+
 # 字体回退映射表
 FONT_FALLBACK_MAP = {
     "方正小标宋简体": "SimSun",

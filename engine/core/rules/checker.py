@@ -12,6 +12,9 @@ from typing import Any
 from core.document.models import DocumentModel, Paragraph
 from utils.logger import logger
 
+# P2-26: 1em = 16pt（公文字号基准，正文 16pt），与 modifier 保持一致
+EM_TO_PT = 16.0
+
 
 @dataclass
 class CheckIssue:
@@ -47,9 +50,15 @@ def check_document(model: DocumentModel, rules: dict[str, Any]) -> list[CheckIss
         severity = rule.get("severity", "P2")
         name = rule.get("name", "")
         message = rule.get("message", "")
+        # P3-12：check_rules 缺 severity 时静默降级为 P2——补一条 warning 便于排查
+        if "severity" not in rule:
+            logger.warning(f"check_rule '{rule_id}' 缺少 severity，静默按 P2 处理")
 
         # Dispatch based on field path prefix
-        if field_path.startswith("heading_0.") or field_path.startswith("doc_title."):
+        # P2-17 修复：title.* 与 heading_0./doc_title.* 统一走 level=0 检查（同一大标题），
+        # 避免两套路径逻辑不一致导致同一规则重复/漏报
+        if field_path.startswith("heading_0.") or field_path.startswith("doc_title.") \
+                or field_path.startswith("title."):
             issues.extend(_check_heading_level(model, rule_id, severity, name, field_path, expected, message, level=0))
         elif field_path.startswith("heading_1."):
             issues.extend(_check_heading_level(model, rule_id, severity, name, field_path, expected, message, level=1))
@@ -57,51 +66,69 @@ def check_document(model: DocumentModel, rules: dict[str, Any]) -> list[CheckIss
             issues.extend(_check_heading_level(model, rule_id, severity, name, field_path, expected, message, level=2))
         elif field_path.startswith("heading_3."):
             issues.extend(_check_heading_level(model, rule_id, severity, name, field_path, expected, message, level=3))
-        elif field_path.startswith("title."):
-            issues.extend(_check_title(model, rule_id, severity, name, field_path, expected, message))
         elif field_path.startswith("body."):
             issues.extend(_check_body(model, rule_id, severity, name, field_path, expected, message))
         elif field_path.startswith("page_setup."):
             issues.extend(_check_page_setup(model, rule_id, severity, name, field_path, expected, message))
         elif field_path.startswith("signature.") or field_path.startswith("date."):
             issues.extend(_check_signature_area(model, rule_id, severity, name, field_path, expected, message, rules))
+        elif _is_paragraph_type_field(field_path):
+            # P2-20/P2-21 修复：recipient/attachment/cc 及 salutation/introduction/transition/
+            # meeting_date/numbered_body 等段落类型字段此前无处理分支（规则永不触发），
+            # 新增按段落类型选段并检查对应字段
+            issues.extend(_check_paragraph_type_field(model, rule_id, severity, name, field_path, expected, message))
+        elif field_path.startswith("page_number."):
+            # P3-10 修复：page_number.* 检查规则（CHK-C023/024/029）此前无处理分支，
+            # 从页脚段落中检查页码域字体/对齐/字号
+            issues.extend(_check_page_number(model, rule_id, severity, name, field_path, expected, message))
         else:
-            # Generic check -- compare against rule's expected value at top level
-            # 修复：从文档模型读取实际值，而不是从规则字典读取
-            model_dict = {
-                "title": {
-                    "font": model.paragraphs[0].runs[0].format.font_name if model.paragraphs and model.paragraphs[0].runs else None,
-                    "size": model.paragraphs[0].runs[0].format.font_size_pt if model.paragraphs and model.paragraphs[0].runs else None,
-                } if model.paragraphs else {},
-                "body": {
-                    "font": model.paragraphs[1].runs[0].format.font_name if len(model.paragraphs) > 1 and model.paragraphs[1].runs else None,
-                    "size": model.paragraphs[1].runs[0].format.font_size_pt if len(model.paragraphs) > 1 and model.paragraphs[1].runs else None,
-                } if len(model.paragraphs) > 1 else {},
-                "page_setup": {
-                    "margins": {
-                        "top": model.page_setup.margin_top_mm,
-                        "bottom": model.page_setup.margin_bottom_mm,
-                        "left": model.page_setup.margin_left_mm,
-                        "right": model.page_setup.margin_right_mm,
-                    },
-                    "paper_width_mm": model.page_setup.paper_width_mm,
-                    "paper_height_mm": model.page_setup.paper_height_mm,
-                },
-            }
-            actual = _get_nested(model_dict, field_path)
-            if actual is not None and str(actual) != str(expected):
-                issues.append(CheckIssue(
-                    rule_id=rule_id, check_type="format", severity=severity,
-                    name=name, location="document",
-                    original_text=str(actual), suggested_fix=str(expected),
-                    reason=message,
-                ))
+            # P1-6 修复：删除 generic else 中的硬编码索引逻辑（model.paragraphs[0]/[1]
+            # 不一定是标题/正文，检查结果会指向错误段落），未识别的 field 直接 skip + warning
+            logger.warning(f"check_document: 未支持的检查字段 '{field_path}'（rule {rule_id}），跳过")
 
     # Additional heuristic checks (not from YAML)
     issues.extend(_check_common_issues(model))
 
+    # P1-10 修复：同 rule_id 去重/汇总——长文档逐段检查会产生海量同类 issue
+    # （如 100 段正文 → 100+ 条 CHK-C004），折叠为前 N 条 + 汇总条目
+    issues = _dedup_issues(issues, max_per_rule=3)
+
     logger.info(f"Check complete: {len(issues)} issues found")
     return issues
+
+
+def _dedup_issues(issues: list[CheckIssue], max_per_rule: int = 3) -> list[CheckIssue]:
+    """同 rule_id 的 issue 最多保留 max_per_rule 条，其余折叠为一条汇总条目。
+
+    保持每个规则的 severity 不变（折叠汇总条目沿用首条 severity），
+    避免 P0/P1 问题被淹没在海量重复报告中。
+    """
+    if len(issues) <= max_per_rule:
+        return issues
+    from collections import Counter
+    totals = Counter(i.rule_id for i in issues)
+    seen: dict[str, int] = {}
+    result: list[CheckIssue] = []
+    for i in issues:
+        cnt = seen.get(i.rule_id, 0)
+        if cnt < max_per_rule:
+            seen[i.rule_id] = cnt + 1
+            result.append(i)
+    for rule_id, total in totals.items():
+        reported = seen.get(rule_id, 0)
+        if total > reported:
+            first = next((i for i in issues if i.rule_id == rule_id), None)
+            result.append(CheckIssue(
+                rule_id=rule_id,
+                check_type=first.check_type if first else "format",
+                severity=first.severity if first else "P2",
+                name=f"{first.name if first else rule_id}（汇总）",
+                location="document",
+                original_text=f"共 {total} 处",
+                suggested_fix="",
+                reason=f"同规则共 {total} 处违例，仅显示前 {reported} 处，其余已折叠",
+            ))
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -121,12 +148,14 @@ def _get_nested(d: dict, path: str) -> Any:
 
 
 def _check_title(model, rule_id, severity, name, field_path, expected, message) -> list[CheckIssue]:
-    """Check document main title paragraph formatting (heading_level=0)."""
+    """Check document main title paragraph formatting (heading_level=0).
+
+    P2-19 修复：仅检查 heading_level=0 的公文大标题，不再回退到 heading_level=1
+    （一级标题与公文大标题格式要求不同，回退会导致误报）。
+    """
     issues = []
-    # Find main title: heading_level=0 first, fallback to heading_level=1
+    # Find main title: only heading_level=0（公文大标题）
     headings = [p for p in model.paragraphs if p.is_heading and p.heading_level == 0]
-    if not headings:
-        headings = [p for p in model.paragraphs if p.is_heading and p.heading_level == 1]
     if not headings:
         # Check if first non-empty paragraph could be the title
         non_empty = [p for p in model.paragraphs if p.text.strip()]
@@ -209,7 +238,8 @@ def _check_heading_level(model, rule_id, severity, name, field_path, expected, m
         try:
             exp_str = str(expected).strip()
             if "em" in exp_str:
-                expected_val = float(exp_str.replace("em", "").strip()) * 16
+                # P2-26 修复：1em 按正文基准 16pt 换算（与 modifier 一致），提取为常量
+                expected_val = float(exp_str.replace("em", "").strip()) * EM_TO_PT
             else:
                 expected_val = float(exp_str.replace("pt", "").strip())
         except (ValueError, TypeError):
@@ -291,8 +321,9 @@ def _check_body(model, rule_id, severity, name, field_path, expected, message) -
         try:
             exp_str = str(expected).strip()
             if "em" in exp_str:
-                # 1em = 16pt (公文字号基准，正文16pt)
-                expected_val = float(exp_str.replace("em", "").strip()) * 16
+                # P2-26 修复：1em 按正文基准 16pt 换算（与 modifier 一致），
+                # 提取为常量避免散落的魔数
+                expected_val = float(exp_str.replace("em", "").strip()) * EM_TO_PT
             else:
                 expected_val = float(exp_str.replace("pt", "").strip())
         except (ValueError, TypeError):
@@ -436,6 +467,162 @@ def _check_signature_area(model, rule_id, severity, name, field_path, expected, 
                     reason=message,
                 ))
 
+    return issues
+
+
+# P2-20/P2-21: 段落类型字段前缀（此前无检查分支，规则永不触发）
+_PARAGRAPH_TYPE_FIELDS = (
+    "recipient.", "attachment.", "cc.",
+    "salutation.", "introduction.", "transition.",
+    "meeting_date.", "numbered_body.",
+)
+
+
+def _is_paragraph_type_field(field_path: str) -> bool:
+    """判断 field_path 是否为段落类型字段（P2-20/P2-21）。"""
+    return any(field_path.startswith(p) for p in _PARAGRAPH_TYPE_FIELDS)
+
+
+def _check_paragraph_type_field(model, rule_id, severity, name, field_path, expected, message) -> list[CheckIssue]:
+    """按段落类型选中段落并检查格式字段（P2-20/P2-21）。
+
+    - recipient/attachment/cc：按 role 匹配
+    - salutation/introduction/transition/meeting_date/numbered_body：按 detect_paragraph_type 匹配
+    支持子字段：align / font / size / bold / first_line_indent。
+    """
+    from core.document.modifier import detect_paragraph_type
+    issues = []
+    target = field_path.split(".", 1)[0]
+    sub_field = field_path.split(".", 1)[1] if "." in field_path else ""
+
+    if target in ("recipient", "attachment", "cc"):
+        paras = [p for p in model.paragraphs if p.role == target]
+    else:
+        paras = [p for p in model.paragraphs
+                 if detect_paragraph_type(p.text, p.role) == target]
+    if not paras:
+        return issues
+
+    expected_val: float | None = None
+    if expected and sub_field in ("size", "first_line_indent"):
+        try:
+            exp_str = str(expected).strip()
+            if "em" in exp_str:
+                expected_val = float(exp_str.replace("em", "").strip()) * EM_TO_PT
+            else:
+                expected_val = float(exp_str.replace("pt", "").strip())
+        except (ValueError, TypeError):
+            pass
+
+    for para in paras:
+        if sub_field == "align":
+            actual = para.format.alignment
+            if actual and actual != str(expected).lower():
+                issues.append(CheckIssue(
+                    rule_id=rule_id, check_type="format", severity=severity,
+                    name=name, location=f"paragraph:{para.index}",
+                    original_text=actual, suggested_fix=str(expected),
+                    reason=message,
+                ))
+        elif sub_field == "font":
+            for run in para.runs:
+                if run.format.font_name is None or run.format.font_name != expected:
+                    issues.append(CheckIssue(
+                        rule_id=rule_id, check_type="format", severity=severity,
+                        name=name, location=f"paragraph:{para.index}",
+                        original_text=run.format.font_name, suggested_fix=str(expected),
+                        reason=message,
+                    ))
+                    break
+        elif sub_field == "size":
+            for run in para.runs:
+                if run.format.font_size_pt and expected_val and abs(run.format.font_size_pt - expected_val) > 0.5:
+                    issues.append(CheckIssue(
+                        rule_id=rule_id, check_type="format", severity=severity,
+                        name=name, location=f"paragraph:{para.index}",
+                        original_text=f"{run.format.font_size_pt}pt", suggested_fix=str(expected),
+                        reason=message,
+                    ))
+                    break
+        elif sub_field == "bold":
+            for run in para.runs:
+                if bool(run.format.bold) != bool(expected):
+                    issues.append(CheckIssue(
+                        rule_id=rule_id, check_type="format", severity=severity,
+                        name=name, location=f"paragraph:{para.index}",
+                        original_text=str(bool(run.format.bold)), suggested_fix=str(expected),
+                        reason=message,
+                    ))
+                    break
+        elif sub_field == "first_line_indent":
+            if expected_val is not None:
+                if para.format.first_line_indent_pt is None:
+                    issues.append(CheckIssue(
+                        rule_id=rule_id, check_type="format", severity=severity,
+                        name=name, location=f"paragraph:{para.index}",
+                        original_text="无缩进", suggested_fix=str(expected),
+                        reason=f"{target}段首行缺少缩进（期望{expected}）",
+                    ))
+                elif abs(para.format.first_line_indent_pt - expected_val) > 4:
+                    issues.append(CheckIssue(
+                        rule_id=rule_id, check_type="format", severity=severity,
+                        name=name, location=f"paragraph:{para.index}",
+                        original_text=f"{para.format.first_line_indent_pt}pt", suggested_fix=str(expected),
+                        reason=message,
+                    ))
+
+    return issues
+
+
+def _check_page_number(model, rule_id, severity, name, field_path, expected, message) -> list[CheckIssue]:
+    """检查页脚页码域格式（P3-10：CHK-C023/024/029）。
+
+    从 model.footers 中查找含页码域的页脚段落，检查其字体/对齐/字号。
+    无页脚或页脚无页码域时，不报错（页码缺失属于内容层问题，由其他规则/人工判定）。
+    """
+    issues = []
+    sub_field = field_path.split(".", 1)[1] if "." in field_path else ""
+
+    footers = [hf for hf in model.footers if hf.has_page_number]
+    if not footers:
+        return issues
+
+    for hf in footers:
+        for para in hf.paragraphs:
+            if sub_field == "font":
+                for run in para.runs:
+                    if run.format.font_name and run.format.font_name != expected:
+                        issues.append(CheckIssue(
+                            rule_id=rule_id, check_type="format", severity=severity,
+                            name=name, location=f"footer:{hf.section_index}:paragraph:{para.index}",
+                            original_text=run.format.font_name, suggested_fix=str(expected),
+                            reason=message,
+                        ))
+                        break
+            elif sub_field == "alignment" or sub_field == "align":
+                actual = para.format.alignment
+                if actual and actual != str(expected).lower():
+                    issues.append(CheckIssue(
+                        rule_id=rule_id, check_type="format", severity=severity,
+                        name=name, location=f"footer:{hf.section_index}:paragraph:{para.index}",
+                        original_text=actual, suggested_fix=str(expected),
+                        reason=message,
+                    ))
+            elif sub_field == "size":
+                exp_str = str(expected).strip().replace("pt", "")
+                try:
+                    exp_val = float(exp_str)
+                except (ValueError, TypeError):
+                    continue
+                for run in para.runs:
+                    if run.format.font_size_pt and abs(run.format.font_size_pt - exp_val) > 0.5:
+                        issues.append(CheckIssue(
+                            rule_id=rule_id, check_type="format", severity=severity,
+                            name=name, location=f"footer:{hf.section_index}:paragraph:{para.index}",
+                            original_text=f"{run.format.font_size_pt}pt", suggested_fix=str(expected),
+                            reason=message,
+                        ))
+                        break
     return issues
 
 

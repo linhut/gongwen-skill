@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.45"
+__version__ = "1.12.46"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -143,7 +143,8 @@ def _build_output_name(input_path: "str | Path", convention: str, style: str | N
         stem = stem[:v_match.start()]  # 去掉版本后缀
     else:
         # 也检测末尾的 "v1""v2" 模式（不带 +）
-        v2 = re.search(r'v(\d+)$', stem)
+        # P2-32 修复：要求 v 前是分隔符或开头，避免误匹配文件名中段文本（如 "adv3"）
+        v2 = re.search(r'(?:^|[+_\- ])v(\d+)$', stem)
         if v2:
             version = int(v2.group(1)) + 1
             stem = stem[:v2.start()]
@@ -1198,6 +1199,12 @@ def cmd_optimize_content(args):
     _t_start = time.time()
     from optimizer import load_changes_from_json, create_diff_document
 
+    # P0-4 修复：_m 在函数开头显式初始化（此前仅事实核验分支内赋值，
+    # --output-tasks 模式到达 'if _m is None' 时触发 UnboundLocalError）
+    _m = None
+    # P0-3 修复：W 命名空间常量（此前 tracked 分支内 f'{{{W}}}comment' 引用未定义变量，NameError 被静默吞掉）
+    W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+
     # 改进 A：加载文档类型规则（structure/focus_checks/skip_checks/title 内容层定义）
     doc_type, type_source = _detect_doc_type(
         Path(args.input), getattr(args, 'doc_type', None) or '')
@@ -1218,7 +1225,10 @@ def cmd_optimize_content(args):
     # 改进 E：无 changes.json 时，基于内置规则 + 风格提示词自动生成优化建议
     if not getattr(args, 'changes', None) and getattr(args, 'auto_generate', False):
         from auto_optimizer import auto_generate_changes, llm_configured
-        style_name_e = _validate_style(_extract_dominant_style(changes) or "") if changes else "庄重严谨"  # B35：'changes' in dir() 永远为 True，仅保留 and changes
+        # P2-30 修复：auto_generate 分支内 changes 尚未赋值，先声明空列表，
+        # 避免 _extract_dominant_style(changes) 引用未绑定变量（UnboundLocalError）
+        changes: list = []
+        style_name_e = _validate_style(_extract_dominant_style(changes) or "") if changes else "庄重严谨"
         style_prompt_e = _load_style_prompt(style_name_e)
         if not llm_configured():
             print("⚠️ LLM 未配置（设置 GONGWEN_LLM_API 或 GONGWEN_OPTIMIZE_LLM_API 可启用），仅生成规则级结构建议")
@@ -1789,7 +1799,7 @@ def cmd_optimize_content(args):
         # B34 修复：'_m' not in dir() 在函数体内永远为 True（编译期注册局部变量），
         # 直接用 _m is None 判断（_m 已在本函数前面路径赋值或未赋值）
         if _m is None:
-            _m = None
+            # P3-21 修复：移除无效的 '_m = None' 赋值（_m 已确定为 None，赋值无意义）
             try:
                 from core.document.parser import parse_docx
                 _m = parse_docx(str(args.input))
@@ -2004,33 +2014,58 @@ def cmd_bold_first(args):
     print(f"  共加粗 {changes} 个段落")
 
 
+def _count_fmt_changes(before: "DocumentModel", after: "DocumentModel") -> int:
+    """统计两次模型之间段落格式发生变化的数量（fix-common 步骤[3/7]统计用，P1-12）。"""
+    n = 0
+    b = {p.index: p for p in before.paragraphs}
+    for p in after.paragraphs:
+        prev = b.get(p.index)
+        if prev is None:
+            continue
+        changed = (prev.format.alignment != p.format.alignment
+                   or prev.format.first_line_indent_pt != p.format.first_line_indent_pt
+                   or prev.format.left_indent_pt != p.format.left_indent_pt)
+        if not changed:
+            br, ar = prev.runs, p.runs
+            if len(br) != len(ar):
+                changed = True
+            else:
+                for r1, r2 in zip(br, ar):
+                    if (r1.format.font_name != r2.format.font_name
+                            or r1.format.font_size_pt != r2.format.font_size_pt
+                            or bool(r1.format.bold) != bool(r2.format.bold)):
+                        changed = True
+                        break
+        if changed:
+            n += 1
+    return n
+
+
 def cmd_fix_common(args):
     """一键修复常见格式问题（路径D，P7）：
 
     7步流程：
       [1/7] 解析文档
       [2/7] 清理路径B标记
-      [3/7] 段落类型检测与格式修正（对齐/缩进/字号/加粗）
+      [3/7] 段落类型检测与格式修正（对齐/缩进/字号/加粗，复用规则引擎 FIX-C041~C044）
       [4/7] 编号段落自动拆分（一是/二是/三是...）
       [5/7] 首句加粗（段落类型感知：称呼/导语/过渡/署名/会议日期不加粗）
       [6/7] 加粗范围修复
       [7/7] 生成文档（no_ai_declaration=True，不含AI声明段）
 
-    与 optimize 的区别：不依赖规则引擎，走 modifier 独立修复逻辑，
-    适合对"干净中间稿"做最终格式规范化。
+    与 optimize 的区别：不跑完整 check 流程，仅做常见格式规范化，
+    适合对"干净中间稿"做最终格式修复。
     """
-    import shutil
     import time
+    import copy as _copy
     from core.document.parser import parse_docx
     from core.document.generator import generate_docx
     from core.document.modifier import (
         clean_path_b_markers, split_numbered_paragraphs,
         bold_first_sentence_of_body, fix_bold_range,
-        detect_paragraph_type, _select_paragraphs,
-        PARAGRAPH_TYPE_SALUTATION, PARAGRAPH_TYPE_INTRODUCTION,
-        PARAGRAPH_TYPE_TRANSITION, PARAGRAPH_TYPE_MEETING_DATE,
-        PARAGRAPH_TYPE_SIGNATURE,
     )
+    from core.rules.manager import load_rules_merged
+    from core.rules.fixer import apply_fixes
 
     t0 = time.time()
     input_path = Path(args.input)
@@ -2044,51 +2079,17 @@ def cmd_fix_common(args):
     n_markers = clean_path_b_markers(model)
     print(f"[2/7] 清理路径B标记: {n_markers} 处")
 
-    # [3/7] 段落类型检测与格式修正（对齐/缩进/字号/加粗）
-    # 与规则引擎 FIX-C041~C044 对应的独立实现（方案 L4：fix-common 走独立代码）
-    n_fmt = 0
-    for para in model.paragraphs:
-        if para.role == 'annotation' or para.is_heading:
-            continue
-        ptype = detect_paragraph_type(para.text, para.role)
-        pfmt = para.format
-        if ptype == PARAGRAPH_TYPE_SALUTATION:
-            # 称呼段：左对齐、无首行缩进、不加粗
-            if pfmt.alignment != 'left':
-                pfmt.alignment = 'left'; n_fmt += 1
-            if pfmt.first_line_indent_pt:
-                pfmt.first_line_indent_pt = None; n_fmt += 1
-            for r in para.runs:
-                if r.format.bold:
-                    r.format.bold = False; n_fmt += 1
-        elif ptype in (PARAGRAPH_TYPE_INTRODUCTION, PARAGRAPH_TYPE_TRANSITION):
-            # 导语/过渡段：不加粗（保持正文对齐缩进）
-            for r in para.runs:
-                if r.format.bold:
-                    r.format.bold = False; n_fmt += 1
-        elif ptype == PARAGRAPH_TYPE_MEETING_DATE:
-            # 会议日期段：居中、仿宋_GB2312、18pt、不加粗
-            if pfmt.alignment != 'center':
-                pfmt.alignment = 'center'; n_fmt += 1
-            if pfmt.first_line_indent_pt:
-                pfmt.first_line_indent_pt = None; n_fmt += 1
-            for r in para.runs:
-                if r.format.font_name and r.format.font_name != '仿宋_GB2312':
-                    r.format.font_name = '仿宋_GB2312'; n_fmt += 1
-                if r.format.font_size_pt and abs(r.format.font_size_pt - 18.0) > 0.5:
-                    r.format.font_size_pt = 18.0; n_fmt += 1
-                if r.format.bold:
-                    r.format.bold = False; n_fmt += 1
-        elif ptype == PARAGRAPH_TYPE_SIGNATURE:
-            # 署名段：居中、18pt、不加粗（P4）
-            if pfmt.alignment != 'center':
-                pfmt.alignment = 'center'; n_fmt += 1
-            for r in para.runs:
-                if r.format.font_size_pt and abs(r.format.font_size_pt - 18.0) > 0.5:
-                    r.format.font_size_pt = 18.0; n_fmt += 1
-                if r.format.bold:
-                    r.format.bold = False; n_fmt += 1
-    print(f"[3/7] 段落类型格式修正: {n_fmt} 处")
+    # [3/7] 段落类型检测与格式修正（P1-12：复用规则引擎 apply_fixes，
+    # 与 optimize 走同一套 FIX-C041~C044 修复逻辑，不再独立硬编码）
+    doc_type, type_source = _detect_doc_type(input_path, getattr(args, 'doc_type', None) or '')
+    rules = load_rules_merged(doc_type)
+    snapshot = _copy.deepcopy(model)
+    fixed = apply_fixes(model, rules, selected_rule_ids=[
+        'FIX-C013b', 'FIX-C041', 'FIX-C042', 'FIX-C043', 'FIX-C044',
+    ])
+    n_fmt = _count_fmt_changes(snapshot, fixed)
+    model = fixed
+    print(f"[3/7] 段落类型格式修正（规则引擎 FIX-C041~C044, {doc_type}）: {n_fmt} 处")
 
     # [4/7] 编号段落自动拆分
     n_split = split_numbered_paragraphs(model)
@@ -2118,8 +2119,33 @@ def cmd_handoff(args):
       gongwen.py handoff --list         列出所有交接文档摘要
       gongwen.py handoff --latest       读取最新交接文档（JSON）
       gongwen.py handoff --latest --summary  读取最新交接文档（Markdown 摘要）
+      gongwen.py handoff --write 交接.json   从 JSON 文件写入交接文档（P2-27）
     """
     from handoff import read_latest_handoff, list_handoffs, summarize_handoff
+
+    # P2-27 修复：handoff 子命令支持 --write，从 JSON 文件直接写入交接文档
+    if getattr(args, 'write', None):
+        from handoff import write_handoff
+        data = json.loads(Path(args.write).read_text(encoding="utf-8"))
+        p = write_handoff(
+            session_id=data.get("session_id", "未命名任务"),
+            context=data.get("context", {}),
+            completed=data.get("completed", []),
+            next_steps=data.get("next_steps", []),
+            handoff_type=data.get("handoff_type", "long_task"),
+            blocked_on=data.get("blocked_on"),
+            pitfalls=data.get("pitfalls"),
+            related_files=data.get("related_files"),
+            agent_hint=data.get("agent_hint", ""),
+        )
+        print(f"✅ 交接文档已写入: {p}")
+        return
+
+    # P3-20 修复：--list 与 --latest 互斥，同时指定时提示用法而非静默执行其一
+    if args.list and args.latest:
+        print("⚠️ --list 与 --latest 不能同时指定，请选择其一")
+        print("交接文档子命令：--list / --latest [--summary] / --write 交接.json")
+        return
 
     if args.list:
         handoffs = list_handoffs()
@@ -2142,8 +2168,9 @@ def cmd_handoff(args):
             print(json.dumps(doc, ensure_ascii=False, indent=2))
         return
 
-    parser.print_help()
-    print("\n交接文档子命令：--list / --latest [--summary]（写入由 Agent 通过 Python 调用 handoff.write_handoff 完成）")
+    # P2-31 修复：cmd_handoff 不再引用 main() 的局部 parser 变量，直接打印用法
+    print("交接文档子命令：--list / --latest [--summary] / --write 交接.json")
+    print("写入方式：Agent 通过 Python 调用 handoff.write_handoff 完成")
 
 
 def cmd_rule_export(args):
@@ -2534,6 +2561,7 @@ def main():
     p.add_argument("--list", action="store_true", help="列出所有交接文档摘要")
     p.add_argument("--latest", action="store_true", help="读取最新交接文档（JSON，加 --summary 输出 Markdown 摘要）")
     p.add_argument("--summary", action="store_true", help="以 Markdown 摘要输出（配合 --latest）")
+    p.add_argument("--write", metavar="JSON_PATH", help="从 JSON 文件写入交接文档（P2-27）")
     p.set_defaults(func=cmd_handoff)
 
     p = sub.add_parser("rule-export", help="导出合并后的规则为 YAML")
@@ -2603,7 +2631,10 @@ def main():
         sys.exit(1)
 
     try:
-        args.func(args)
+        # P3-22 修复：捕获子命令返回值（如 check-update 的退出码），非零则用于进程退出码
+        ret = args.func(args)
+        if isinstance(ret, int) and ret != 0:
+            sys.exit(ret)
     except FileNotFoundError as e:
         print(f"错误：文件不存在 - {e}", file=sys.stderr)
         sys.exit(1)

@@ -74,16 +74,14 @@ class TestWriteHandoff:
 
 
 class TestReadLatestHandoff:
-    def test_read_latest_returns_most_recent(self, _isolate_handoff_dir, monkeypatch):
-        import time as _time
-
-        # 写入两条，第二条 mtime 更新
-        handoff.write_handoff(session_id="第一条", context={}, completed=[], next_steps=[])
-        p2 = handoff.write_handoff(session_id="第二条", context={}, completed=[], next_steps=[])
-        # 确保 mtime 有序
-        t = _time.time()
-        import os
-        os.utime(p2, (t + 10, t + 10))
+    def test_read_latest_returns_most_recent(self, _isolate_handoff_dir):
+        # P3-31 修复：不再用 os.utime 操控 mtime——排序按 created_at（P2-28），
+        # 通过改写第一条的 created_at 为更早时间保证确定性
+        first = handoff.write_handoff(session_id="第一条", context={}, completed=[], next_steps=[])
+        first_data = json.loads(first.read_text(encoding="utf-8"))
+        first_data["created_at"] = "2020-01-01T00:00:00"  # 人为提前，确保"第一条"更旧
+        first.write_text(json.dumps(first_data, ensure_ascii=False, indent=2), encoding="utf-8")
+        handoff.write_handoff(session_id="第二条", context={}, completed=[], next_steps=[])
         doc = handoff.read_latest_handoff()
         assert doc is not None
         assert doc["session_id"] == "第二条"
@@ -134,6 +132,7 @@ class TestSummarizeHandoff:
             "blocked_on": [{"issue": "卡点", "severity": "P2", "detail": "详情"}],
             "next_steps": [{"action": "下一步", "status": "pending"}],
             "pitfalls": [{"lesson": "坑", "reference": "P7"}],
+            "related_files": [{"path": "C:/x/y.docx", "role": "输入"}],
             "agent_hint": "继续做",
         }
         s = handoff.summarize_handoff(doc)
@@ -143,4 +142,50 @@ class TestSummarizeHandoff:
         assert "卡点" in s
         assert "下一步" in s
         assert "坑" in s
+        assert "C:/x/y.docx" in s  # P3-16: related_files 渲染
         assert "继续做" in s
+
+
+class TestConcurrency:
+    """P3-35：write_handoff 并发写入安全（原子写入 + 去重合并）。"""
+
+    def test_concurrent_writes_do_not_corrupt(self, _isolate_handoff_dir):
+        import threading
+
+        results = []
+        def _write(i):
+            try:
+                p = handoff.write_handoff(
+                    session_id=f"并发任务{i}",
+                    context={"what_we_are_doing": f"任务{i}"},
+                    completed=[{"item": f"完成{i}", "evidence": "证据"}],
+                    next_steps=[],
+                )
+                results.append(p)
+            except Exception as e:  # pragma: no cover
+                results.append(e)
+
+        threads = [threading.Thread(target=_write, args=(i,)) for i in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # 全部写入成功且无 .tmp 残留（原子写入保证）
+        assert all(isinstance(r, Path) for r in results)
+        assert len(results) == 8
+        assert not list(_isolate_handoff_dir.glob("*.tmp"))
+        # 每个文件都可解析
+        for r in results:
+            doc = json.loads(r.read_text(encoding="utf-8"))
+            assert doc["session_id"].startswith("并发任务")
+
+    def test_same_session_merge_not_lost(self, _isolate_handoff_dir):
+        """同一 session_id 重复写入应合并而非覆盖（P1-13）。"""
+        handoff.write_handoff(session_id="同任务", context={},
+                              completed=[{"item": "事项1"}], next_steps=[])
+        handoff.write_handoff(session_id="同任务", context={},
+                              completed=[{"item": "事项2"}], next_steps=[])
+        doc = handoff.read_latest_handoff()
+        items = [c["item"] for c in doc["completed"]]
+        assert items == ["事项1", "事项2"]

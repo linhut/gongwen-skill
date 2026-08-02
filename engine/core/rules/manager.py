@@ -94,6 +94,16 @@ def _load_yaml(path: Path) -> dict:
 
 def _deep_merge(base: dict, overlay: dict) -> None:
     """Merge overlay into base in-place, with deduplication for fix_rules/check_rules."""
+    # P3-14：类型 YAML 用 title: 覆盖 _common.yaml 的 doc_title: 时，统一合并进 doc_title
+    # （template_builder/checker 均以 doc_title 为权威键名；仅当 base 已有 doc_title 才映射，
+    # 避免破坏通用 title 键的普通合并行为）
+    if "title" in overlay and isinstance(overlay.get("title"), dict) and "doc_title" in base:
+        overlay = dict(overlay)
+        title_cfg = overlay.pop("title")
+        if isinstance(base.get("doc_title"), dict):
+            _deep_merge(base["doc_title"], title_cfg)
+        else:
+            base["doc_title"] = copy.deepcopy(title_cfg)
     for key, val in overlay.items():
         if key in ("fix_rules", "check_rules") and isinstance(val, list):
             existing = base.setdefault(key, [])
@@ -109,11 +119,19 @@ def _deep_merge(base: dict, overlay: dict) -> None:
 
 def _dedup_extend(base_list: list, new_items: list, dedup_key) -> None:
     """Extend base_list with new_items, replacing duplicates by dedup_key."""
+    # P2-25 修复：dedup_key 返回 None 时给出 warning，避免静默追加重复项
+    for item in new_items:
+        if dedup_key(item) is None:
+            logger.warning(
+                f"_dedup_extend: 规则缺少去重键（dedup_key 返回 None），将作为新项追加: {item!r}")
     existing_keys = {dedup_key(item) for item in base_list if dedup_key(item) is not None}
     # First add items whose key is already in base (override)
     for item in new_items:
         k = dedup_key(item)
         if k is not None and k in existing_keys:
+            # P2-23 修复：同 field/键去重覆盖属于隐式依赖（如 speech.yaml 覆盖 _common.yaml），
+            # 覆盖发生时记录日志，避免静默覆盖导致规则丢失难以排查
+            logger.info(f"_dedup_extend: 同键覆盖 {k}（新规则覆盖基础规则）")
             # Replace existing item with same key
             for i, existing in enumerate(base_list):
                 if dedup_key(existing) == k:
@@ -268,6 +286,11 @@ def validate_rule(rule: dict) -> None:
             raise ValueError("Each check_rule must have an 'id'")
         if "severity" not in cr:
             raise ValueError(f"check_rule '{cr.get('id', '?')}' must have 'severity'")
+        # P3-8 修复：校验 check_rule 必须有 field/message（缺失会导致检查静默失效）
+        if "field" not in cr:
+            raise ValueError(f"check_rule '{cr.get('id', '?')}' must have 'field'")
+        if "message" not in cr:
+            raise ValueError(f"check_rule '{cr.get('id', '?')}' must have 'message'")
 
     # Validate fix_rules structure
     for fr in rule.get("fix_rules", []):
@@ -275,6 +298,9 @@ def validate_rule(rule: dict) -> None:
             raise ValueError("Each fix_rule must be a dict")
         if "action" not in fr:
             raise ValueError(f"Each fix_rule must have an 'action', got: {fr}")
+        # P3-8 修复：校验 fix_rule 必须有 target（缺失会导致修复找不到目标段落）
+        if "target" not in fr:
+            raise ValueError(f"fix_rule '{fr.get('id', '?')}' must have 'target'")
 
     # Validate check_rules and fix_rules are lists if present
     for field in ("fix_rules", "check_rules"):

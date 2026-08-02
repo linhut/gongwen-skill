@@ -20,18 +20,36 @@ Schema 字段：
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 
-from config import APP_DATA_DIR
-
-HANDOFF_DIR = APP_DATA_DIR / "handoffs"
-HANDOFF_DIR.mkdir(parents=True, exist_ok=True)
+# P2-29 修复：复用 config.HANDOFF_DIR，消除路径定义重复
+from config import HANDOFF_DIR
 
 SCHEMA_VERSION = "1.0"
 
 # 合法 handoff_type 取值
 HANDOFF_TYPES = ("long_task", "batch", "interrupted")
+
+
+def _merge_keyed_list(old: list[dict], new: list[dict], key: str) -> list[dict]:
+    """合并两个 dict 列表：按 key 字段去重（新值覆盖旧值），保持顺序（旧在前、新追加）。"""
+    merged: list[dict] = []
+    seen: set[str] = set()
+    for item in old + new:
+        k = item.get(key)
+        if k is not None and k in seen:
+            # 新值覆盖旧值：替换已存在条目
+            for i, m in enumerate(merged):
+                if m.get(key) == k:
+                    merged[i] = item
+                    break
+            continue
+        if k is not None:
+            seen.add(k)
+        merged.append(item)
+    return merged
 
 
 def write_handoff(
@@ -60,31 +78,59 @@ def write_handoff(
     """
     if handoff_type not in HANDOFF_TYPES:
         handoff_type = "long_task"
+    # P3-23 修复：session_id 为空时拒绝写入（否则生成 "YYYY-MM-DD_.json" 无意义文件）
+    if not session_id or not session_id.strip():
+        raise ValueError("session_id 不能为空——交接文档需要可识别的任务标识")
+    # 文件名：YYYY-MM-DD_简短描述.json
+    date_prefix = datetime.now().strftime("%Y-%m-%d")
+    safe_id = session_id.replace(" ", "_").replace("/", "-").replace("\\", "-")
+    filename = f"{date_prefix}_{safe_id}.json"
+    path = HANDOFF_DIR / filename
+
+    # P1-13 修复：同一天同一 session_id 重复写入时，合并旧文档内容而非静默覆盖——
+    # 读取旧文档，按字段合并 completed/blocked_on/next_steps/pitfalls/related_files
+    old_doc: dict | None = None
+    if path.exists():
+        try:
+            old_doc = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            old_doc = None
+
     doc = {
         "schema_version": SCHEMA_VERSION,
         "session_id": session_id,
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "handoff_type": handoff_type,
         "context": context,
-        "completed": completed,
-        "blocked_on": blocked_on or [],
-        "next_steps": next_steps,
-        "pitfalls": pitfalls or [],
-        "related_files": related_files or [],
-        "agent_hint": agent_hint,
+        "completed": _merge_keyed_list(old_doc.get("completed", []) if old_doc else [], completed, "item"),
+        "blocked_on": _merge_keyed_list(old_doc.get("blocked_on", []) if old_doc else [], blocked_on or [], "issue"),
+        "next_steps": _merge_keyed_list(old_doc.get("next_steps", []) if old_doc else [], next_steps, "action"),
+        "pitfalls": _merge_keyed_list(old_doc.get("pitfalls", []) if old_doc else [], pitfalls or [], "lesson"),
+        "related_files": _merge_keyed_list(
+            old_doc.get("related_files", []) if old_doc else [], related_files or [], "path"),
+        "agent_hint": agent_hint or (old_doc.get("agent_hint", "") if old_doc else ""),
     }
-    # 文件名：YYYY-MM-DD_简短描述.json
-    date_prefix = datetime.now().strftime("%Y-%m-%d")
-    safe_id = session_id.replace(" ", "_").replace("/", "-").replace("\\", "-")
-    filename = f"{date_prefix}_{safe_id}.json"
-    path = HANDOFF_DIR / filename
-    path.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # P1-14 修复：原子写入——先写临时文件再 os.replace，避免并发/中断导致文件损坏
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    tmp_path.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp_path, path)
     return path
+
+
+def _sort_key(path: Path):
+    """排序键：优先取文档内 created_at（P2-28 修复），解析失败回退文件 mtime。"""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data.get("created_at", "")
+    except Exception:
+        return ""
 
 
 def read_latest_handoff() -> dict | None:
     """读取最新的交接文档，若无则返回 None。"""
-    handoffs = sorted(HANDOFF_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime)
+    # P2-28 修复：按文档内 created_at 排序（而非文件 mtime——文件时间不可靠）
+    handoffs = sorted(HANDOFF_DIR.glob("*.json"), key=_sort_key)
     if not handoffs:
         return None
     try:
@@ -93,10 +139,13 @@ def read_latest_handoff() -> dict | None:
         return None
 
 
-def list_handoffs() -> list[dict]:
-    """列出所有交接文档的摘要信息（按修改时间倒序）。"""
+def list_handoffs(limit: int = 50) -> list[dict]:
+    """列出所有交接文档的摘要信息（按 created_at 倒序）。
+
+    P3-17 修复：默认最多返回 50 条，避免交接文档过多时输出爆炸。
+    """
     results = []
-    for f in sorted(HANDOFF_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+    for f in sorted(HANDOFF_DIR.glob("*.json"), key=_sort_key, reverse=True):
         try:
             data = json.loads(f.read_text(encoding="utf-8"))
             results.append({
@@ -107,6 +156,8 @@ def list_handoffs() -> list[dict]:
             })
         except Exception:
             pass
+        if len(results) >= limit:
+            break
     return results
 
 
@@ -150,6 +201,13 @@ def summarize_handoff(doc: dict | None) -> str:
         lines.append("## 踩过的坑（不要再踩）")
         for p in doc['pitfalls']:
             lines.append(f"- {p.get('lesson', '?')}（{p.get('reference', '')}）")
+
+    # P3-16 修复：渲染 related_files（相关文件路径与角色）
+    if doc.get('related_files'):
+        lines.append("")
+        lines.append("## 相关文件")
+        for f in doc['related_files']:
+            lines.append(f"- {f.get('path', '?')}（{f.get('role', '')}）")
 
     if doc.get('agent_hint'):
         lines.append("")

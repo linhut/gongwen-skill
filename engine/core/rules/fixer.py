@@ -26,6 +26,7 @@ from utils.logger import logger
 
 
 # Map YAML action names to modifier functions
+# P3-13：统一参数命名为 (model, target, value, _rules)，消除 _target/_value 混用
 _ACTION_MAP = {
     "set_font": lambda model, target, value, _rules: modify_font(model, target, value),
     "set_size": lambda model, target, value, _rules: modify_size(model, target, _parse_pt_value(value)),
@@ -42,17 +43,17 @@ _ACTION_MAP = {
     "set_indent": lambda model, target, value, _rules: modify_first_line_indent(model, target, _parse_indent_value(value)),
     "set_margins": lambda model, target, value, _rules: modify_margins(model, value),
     "set_page_margins": lambda model, target, value, _rules: modify_margins(model, value),
-    "remove_extra_spaces": lambda model, _target, _value, _rules: remove_extra_spaces(model),
-    "remove_extra_blank_lines": lambda model, _target, value, _rules: remove_extra_blank_lines(
+    "remove_extra_spaces": lambda model, target, value, _rules: remove_extra_spaces(model),
+    "remove_extra_blank_lines": lambda model, target, value, _rules: remove_extra_blank_lines(
         model,
         mode=value.get("mode", "delete_single") if isinstance(value, dict) else "delete_single",
         protected_roles=set(value.get("protected_roles", [])) if isinstance(value, dict) and value.get("protected_roles") else None,
     ),
-    "strip_markdown": lambda model, _target, _value, _rules: convert_markdown(model),
-    "convert_markdown": lambda model, _target, _value, _rules: convert_markdown(model),
-    "fix_bold_range": lambda model, _target, _value, _rules: fix_bold_range(model),
-    "normalize_punctuation": lambda model, _target, _value, _rules: normalize_punctuation(model),
-    "normalize_headings": lambda model, _target, _value, _rules: normalize_heading_content(model),
+    "strip_markdown": lambda model, target, value, _rules: convert_markdown(model),
+    "convert_markdown": lambda model, target, value, _rules: convert_markdown(model),
+    "fix_bold_range": lambda model, target, value, _rules: fix_bold_range(model),
+    "normalize_punctuation": lambda model, target, value, _rules: normalize_punctuation(model),
+    "normalize_headings": lambda model, target, value, _rules: normalize_heading_content(model),
     "set_page_number": lambda model, target, value, _rules: _apply_page_number(model, target, value),
     "fix_paragraph_type": lambda model, target, value, _rules: _apply_fix_paragraph_type(model, target, value),
 }
@@ -162,7 +163,7 @@ def _apply_page_number(model: DocumentModel, target: str, value: dict) -> None:
 
     # 如果没有 footer 段落，创建一个新的
     if not model.footers:
-        from core.document.models import HeaderFooter, Paragraph, Run, RunFormat
+        from core.document.models import HeaderFooter, Paragraph, ParagraphFormat, Run, RunFormat
         hf = HeaderFooter(
             section_index=0,
             type="footer",
@@ -175,9 +176,8 @@ def _apply_page_number(model: DocumentModel, target: str, value: dict) -> None:
                     runs=[Run(index=0, text=fmt, format=RunFormat(
                         font_name=font, font_size_pt=size_pt,
                     ))],
-                    format=__import__('core.document.models', fromlist=['ParagraphFormat']).ParagraphFormat(
-                        alignment=alignment,
-                    ),
+                    # P2-24 修复：用正常 import 替代 __import__ hack
+                    format=ParagraphFormat(alignment=alignment),
                 )
             ],
         )

@@ -23,6 +23,7 @@ from core.document.models import DocumentModel, Paragraph, Run, Table as TableMo
 from core.document.font_utils import (
     set_run_font, set_paragraph_font, validate_document_fonts,
     TITLE_FONT, BODY_FONT, LATIN_FONT,
+    PAGE_NUMBER_FONT, PAGE_NUMBER_LATIN_FONT, PAGE_NUMBER_SIZE_PT,
     _LATIN_FONTS, _contains_cjk,
 )
 from utils.logger import logger
@@ -139,8 +140,15 @@ def generate_docx(model: DocumentModel, output_path: Path | str | "io.BytesIO",
     # 1. Apply page setup
     _apply_page_setup(doc, model)
 
+    # 1.5 P0-2: 保存前先接受所有修订（tracked changes）——必须在段落替换之前执行，
+    # 否则段落替换写入的新 run 可能被残余 <w:ins> 包裹，解包后新内容被意外提升/移除
+    _accept_all_revisions(doc.element.body)
+
     # 2. Replace paragraphs in-place (preserving table positions)
     _replace_paragraphs(doc, model)
+
+    # P2-1 修复：段落替换会增删段落，构建的段落索引缓存已失效，更新表格前清除重建
+    _clear_paragraph_index(doc)
 
     # 3. Update tables with model data
     _update_tables(doc, model)
@@ -158,66 +166,8 @@ def generate_docx(model: DocumentModel, output_path: Path | str | "io.BytesIO",
         _auto_fix_fonts(doc, font_issues)
 
     # 7. AI 声明（去重+添加，所有路径产出文档末尾统一；P1: no_ai_declaration=True 时跳过）
-    if not no_ai_declaration:
-        ai_variants = [
-            "（内容由GongWen-skill-AI生成，仅供参考）",
-            "（内容由AI生成，仅供参考）",
-        ]
-        ai_text = ai_variants[0]
-
-        # 去重：在 doc 中移除多余声明段落（从后往前删避免索引偏移）
-        ai_doc_indices = [i for i, p in enumerate(doc.paragraphs)
-                          if any(v in (p.text or "") for v in ai_variants)]
-        if len(ai_doc_indices) > 1:
-            body = doc.element.body
-            for idx in reversed(ai_doc_indices[:-1]):
-                p_elem = doc.paragraphs[idx]._element
-                body.remove(p_elem)
-
-        # 检查是否已有声明；如有则修正其格式，无则添加
-        from core.document.font_utils import set_run_font
-        existing_ai_para = None
-        for p in doc.paragraphs:
-            if any(v in (p.text or "") for v in ai_variants):
-                existing_ai_para = p
-                break
-
-        if existing_ai_para:
-            # 修正已有声明的字体格式
-            existing_ai_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            # 标记为 AI 注释段落，避免 check 误判为标题
-            p_elem = existing_ai_para._element
-            from lxml import etree
-            pPr = p_elem.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
-            if pPr is None:
-                pPr = etree.SubElement(p_elem, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
-            # 添加 pStyle 标记段落样式（不依赖 role，仅用于 check 时跳过）
-            pStyle = pPr.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pStyle')
-            if pStyle is None:
-                pStyle = etree.SubElement(pPr, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pStyle')
-            pStyle.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', 'Annotation')
-            for r in existing_ai_para.runs:
-                set_run_font(r, '楷体_GB2312')
-                r.font.size = Pt(9)
-                r.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
-        else:
-            ai_para = doc.add_paragraph()
-            ai_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            # 通过 pStyle 标记为注释，避免 check 误判
-            p_elem = ai_para._element
-            from lxml import etree
-            pPr = p_elem.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
-            if pPr is None:
-                pPr = etree.SubElement(p_elem, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
-            pStyle = etree.SubElement(pPr, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pStyle')
-            pStyle.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', 'Annotation')
-            ai_run = ai_para.add_run(ai_text)
-            set_run_font(ai_run, '楷体_GB2312')
-            ai_run.font.size = Pt(9)
-            ai_run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
-
-    # 7.5. P3: 保存前接受所有修订（tracked changes），产出干净文档
-    _accept_all_revisions(doc.element.body)
+    # P3-5：提取为独立函数，保持 generate_docx 主流程精简
+    _apply_ai_declaration(doc, no_ai_declaration)
 
     # 8. Save（支持路径或文件对象 BytesIO）
     doc.save(out_obj)
@@ -226,6 +176,75 @@ def generate_docx(model: DocumentModel, output_path: Path | str | "io.BytesIO",
     logger.info(f"Document saved: {out_obj if is_fileobj else output_path} (font issues: {len(font_issues)})")
 
     return output_path if not is_fileobj else out_obj
+
+
+# ---------------------------------------------------------------------------
+#  AI Declaration（P3-5：从 generate_docx 提取，独立函数）
+# ---------------------------------------------------------------------------
+
+def _apply_ai_declaration(doc: Document, no_ai_declaration: bool) -> None:
+    """在文档末尾追加/修正 AI 声明段（去重 + 统一格式）。
+
+    Args:
+        doc: 待处理的 python-docx Document
+        no_ai_declaration: 为 True 时跳过（不追加也不修正）
+    """
+    if no_ai_declaration:
+        return
+    ai_variants = [
+        "（内容由GongWen-skill-AI生成，仅供参考）",
+        "（内容由AI生成，仅供参考）",
+    ]
+    ai_text = ai_variants[0]
+
+    # 去重：在 doc 中移除多余声明段落（从后往前删避免索引偏移）
+    ai_doc_indices = [i for i, p in enumerate(doc.paragraphs)
+                      if any(v in (p.text or "") for v in ai_variants)]
+    if len(ai_doc_indices) > 1:
+        body = doc.element.body
+        for idx in reversed(ai_doc_indices[:-1]):
+            p_elem = doc.paragraphs[idx]._element
+            body.remove(p_elem)
+
+    # 检查是否已有声明；如有则修正其格式，无则添加
+    from core.document.font_utils import set_run_font
+    existing_ai_para = None
+    for p in doc.paragraphs:
+        if any(v in (p.text or "") for v in ai_variants):
+            existing_ai_para = p
+            break
+
+    if existing_ai_para:
+        # 修正已有声明的字体格式
+        existing_ai_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        # 标记为 AI 注释段落，避免 check 误判为标题
+        p_elem = existing_ai_para._element
+        pPr = p_elem.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
+        if pPr is None:
+            pPr = etree.SubElement(p_elem, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
+        # 添加 pStyle 标记段落样式（不依赖 role，仅用于 check 时跳过）
+        pStyle = pPr.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pStyle')
+        if pStyle is None:
+            pStyle = etree.SubElement(pPr, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pStyle')
+        pStyle.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', 'Annotation')
+        for r in existing_ai_para.runs:
+            set_run_font(r, '楷体_GB2312')
+            r.font.size = Pt(9)
+            r.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
+    else:
+        ai_para = doc.add_paragraph()
+        ai_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        # 通过 pStyle 标记为注释，避免 check 误判
+        p_elem = ai_para._element
+        pPr = p_elem.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
+        if pPr is None:
+            pPr = etree.SubElement(p_elem, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
+        pStyle = etree.SubElement(pPr, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pStyle')
+        pStyle.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', 'Annotation')
+        ai_run = ai_para.add_run(ai_text)
+        set_run_font(ai_run, '楷体_GB2312')
+        ai_run.font.size = Pt(9)
+        ai_run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
 
 
 # ---------------------------------------------------------------------------
@@ -252,6 +271,13 @@ def _auto_fix_fonts(doc: Document, font_issues: list[dict]):
     for issue in font_issues:
         run = issue.get("run_obj")
         if run is None or id(run) in seen_runs:
+            continue
+        # P2-6 修复：run 悬空引用防护——run 已被移出文档（无父元素）时跳过，
+        # 避免对已删除的 run 设置字体引发异常或污染无关段落
+        try:
+            if run._element is None or run._element.getparent() is None:
+                continue
+        except Exception:
             continue
         seen_runs.add(id(run))
         try:
@@ -337,10 +363,11 @@ def _replace_paragraphs(doc: Document, model: DocumentModel):
     """
     替换文档中的段落内容，同时保留表格和图片在原始位置。
 
-    策略：
-    1. 找到 body 直接子元素中的 <w:p> 元素（排除表格内的段落）
-    2. 按顺序一一替换为 model.paragraphs 的内容（索引对齐，不重排）
-    3. 表格 <w:tbl> 元素保持不动
+    策略（P0-1 加固）：
+    1. 交错遍历 body 直接子元素：<w:p> 按序消耗 model.paragraphs 内容，
+       <w:tbl> 及表格内段落保持不动（表格不消耗 model 段落索引）
+    2. model 比原文多的段落，追加到 body 末尾
+    3. 原文比 model 多的 <w:p>，从 body 中移除
     4. 图片：内联图片（<w:drawing> 在 <w:p> 内）通过段落内容替换间接保留，
        浮动图片（锚定）不受影响。前提是源文档保留策略生效。
 
@@ -349,33 +376,32 @@ def _replace_paragraphs(doc: Document, model: DocumentModel):
     """
     body = doc.element.body
     p_tag = qn('w:p')
-    # 只取 body 的直接子 <w:p>，排除表格单元格内的段落
-    all_p_elements = [child for child in body if child.tag == p_tag]
-
     model_paras = model.paragraphs
+    para_idx = 0
 
-    # 替换策略：逐个替换已有的段落，多余的追加，多余的原文段落清除
-    for idx, para_model in enumerate(model_paras):
-        if idx < len(all_p_elements):
-            # 替换已有段落的内容
-            _replace_paragraph_content(doc, all_p_elements[idx], para_model)
-        else:
-            # model 比原文多的段落，追加到 body 末尾
-            new_para = doc.add_paragraph()
-            _apply_paragraph_format(new_para, para_model)
-            _add_runs_to_paragraph(new_para, para_model)
+    # 交错遍历：跳过 <w:tbl>（不消耗 model 索引），仅对 <w:p> 按序替换/移除
+    for child in list(body):
+        if child.tag == p_tag:
+            if para_idx < len(model_paras):
+                _replace_paragraph_content(doc, child, model_paras[para_idx])
+                para_idx += 1
+            else:
+                # 原文段落多于 model → 移除多余段落
+                try:
+                    body.remove(child)
+                except Exception:
+                    pass  # 已被移除则跳过
 
-    # 清除多余的原文段落（model 中没有对应的）
-    if len(all_p_elements) > len(model_paras):
-        for idx in range(len(model_paras), len(all_p_elements)):
-            try:
-                body.remove(all_p_elements[idx])
-            except Exception:
-                pass  # 已被移除则跳过
+    # model 比原文多的段落，追加到 body 末尾
+    while para_idx < len(model_paras):
+        new_para = doc.add_paragraph()
+        _apply_paragraph_format(new_para, model_paras[para_idx])
+        _add_runs_to_paragraph(new_para, model_paras[para_idx])
+        para_idx += 1
 
-    logger.debug(f"Replaced {min(len(model_paras), len(all_p_elements))} paragraphs, "
-                 f"added {max(0, len(model_paras) - len(all_p_elements))}, "
-                 f"removed {max(0, len(all_p_elements) - len(model_paras))}")
+    logger.debug(f"Replaced {min(len(model_paras), len([c for c in body if c.tag == p_tag]))} paragraphs, "
+                 f"added {max(0, len(model_paras) - len([c for c in body if c.tag == p_tag]))}, "
+                 f"removed {max(0, len([c for c in body if c.tag == p_tag]) - len(model_paras))}")
 
 
 def _replace_paragraph_content(doc: Document, p_element, para_model: Paragraph):
@@ -446,7 +472,12 @@ def _update_pPr(p_element, para_model: Paragraph):
         ind = OxmlElement('w:ind')
         if fmt.first_line_indent_pt is not None:
             ind.set(qn('w:firstLine'), str(int(fmt.first_line_indent_pt * 20)))
-            chars = int(round(fmt.first_line_indent_pt / 16 * 100))
+            # P1-4 修复：使用段落实际字号计算 firstLineChars（此前硬编码 16pt，
+            # 标题 22pt/表格 12pt 时缩进字符数计算错误）
+            _font_size = 16.0
+            if para_model.runs and para_model.runs[0].format.font_size_pt:
+                _font_size = para_model.runs[0].format.font_size_pt
+            chars = int(round(fmt.first_line_indent_pt / _font_size * 100))
             if chars > 0:
                 ind.set(qn('w:firstLineChars'), str(chars))
         if fmt.left_indent_pt is not None:
@@ -599,6 +630,10 @@ def _update_tables(doc: Document, model: DocumentModel):
     更新文档中的表格内容。
     如果源文档有表格，更新其单元格内容。
     如果源文档没有表格但 model 有，在末尾添加。
+
+    P2-11 说明：表格与段落替换的交互已由 _replace_paragraphs 的交错遍历处理
+    （<w:tbl> 不消耗 model 段落索引，表格保持原位）；此处仅按索引更新/添加表格，
+    不删除源文档多余表格（保留未建模内容，遵循"保留策略"）。
     """
     existing_tables = list(doc.tables)
     model_tables = model.tables
@@ -693,7 +728,6 @@ def _add_table(doc: Document, table_model: TableModel):
         # 按 insert_after_index 移动表格到正确位置
         insert_idx = getattr(table_model, 'insert_after_index', -1)
         if insert_idx >= 0:
-            from lxml import etree
             body = doc.element.body
             para_count = 0
             target_elem = None
@@ -877,11 +911,13 @@ def _add_page_number_field(para, para_model: Paragraph) -> None:
             run_el = OxmlElement('w:r')
             rPr = OxmlElement('w:rPr')
             rFonts = OxmlElement('w:rFonts')
-            rFonts.set(qn('w:eastAsia'), '宋体')
-            rFonts.set(qn('w:ascii'), 'Times New Roman')
+            # P2-5 修复：页码字体按 GB/T 9704 规范（宋体 14pt），改用 font_utils 常量
+            # 而非散落的字符串字面量，保证与其它页码注入路径一致
+            rFonts.set(qn('w:eastAsia'), PAGE_NUMBER_FONT)
+            rFonts.set(qn('w:ascii'), PAGE_NUMBER_LATIN_FONT)
             rPr.append(rFonts)
             sz = OxmlElement('w:sz')
-            sz.set(qn('w:val'), '28')  # 14pt
+            sz.set(qn('w:val'), str(int(PAGE_NUMBER_SIZE_PT * 2)))  # 14pt
             rPr.append(sz)
             run_el.append(rPr)
             t = OxmlElement('w:t')
@@ -901,7 +937,7 @@ def _add_page_number_field(para, para_model: Paragraph) -> None:
             instr = OxmlElement('w:r')
             rPr_instr = OxmlElement('w:rPr')
             rFonts_instr = OxmlElement('w:rFonts')
-            rFonts_instr.set(qn('w:eastAsia'), '宋体')
+            rFonts_instr.set(qn('w:eastAsia'), PAGE_NUMBER_FONT)
             rPr_instr.append(rFonts_instr)
             instr.append(rPr_instr)
             instrText = OxmlElement('w:instrText')

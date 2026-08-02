@@ -101,3 +101,30 @@ class TestDocumentModel:
         assert len(restored.paragraphs) == 2
         assert restored.paragraphs[0].text == "标题"
         assert restored.paragraphs[0].is_heading is True
+
+
+class TestValidators:
+    """Pydantic validator 边界/异常测试（P3-25/P3-37 补充测试）。"""
+
+    def test_run_format_invalid_color_raises(self):
+        with pytest.raises(Exception):
+            RunFormat(color="ZZZZZZ")
+
+    def test_run_format_valid_color(self):
+        rf = RunFormat(color="FF0000")
+        assert rf.color == "FF0000"
+
+    def test_heading_level_out_of_range(self):
+        with pytest.raises(Exception):
+            Paragraph(index=0, text="标题", is_heading=True, heading_level=99)
+
+    def test_heading_level_valid(self):
+        p = Paragraph(index=0, text="标题", is_heading=True, heading_level=2)
+        assert p.heading_level == 2
+
+    def test_field_exclusion_json(self):
+        """P3-37：model_dump 排除未赋值字段（None 不序列化）。"""
+        model = DocumentModel()
+        dumped = model.model_dump()
+        assert "paragraphs" in dumped
+        assert dumped["paragraphs"] == []

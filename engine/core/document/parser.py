@@ -231,7 +231,9 @@ def _parse_headers_footers(doc: Document, hf_type: str) -> list[HeaderFooter]:
         for p_idx, para in enumerate(target.paragraphs):
             if para.text.strip():
                 texts.append(para.text)
-            paras.append(_parse_paragraph(para, p_idx))
+            # P2-10 修复：页眉/页脚段落索引用高位偏移（100000+p_idx），
+            # 避免与正文段落索引（0..N）冲突导致下游锚定/批注错位
+            paras.append(_parse_paragraph(para, 100000 + p_idx))
             # 检测页码域代码（通过XML层）
             if _paragraph_has_page_field(para):
                 has_page_num = True
@@ -525,12 +527,14 @@ def _post_detect_headings(paragraphs: list[Paragraph]) -> None:
     # 被 _detect_heading_heuristic 误标为 heading_level=0。
     # 规则：若某段落 is_heading=True 且 heading_level=0，但无编号内容信号
     # （即非"一、""（一）""1."等模式），且前一段也是同级别标题，则降级为正文。
+    # P2-15 修复：降级增加保护——仅当该段是短文本（≤30字，疑似署名/日期）才降级，
+    # 避免误伤两个相邻的合法标题（如"一、…""二、…"或标题+副标题）
     for i in range(1, len(paragraphs)):
         p = paragraphs[i]
         if not (p.is_heading and p.heading_level == 0):
             continue
         t = p.text.strip()
-        if not t:
+        if not t or len(t) > 30:
             continue
         # 有内容信号的标题（"关于...的通知"等模式）跳过
         if '关于' in t or '通知' in t or '请示' in t or '报告' in t or '函' in t:
@@ -539,7 +543,7 @@ def _post_detect_headings(paragraphs: list[Paragraph]) -> None:
             continue
         prev = paragraphs[i - 1]
         if prev.is_heading and prev.heading_level == 0:
-            # 前一段是同级标题，当前段无标题内容信号 → 署名/日期，降级
+            # 前一段是同级标题，当前段为短文本且无标题内容信号 → 署名/日期，降级
             p.is_heading = False
             p.heading_level = None
             logger.info(f"[后处理] 连续标题降级（署名/日期）: {t[:30]!r}")
@@ -707,15 +711,18 @@ def _apply_style_fallback(para, runs: list[Run], para_format: ParagraphFormat) -
             if style.paragraph_format and style.paragraph_format.line_spacing:
                 from docx.shared import Length
                 sp = style.paragraph_format.line_spacing
-                if isinstance(sp, (int, float)) and sp > 100:
+                # P2-12 修复：优先用 Length 类型直接取 pt，避免魔数判断（>100/>3）
+                if isinstance(sp, Length):
+                    style_line_spacing = round(sp.pt, 2)
+                elif isinstance(sp, (int, float)) and sp > 100:
                     # 很可能是 EMU 值
                     style_line_spacing = round(Length(int(sp), 0).pt, 2)
                 elif isinstance(sp, (int, float)) and sp > 3:
+                    # 大于 3 视为固定 pt 值
                     style_line_spacing = round(float(sp), 2)
-                elif isinstance(sp, (int, float)):
-                    style_line_spacing = round(float(sp) * 16, 2)
                 else:
-                    style_line_spacing = round(Length(sp, 0).pt, 2)
+                    # 小于等于 3 视为倍数（如 1.5 倍行距），按正文 16pt 换算
+                    style_line_spacing = round(float(sp) * 16, 2)
         except Exception:
             pass
 
@@ -772,8 +779,15 @@ def _apply_style_fallback(para, runs: list[Run], para_format: ParagraphFormat) -
 def _parse_table(table, index: int) -> Table:
     """Parse a table with cell-level paragraph preservation."""
     cells = []
+    # P1-5 修复：合并单元格时 python-docx 对同一 XML 元素返回多个 cell 对象，
+    # 用 id(cell._element) 去重，避免重复添加破坏写回
+    seen_cells: set[int] = set()
     for row_idx, row in enumerate(table.rows):
         for col_idx, cell in enumerate(row.cells):
+            elem_id = id(cell._element)
+            if elem_id in seen_cells:
+                continue
+            seen_cells.add(elem_id)
             # Parse cell paragraphs
             cell_paras = []
             for p_idx, para in enumerate(cell.paragraphs):

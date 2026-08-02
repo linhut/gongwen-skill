@@ -250,10 +250,11 @@ python gongwen.py handoff --latest --summary # 最新交接文档（Markdown 摘
 
 用通俗语言问用户走哪条路，**不允许跳过**：
 
-> 这个工具支持三种处理方式：
+> 这个工具支持四种处理方式：
 > - **格式优化**：不改文字，只修排版（字体/字号/页边距/行距/缩进），按国标标准化
 > - **内容优化**：润色文字表达，生成带标记的对比文档——保持原文档排版样式，修改处红色高亮或删除线、每段附修改说明
 > - **生成模板**：直接生成一份空白公文模板，按国标设好版式
+> - **一键格式修复**（fix-common）：快速规范化常见格式问题（段落类型/编号拆分/首句加粗），输出不含 AI 声明段的干净文档
 
 若用户说「帮我优化一下」，必须追问是改格式还是改内容。
 
@@ -372,7 +373,7 @@ python gongwen.py handoff --latest --summary # 最新交接文档（Markdown 摘
 - `--output-tasks` 与 `--input-tasks` 互斥，不能同时指定
 - `GONGWEN_LLM_API` 保留为**降级通道**：CLI 独立使用且配置了 API 时，Skill 内部自行调用（自动优化/风格增强/LLM 实体提取）；未配置则跳过这些环节，不影响确定性工作
 
-#### 规则 5：失败必须上报
+#### 规则 5b：失败必须上报
 - skill 命令执行失败时，必须向用户报告：
   1. 失败的命令和参数
   2. 错误信息
@@ -2848,6 +2849,7 @@ Agent: 是否需要对此对比文档走格式优化，生成排版合规的无�
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
+| v2.13 | 2026-08-03 | 对应代码 v1.12.46 全量审计优化（v4 方案，P0×4+P1×14+P2×33+P3×40 全部修复）：P0 表格位置错位/修订接受前置/W 未定义/_m 未绑定；P1 多 run markdown 清理/合并单元格去重/checker 去重汇总/fix-common 复用规则引擎/handoff 合并+原子写入等；P2 段落类型字段检查支持（recipient/attachment/cc+5 段落类型）、页码字号检查 CHK-C046、title→doc_title 键名统一等 33 项；P3 重复导入清理/AI声明独立函数/缓存 mtime 感知/page_number 检查实现/参数风格统一等 40 项；新增 tests/conftest.py、test_font_utils.py，补充 font_utils/models/handoff 并发/save-delete 规则测试（70 用例） |
 | v2.12 | 2026-08-02 | 对应代码 v1.12.45 会话交接机制（Handoff）：新增 `engine/handoff.py`（write_handoff/read_latest_handoff/list_handoffs/summarize_handoff）与 `handoff` 子命令（--list/--latest/--summary）；交接文档存于 `~/.gongwen-skill/handoffs/`（APP_DATA_DIR，git pull 不覆盖，与 user_rules 同属用户持久化目录）；SKILL.md 新增硬门控第七节"会话交接"（长任务收尾必写、新会话先查）；清除 `--resume`/`--session` 死代码与 finally 会话追踪（C1-C3）、config.py SESSION_DIR→HANDOFF_DIR（C4）；新增 tests/test_handoff.py（11 用例） |
 | v2.11 | 2026-08-02 | 对应代码 v1.12.44 优化方案修复（P1-P10 + N1-N3 全部）：AI 声明段可选删除（--no-ai-declaration/--remove-ai-declaration）；段落类型感知的首句加粗（detect_paragraph_type，称呼/导语/过渡/署名/会议日期不加粗）；tracked changes 自动接受清理（_accept_all_revisions）；署名段居中 18pt；称呼段左对齐无缩进；编号段落自动拆分；新增 fix-common 一键修复命令（路径D，7步流程）；会议日期段格式；页码 WPS 兼容（MERGEFORMAT）；署名前 2 空行；fix_paragraph_type 规则引擎 action + 5 个段落类型 target；新增 OOXML 编辑规范（禁用 PowerShell 操作 docx） |
 | v2.10 | 2026-07-31 | 对应代码 v1.12.19 审计修复：批注拆分多 w:t 合并预处理（NEW-B1/I1）、倒挂锚定防护（NEW-B2）、RSID 重试上限与重置调用（NEW-I2/I3）、.rels ID 冲突与去重（NEW-I4/I7）、比例分配空 run（NEW-I5）；audit 文档与实现对齐（NI12）、版本体系说明（NI11） |

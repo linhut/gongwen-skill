@@ -214,8 +214,8 @@ check_rules:
     name: "公文大标题行距检查"
     severity: P1
     field: title.line_spacing
-    expected: 28.95pt
-    message: "公文标题行距应为固定值28磅（GB/T 9704标准）"
+    expected: 33pt
+    message: "公文标题行距应为33磅（与 doc_title 模板定义一致，P1-9 统一）"
 
   # --- 一级标题检查 (CHK-C009, C014, C022, C032) ---
   - id: CHK-C009
@@ -361,6 +361,14 @@ check_rules:
     field: signature.font
     expected: "仿宋_GB2312"
     message: "落款应使用三号仿宋_GB2312（GB/T 9704标准）"
+
+  # P2-22: 新增签名区字号检查（此前只有字体/对齐检查，无字号规则）
+  - id: CHK-C046
+    name: "署名段字号检查"
+    severity: P1
+    field: signature.size
+    expected: 18pt
+    message: "署名段应使用小三(18pt)（P4：署名段居中、18pt、不加粗）"
 
   - id: CHK-C040
     name: "日期字体检查"
@@ -544,7 +552,7 @@ fix_rules:
     ref_check: CHK-C033
     action: set_line_spacing
     target: doc_title
-    value: 28.95pt
+    value: 33pt
 
   # --- 一级标题修复 ---
   - id: FIX-C006
@@ -658,10 +666,6 @@ fix_rules:
     value: false
 
   # --- 文本清理 ---
-  - id: FIX-C004
-    action: remove_extra_spaces
-    target: all
-
   - id: FIX-C005
     action: remove_extra_blank_lines
     target: all
@@ -690,7 +694,7 @@ fix_rules:
 
   # --- 段落类型格式修复 (P4/P5/P8: FIX-C013b/FIX-C041~C044) ---
   - id: FIX-C013b
-    ref_check: CHK-C040
+    ref_check: CHK-C046
     action: set_size
     target: signature
     value: 18pt

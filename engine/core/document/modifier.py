@@ -58,6 +58,8 @@ def _select_paragraphs(model: DocumentModel, target: str) -> list[Paragraph]:
     elif target == "heading_3":
         return [p for p in model.paragraphs if p.is_heading and p.heading_level == 3]
     elif target == "body":
+        # P2-3 说明：body 选择器排除空行段落（p.text.strip() 为空的段落不参与格式修复），
+        # 因为空行无格式可修且会干扰签名区判定。优先使用 role 字段，回退到启发式。
         # 优先使用 role 字段，回退到启发式
         role_body = [p for p in model.paragraphs if p.role == 'body']
         if role_body:
@@ -147,7 +149,12 @@ def modify_first_line_indent(model: DocumentModel, target: str, indent_pt: float
 
 
 def modify_bold(model: DocumentModel, target: str, bold: bool) -> None:
-    """修改指定段落所有 run 的加粗状态。"""
+    """修改指定段落所有 run 的加粗状态。
+
+    P2-2 修复：bold=False 与 strikethrough=False 语义统一——
+    显式设置 False 表示"清除加粗"，与 clean_path_b_markers 中
+    strikethrough=True 删除 run 的处理策略对齐（均以显式布尔为准）。
+    """
     for para in _select_paragraphs(model, target):
         for run in para.runs:
             run.format.bold = bold
@@ -251,8 +258,8 @@ def remove_extra_blank_lines(model: DocumentModel, mode: str = 'delete_single',
             else:
                 blank_count = 0
 
-        for idx in sorted(to_remove, reverse=True):
-            model.paragraphs.pop(idx)
+        # P2-8 修复：用列表重建代替循环 pop（pop(idx) 是 O(N)，循环总复杂度 O(N²)）
+        model.paragraphs = [p for i, p in enumerate(model.paragraphs) if i not in to_remove]
     else:
         to_remove: set[int] = set()
         for i, para in enumerate(model.paragraphs):
@@ -263,8 +270,8 @@ def remove_extra_blank_lines(model: DocumentModel, mode: str = 'delete_single',
                         continue
                     to_remove.add(i)
 
-        for idx in sorted(to_remove, reverse=True):
-            model.paragraphs.pop(idx)
+        # P2-8 修复：列表重建代替 pop 循环
+        model.paragraphs = [p for i, p in enumerate(model.paragraphs) if i not in to_remove]
 
     for i, p in enumerate(model.paragraphs):
         p.index = i
@@ -288,6 +295,8 @@ PARAGRAPH_TYPE_NUMBERED_BODY = 'numbered_body'  # 编号正文：一是/二是/�
 PARAGRAPH_TYPE_SIGNATURE = 'signature'          # 署名段（落款/日期）
 PARAGRAPH_TYPE_MEETING_DATE = 'meeting_date'    # 会议日期段：于XXXX年X月X日
 PARAGRAPH_TYPE_BODY = 'body'                    # 默认正文
+PARAGRAPH_TYPE_TITLE = 'title'                  # 标题（P2-9：常量代替字面量）
+PARAGRAPH_TYPE_ANNOTATION = 'annotation'        # 注释/修改说明段（P2-9）
 
 # 首句加粗规则：True=应加粗首句，False=不应加粗
 PARAGRAPH_TYPE_RULES: dict[str, bool] = {
@@ -343,9 +352,10 @@ def detect_paragraph_type(text: str | None, role: str | None = None) -> str:
         # N3: 公文解析器将称呼段标为 recipient，映射为 salutation
         return PARAGRAPH_TYPE_SALUTATION
     if role == 'title':
-        return 'title'
+        # P2-9: title 类型使用常量（此前为字符串字面量）
+        return PARAGRAPH_TYPE_TITLE
     if role == 'annotation':
-        return 'annotation'
+        return PARAGRAPH_TYPE_ANNOTATION
 
     # 内容正则匹配（按优先级）
     if _SALUTATION_RE.match(raw):
@@ -491,7 +501,8 @@ def fix_bold_range(model: DocumentModel) -> int:
             continue
         if para.role in _EXCLUDE_ROLES:
             continue
-        if not para.text.strip() or len(para.text.strip()) <= 30:
+        # P2-13 修复：30 字符阈值过短会漏检较短正文段，降低到 4 字符（仅要求有实质内容）
+        if not para.text.strip() or len(para.text.strip()) <= 4:
             continue
         if not para.runs or not all(r.format.bold for r in para.runs if r.text.strip()):
             continue
@@ -647,9 +658,12 @@ def normalize_heading_content(model: DocumentModel) -> int:
         if not para.runs:
             return
         rest_text = ''.join(r.text or '' for r in para.runs[1:])
-        if rest_text and new_text.endswith(rest_text):
+        # P2-14 修复：前缀长度做边界保护——endswith 命中时前缀必须 >0 且不超过新文本长度，
+        # 避免负切片/越界导致的标题文本分配偏移
+        prefix_len = len(new_text) - len(rest_text)
+        if rest_text and new_text.endswith(rest_text) and 0 < prefix_len <= len(new_text):
             # 首 run 只放新前缀 + 其余部分保持在后缀 run
-            para.runs[0].text = new_text[:len(new_text) - len(rest_text)]
+            para.runs[0].text = new_text[:prefix_len]
         else:
             para.runs[0].text = new_text
             for r in para.runs[1:]:
@@ -664,7 +678,9 @@ def normalize_heading_content(model: DocumentModel) -> int:
 
         # 一级标题：1、xxx → 一、xxx
         m = re.match(r'^(\d+)[、，](.+)', text)
-        if m and para.is_heading and (para.heading_level == 1 or para.heading_level is None):
+        # P1-2 修复：仅明确的一级标题（heading_level==1）执行编号转换，
+        # 移除 heading_level is None 条件——未识别为标题的正文段落不应被误转编号
+        if m and para.is_heading and para.heading_level == 1:
             num = int(m.group(1))
             cn = _arabic_to_chinese(num)
             if cn:
@@ -983,9 +999,27 @@ def convert_markdown(model: DocumentModel) -> int:
         if text != original_text or has_bold or is_list:
             para.text = text
             if para.runs:
-                para.runs[0].text = text
-                for r in para.runs[1:]:
-                    r.text = ""
+                # P1-3 修复：多 run 段落——清理后的文本按原 run 文本长度比例重新分配，
+                # 保留各 run 的格式信息（此前仅写 runs[0]、清空其余 run，丢失加粗等格式）
+                if len(para.runs) > 1:
+                    orig_len = sum(len(r.text or '') for r in para.runs)
+                    if orig_len > 0:
+                        allocated = 0
+                        for ri, r in enumerate(para.runs):
+                            if ri == len(para.runs) - 1:
+                                r.text = text[allocated:]
+                            else:
+                                share = int(len(text) * len(r.text or '') / orig_len)
+                                r.text = text[allocated:allocated + share]
+                                allocated += share
+                    else:
+                        para.runs[0].text = text
+                        for r in para.runs[1:]:
+                            r.text = ""
+                else:
+                    para.runs[0].text = text
+                    for r in para.runs[1:]:
+                        r.text = ""
 
                 if has_bold and not para.is_heading:
                     for r in para.runs:
@@ -1010,8 +1044,9 @@ def convert_markdown(model: DocumentModel) -> int:
             if orig_idx < 0:
                 tbl.insert_after_index = -1
             else:
-                # 计算 orig_idx 之前被删除了多少个段落
-                removed_before = sum(1 for r in removed_sorted if r <= orig_idx)
+                # P2-16 修复：仅统计严格位于插入锚点之前的删除（r < orig_idx），
+                # 原实现 r <= orig_idx 会把"锚点本身被删"多算一次，导致索引偏移
+                removed_before = sum(1 for r in removed_sorted if r < orig_idx)
                 adjusted = orig_idx - removed_before
                 # 确保不超过当前段落列表范围
                 tbl.insert_after_index = min(adjusted, len(model.paragraphs) - 1)
@@ -1055,8 +1090,13 @@ def _split_inline_headings(model: DocumentModel) -> None:
                 "的意见", "的方案", "的办法", "的规定", "的决定", "的通知"
             ]
             is_likely_title = any(kw in title_text for kw in title_keywords)
-
-            if is_likely_title and len(title_text) >= 4:
+            # P2-7 修复：内联标题分割过于激进——增加两个约束避免误拆正文：
+            # 1) 标题文本须以文种词结尾（如"...的通知/请示/报告"），而非仅"包含"关键词
+            # 2) 标题文本长度 ≤ 30（公文标题一般不超过 30 字）
+            _END_KW = ("通知", "请示", "报告", "函", "纪要", "决定", "通告", "公告",
+                       "意见", "方案", "办法", "规定")
+            ends_with_doc_kind = title_text.endswith(_END_KW)
+            if is_likely_title and ends_with_doc_kind and 4 <= len(title_text) <= 30:
                 insertions.append((i, title_text, body_text))
 
     # 执行拆分（从后往前，避免索引偏移）
@@ -1168,8 +1208,8 @@ def _apply_heading_format(para, text: str, font: str, size: int,
     para.format.first_line_indent_pt = 0
     if para.runs:
         para.runs[0].text = text
-        for r in para.runs[1:]:
-            r.text = ""
+        # P2-4 修复：清空文本但保留格式会产生空 run，直接移除空 run 保留首个
+        para.runs = [para.runs[0]]
         for r in para.runs:
             r.format.font_name = font
             r.format.font_size_pt = float(size)
@@ -1254,9 +1294,13 @@ def _parse_indent_value(value: str | float | None) -> float | None:
 
 
 def _extract_para_index(location: str) -> int | None:
-    """Extract paragraph index from 'paragraph:3'."""
+    """Extract paragraph index from 'paragraph:3'（P3-6：严格校验前缀，避免误解析其他字段）。"""
     try:
-        return int(location.split(":")[-1].split(",")[0])
+        loc = location.strip()
+        if not loc.startswith("paragraph:"):
+            return None
+        num_part = loc[len("paragraph:"):].split(",")[0].strip()
+        return int(num_part)
     except (ValueError, IndexError):
         return None
 
@@ -1270,7 +1314,6 @@ def bold_first_sentence_of_body(model: DocumentModel) -> int:
     Returns:
         修改的段落数
     """
-    import re
     from copy import deepcopy
     changes = 0
     exclude_roles = {'signature', 'date', 'title', 'recipient', 'annotation'}

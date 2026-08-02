@@ -110,3 +110,56 @@ class TestLoadRulesMerged:
         for t in types:
             rules = load_rules_merged(t)
             assert rules, f"Type {t} returned empty rules"
+
+
+class TestSaveDeleteRule:
+    """P3-33：save_rule / delete_rule 覆盖测试（隔离到临时目录）。"""
+
+    def test_save_and_delete_user_rule(self, tmp_path, monkeypatch):
+        import core.rules.manager as m
+
+        # 隔离 USER_RULES_DIR 到临时目录
+        monkeypatch.setattr(m, "USER_RULES_DIR", tmp_path / "user_rules")
+        monkeypatch.setattr(m, "CUSTOM_RULES_DIR", tmp_path / "custom_rules")
+        m.USER_RULES_DIR.mkdir(parents=True, exist_ok=True)
+
+        content = {"template_name": "测试规则", "body": {"font": "黑体"}}
+        assert m.save_rule("test_rule", content, "user") is True
+        saved = m.USER_RULES_DIR / "test_rule.yaml"
+        assert saved.exists()
+
+        assert m.delete_rule("test_rule", "user") is True
+        assert not saved.exists()
+
+    def test_save_invalid_key_rejected(self, monkeypatch, tmp_path):
+        import core.rules.manager as m
+        monkeypatch.setattr(m, "USER_RULES_DIR", tmp_path / "user_rules")
+        assert m.save_rule("../../evil", {}, "user") is False
+
+    def test_delete_missing_key_returns_false(self, monkeypatch, tmp_path):
+        import core.rules.manager as m
+        monkeypatch.setattr(m, "USER_RULES_DIR", tmp_path / "user_rules")
+        assert m.delete_rule("no_such_key", "user") is False
+
+
+class TestDeepMergeDirect:
+    """P3-28：直接测试 _deep_merge，不依赖间接调用掩盖副作用。"""
+
+    def test_mutates_base_in_place(self):
+        base = {"a": {"x": 1}, "b": 2}
+        overlay = {"a": {"y": 2}}
+        _deep_merge(base, overlay)
+        assert base["a"]["x"] == 1  # 保留原键
+        assert base["a"]["y"] == 2  # 新增键
+        assert base["b"] == 2
+
+    def test_scalar_override(self):
+        base = {"a": 1}
+        _deep_merge(base, {"a": 2})
+        assert base["a"] == 2
+
+    def test_list_key_replaced(self):
+        base = {"items": [1, 2]}
+        _deep_merge(base, {"items": [3]})
+        # 非 fix_rules/check_rules 的列表直接覆盖
+        assert base["items"] == [3]

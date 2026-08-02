@@ -95,6 +95,8 @@ structure:
     example: "稿源：省民宗委共同发展处  编辑：赖泳源"
 
 # 新闻稿不需要的法定公文检查项
+# P3-7：skip_checks 为声明性文档配置（供 Agent 审阅参考），focus_checks 由
+# auto_optimizer/focus_checker 实际消费；skip_checks 暂无程序化消费方，保留作为说明
 skip_checks:
   - 主送机关缺失
   - 落款缺失

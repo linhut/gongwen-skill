@@ -1,42 +1,72 @@
-"""Tests for font utilities."""
+"""Tests for font_utils — core font handling (P3-24/P3-32 补充测试)."""
+import sys
+from pathlib import Path
+
 import pytest
-from core.document.font_utils import _contains_cjk
+from docx import Document
+from docx.shared import Pt
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "engine"))
+
+from core.document.font_utils import (
+    set_run_font, get_effective_font, validate_font_name,
+    get_font_fallback, _contains_cjk, BODY_FONT, LATIN_FONT,
+)
 
 
-class TestCJKDetection:
-    """Test CJK character detection logic."""
+class TestContainsCjk:
+    def test_chinese_true(self):
+        assert _contains_cjk("正文内容") is True
 
-    def test_cjk_chinese(self):
-        assert _contains_cjk("中文测试")
+    def test_ascii_false(self):
+        assert _contains_cjk("Hello World") is False
 
-    def test_cjk_mixed(self):
-        assert _contains_cjk("Hello 世界")
-
-    def test_no_cjk(self):
-        assert not _contains_cjk("Hello World123")
-
-    def test_cjk_punctuation(self):
-        # Full-width CJK punctuation
-        assert _contains_cjk("。，、")
+    def test_mixed_true(self):
+        assert _contains_cjk("中文ABC") is True
 
 
-class TestFontFallback:
-    def test_font_fallback_map(self):
-        """Smoke test: font fallback map is accessible."""
-        from core.document.font_utils import FONT_FALLBACK_MAP, INVALID_FONT_PATTERNS
-        assert isinstance(FONT_FALLBACK_MAP, dict)
-        assert len(FONT_FALLBACK_MAP) > 0
-        assert isinstance(INVALID_FONT_PATTERNS, list)
+class TestSetRunFont:
+    def test_set_basic_font(self):
+        doc = Document()
+        run = doc.add_paragraph().add_run("测试")
+        set_run_font(run, "仿宋_GB2312")
+        rFonts = run._element.rPr.rFonts
+        assert rFonts.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}eastAsia') == "仿宋_GB2312"
 
-    def test_get_font_fallback_known(self):
-        from core.document.font_utils import get_font_fallback
-        # Should return a fallback for any input
-        result = get_font_fallback("SomeUnknownFont")
-        assert isinstance(result, str)
+    def test_empty_font_keeps_default(self):
+        doc = Document()
+        run = doc.add_paragraph().add_run("测试")
+        set_run_font(run, "")
+        assert get_effective_font(run) in (None, LATIN_FONT, BODY_FONT)
 
-    def test_validate_font_name(self):
-        from core.document.font_utils import validate_font_name
-        # Valid font names
+
+class TestGetEffectiveFont:
+    def test_returns_east_asia_font(self):
+        doc = Document()
+        run = doc.add_paragraph().add_run("中文")
+        set_run_font(run, "黑体")
+        eff = get_effective_font(run)
+        assert eff == "黑体"
+
+
+class TestValidateFontName:
+    def test_valid_font(self):
         assert validate_font_name("仿宋_GB2312") is True
-        # None/empty
+
+    def test_invalid_empty(self):
+        # 空值视为无效（未设置字体）
+        assert validate_font_name("") is False
+
+    def test_none(self):
         assert validate_font_name(None) is False
+
+    def test_invalid_ms_gothic(self):
+        assert validate_font_name("MS Gothic") is False
+
+
+class TestGetFontFallback:
+    def test_known_fallback(self):
+        assert get_font_fallback("方正小标宋简体") == "SimSun"
+
+    def test_unknown_returns_input(self):
+        assert get_font_fallback("未知字体") == "未知字体"
