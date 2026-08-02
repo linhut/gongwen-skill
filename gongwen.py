@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.44"
+__version__ = "1.12.45"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -2111,6 +2111,41 @@ def cmd_fix_common(args):
           f"加粗范围修复 {n_range} 处（耗时 {time.time() - t0:.1f}s）")
 
 
+def cmd_handoff(args):
+    """查看/写入会话交接文档（Handoff，跨会话上下文传递）。
+
+    用法：
+      gongwen.py handoff --list         列出所有交接文档摘要
+      gongwen.py handoff --latest       读取最新交接文档（JSON）
+      gongwen.py handoff --latest --summary  读取最新交接文档（Markdown 摘要）
+    """
+    from handoff import read_latest_handoff, list_handoffs, summarize_handoff
+
+    if args.list:
+        handoffs = list_handoffs()
+        if not handoffs:
+            print("暂无交接文档")
+            return
+        print(f"📋 交接文档（{len(handoffs)} 条）:")
+        for h in handoffs:
+            print(f"  {h['created_at']}  {h['session_id']}  ({h['handoff_type']})")
+        return
+
+    if args.latest:
+        doc = read_latest_handoff()
+        if doc is None:
+            print("无交接文档")
+            return
+        if args.summary:
+            print(summarize_handoff(doc))
+        else:
+            print(json.dumps(doc, ensure_ascii=False, indent=2))
+        return
+
+    parser.print_help()
+    print("\n交接文档子命令：--list / --latest [--summary]（写入由 Agent 通过 Python 调用 handoff.write_handoff 完成）")
+
+
 def cmd_rule_export(args):
     """导出某类型的合并规则为 YAML。"""
     from core.rules.manager import load_rules_merged
@@ -2365,10 +2400,6 @@ def main():
     )
     parser.add_argument("--version", action="version", version=f"gongwen-skill v{__version__}",
                         help="显示版本号并退出")
-    parser.add_argument("--resume", metavar="SESSION_ID",
-                        help="回溯到指定会话（通过会话ID恢复上下文）")
-    parser.add_argument("--session", metavar="SESSION_ID",
-                        help=argparse.SUPPRESS)  # 隐藏别名，与 --resume 等价
     sub = parser.add_subparsers(dest="command", help="子命令")
 
     p = sub.add_parser("list-types", help="列出支持的公文类型")
@@ -2499,6 +2530,12 @@ def main():
     p.add_argument("-o", "--output", help="输出 .docx 路径（默认输入_fix-common.docx）")
     p.set_defaults(func=cmd_fix_common)
 
+    p = sub.add_parser("handoff", help="查看/写入会话交接文档（跨会话上下文传递，长任务收尾必写）")
+    p.add_argument("--list", action="store_true", help="列出所有交接文档摘要")
+    p.add_argument("--latest", action="store_true", help="读取最新交接文档（JSON，加 --summary 输出 Markdown 摘要）")
+    p.add_argument("--summary", action="store_true", help="以 Markdown 摘要输出（配合 --latest）")
+    p.set_defaults(func=cmd_handoff)
+
     p = sub.add_parser("rule-export", help="导出合并后的规则为 YAML")
     p.add_argument("type", help="公文类型")
     p.add_argument("-o", "--output", help="输出 YAML 路径")
@@ -2561,39 +2598,6 @@ def main():
 
     args = parser.parse_args()
 
-    # --resume / --session 优先：回溯历史会话，不执行子命令
-    resume_id = getattr(args, 'resume', None) or getattr(args, 'session', None)
-    if resume_id:
-        from session import USAGE_SESSION_DIR as _sess_dir
-        sess_path = _sess_dir / f"{resume_id.strip()}.json"
-        if not sess_path.exists():
-            matches = list(_sess_dir.glob(f"{resume_id.strip().upper()}*.json"))
-            if not matches:
-                matches = list(_sess_dir.glob(f"{resume_id.strip()}*.json"))
-            sess_path = matches[0] if matches else sess_path
-        if sess_path and sess_path.exists():
-            data = json.loads(sess_path.read_text(encoding="utf-8"))
-            sid = data.get('session_id', data.get('session_id', '?'))
-            ts = data.get('end_time', data.get('timestamp', '?'))
-            cmds = data.get('commands', [])
-            cmd = cmds[0].get('command', data.get('command', '?')) if cmds else data.get('command', '?')
-            args_str = ' '.join(data.get('args', cmds[0].get('args', []))) if cmds else ' '.join(data.get('args', []))
-            files = data.get('files', [])
-            duration = data.get('duration_seconds', None)
-            print(f"📋 回溯会话 {sid}")
-            print(f"  时间:     {ts}")
-            print(f"  命令:     {cmd}")
-            print(f"  参数:     {args_str}")
-            if duration:
-                print(f"  耗时:     {duration}s")
-            if files:
-                print(f"  产出文件:")
-                for f in files:
-                    print(f"    - {f}")
-        else:
-            print(f"未找到会话: {resume_id}", file=sys.stderr)
-        return
-
     if not args.command:
         parser.print_help()
         sys.exit(1)
@@ -2606,24 +2610,6 @@ def main():
     except Exception as e:
         print(f"错误：{e}", file=sys.stderr)
         sys.exit(1)
-    finally:
-        # 会话追踪：记录本次命令（不阻塞、不抛异常）
-        try:
-            from session import get_session as _gs
-            out_files = []
-            for i, a in enumerate(sys.argv):
-                if a in ('-o', '--output') and i + 1 < len(sys.argv):
-                    out_files.append(sys.argv[i + 1])
-            _s = _gs()
-            _s.record_command(
-                command=getattr(args, "command", "?"),
-                args=sys.argv[1:] if len(sys.argv) > 1 else [],
-                out_files=out_files,
-            )
-            _s.save()
-            print(f"\n会话ID: {_s.prefix} ｜ 命令: {getattr(args, 'command', '?')} |")
-        except Exception:
-            pass
 
 
 if __name__ == "__main__":

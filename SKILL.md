@@ -114,6 +114,58 @@ Licensed under the MIT License. See the LICENSE file for details.
    更新命令：cd <gongwen-skill目录> && git pull && git fetch --tags
    ```
 
+### 七、会话交接（长任务收尾必须遵守，v1.12.45+）
+
+**目的**：跨会话上下文传递。当会话结束（上下文溢出/超时/人为中断/用户说"下次继续"）时，新会话的 Agent 必须能**无需用户复述**即可继续任务。
+
+**收尾时（满足任一条件 → 结束前必须写交接文档）**：
+- 本轮会话处理了 3 个以上公文文件
+- 执行了多轮 check / optimize / optimize-content 迭代
+- 用户明确表示"下次继续""先到这里""收尾"
+- 会话上下文即将耗尽或已发生压缩
+
+交接文档写入：`~/.gongwen-skill/handoffs/{YYYY-MM-DD}_{简短描述}.json`
+（位于 `APP_DATA_DIR`，`git pull` 更新 skill **不会覆盖**；与 `user_rules/` 同属用户持久化目录）
+
+**写入方式（Agent 用 Python 调用，禁止手写 JSON 字符串到 PowerShell）**：
+
+```bash
+python -c "
+import sys; sys.path.insert(0, '<skill目录>/engine')
+from handoff import write_handoff
+write_handoff(
+    session_id='简短任务描述',                    # 如 '民宗委会议材料优化'
+    handoff_type='long_task',                    # long_task / batch / interrupted
+    context={'what_we_are_doing': '我们在做什么', 'doc_type': '公文类型',
+             'input_file': '输入文件', 'working_directory': '工作目录'},
+    completed=[{'item': '已完成事项', 'evidence': '验证依据/产出文件'}],
+    blocked_on=[{'issue': '卡住的问题', 'severity': 'P2', 'detail': '详情'}],
+    next_steps=[{'action': '下一步', 'status': 'pending'}],
+    pitfalls=[{'lesson': '踩过的坑，不要再踩', 'reference': '来源/修复编号'}],
+    related_files=[{'path': '文件绝对路径', 'role': '角色说明'}],
+    agent_hint='写给新 Agent 的一句话引导',
+)
+"
+```
+
+**新会话开始时（强制检查）**：
+1. 先执行 `python gongwen.py handoff --list` 查看是否有未完成任务
+2. 若有，读取最新一条：`python gongwen.py handoff --latest --summary`（Markdown 摘要）
+3. 向用户确认："检测到上次未完成的交接文档《{session_id}》，是否继续该任务？"
+4. 用户确认后，按 `context` / `completed` / `blocked_on` / `next_steps` / `pitfalls` 恢复上下文继续
+
+**命令速查**：
+```bash
+python gongwen.py handoff --list             # 列出所有交接文档
+python gongwen.py handoff --latest           # 最新交接文档（JSON）
+python gongwen.py handoff --latest --summary # 最新交接文档（Markdown 摘要）
+```
+
+**注意事项**：
+- 交接文档是**任务级**上下文（做了什么/卡在哪/下一步），与 `user_rules/`（格式知识模板）、TeleAgent 长期记忆（用户偏好）互补，不冲突
+- 完成后可在交接文档中标记对应 `next_steps` 为 done，或新建交接文档记录新任务；任务彻底完结后可删除旧交接文档
+- **禁止**使用 PowerShell 写交接文档（编码/转义不可靠，同 OOXML 编辑规范）
+
 ---
 
 ---
@@ -2796,6 +2848,7 @@ Agent: 是否需要对此对比文档走格式优化，生成排版合规的无�
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
+| v2.12 | 2026-08-02 | 对应代码 v1.12.45 会话交接机制（Handoff）：新增 `engine/handoff.py`（write_handoff/read_latest_handoff/list_handoffs/summarize_handoff）与 `handoff` 子命令（--list/--latest/--summary）；交接文档存于 `~/.gongwen-skill/handoffs/`（APP_DATA_DIR，git pull 不覆盖，与 user_rules 同属用户持久化目录）；SKILL.md 新增硬门控第七节"会话交接"（长任务收尾必写、新会话先查）；清除 `--resume`/`--session` 死代码与 finally 会话追踪（C1-C3）、config.py SESSION_DIR→HANDOFF_DIR（C4）；新增 tests/test_handoff.py（11 用例） |
 | v2.11 | 2026-08-02 | 对应代码 v1.12.44 优化方案修复（P1-P10 + N1-N3 全部）：AI 声明段可选删除（--no-ai-declaration/--remove-ai-declaration）；段落类型感知的首句加粗（detect_paragraph_type，称呼/导语/过渡/署名/会议日期不加粗）；tracked changes 自动接受清理（_accept_all_revisions）；署名段居中 18pt；称呼段左对齐无缩进；编号段落自动拆分；新增 fix-common 一键修复命令（路径D，7步流程）；会议日期段格式；页码 WPS 兼容（MERGEFORMAT）；署名前 2 空行；fix_paragraph_type 规则引擎 action + 5 个段落类型 target；新增 OOXML 编辑规范（禁用 PowerShell 操作 docx） |
 | v2.10 | 2026-07-31 | 对应代码 v1.12.19 审计修复：批注拆分多 w:t 合并预处理（NEW-B1/I1）、倒挂锚定防护（NEW-B2）、RSID 重试上限与重置调用（NEW-I2/I3）、.rels ID 冲突与去重（NEW-I4/I7）、比例分配空 run（NEW-I5）；audit 文档与实现对齐（NI12）、版本体系说明（NI11） |
 | v2.9 | 2026-07-31 | 对应代码 v1.12.18 全面审计修复：批注 end 边界字符级锚定、五角色审阅者区分（author 从 reason 提取）、修订追踪完整格式保留、persons.xml 集成、原子写入、ZIP 炸弹防护、值解析/错误处理统一；新增 utils/parse.py 与 utils/errors.py |

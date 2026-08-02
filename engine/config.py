@@ -58,7 +58,7 @@ CUSTOM_RULES_DIR = APP_DATA_DIR / "custom_rules"
 USER_RULES_DIR = APP_DATA_DIR / "user_rules"
 
 LOG_DIR = APP_DATA_DIR / "logs"
-SESSION_DIR = APP_DATA_DIR / "sessions"
+HANDOFF_DIR = APP_DATA_DIR / "handoffs"   # 会话交接文档目录（跨会话上下文传递）
 TMP_DIR = APP_DATA_DIR / "tmp"   # 移到数据目录（安装目录可能只读，B8 修复）
 
 # ---------------------------------------------------------------------------
@@ -68,7 +68,7 @@ import logging
 
 _log = logging.getLogger(__name__)
 
-for _d in (APP_DATA_DIR, CUSTOM_RULES_DIR, USER_RULES_DIR, LOG_DIR, SESSION_DIR, TMP_DIR):
+for _d in (APP_DATA_DIR, CUSTOM_RULES_DIR, USER_RULES_DIR, LOG_DIR, HANDOFF_DIR, TMP_DIR):
     try:
         _d.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
