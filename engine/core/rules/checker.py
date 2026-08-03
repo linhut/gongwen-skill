@@ -66,6 +66,9 @@ def check_document(model: DocumentModel, rules: dict[str, Any]) -> list[CheckIss
             issues.extend(_check_heading_level(model, rule_id, severity, name, field_path, expected, message, level=2))
         elif field_path.startswith("heading_3."):
             issues.extend(_check_heading_level(model, rule_id, severity, name, field_path, expected, message, level=3))
+        elif field_path.startswith("heading_4."):
+            # 改动3：四级标题（（1）（2）…）检查
+            issues.extend(_check_heading_level(model, rule_id, severity, name, field_path, expected, message, level=4))
         elif field_path.startswith("body."):
             # B-01（方案二）：speech 文种正文整段加粗是规范，跳过 CHK-C030 整段加粗检查
             if rules.get('_doc_type') == 'speech' and field_path.endswith('bold_range'):

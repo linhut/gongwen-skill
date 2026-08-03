@@ -24,9 +24,15 @@ from lxml import etree
 from utils.logger import logger
 
 # ---------------------------------------------------------------------------
-#  桌签模板路径（由调用者通过 template_path 参数提供，不硬编码本地路径）
+#  桌签模板路径（方案六 P2-2：内置默认模板；调用者可用 template_path 覆盖）
 # ---------------------------------------------------------------------------
-DEFAULT_TEMPLATE: None  # 无默认模板路径，调用者必须传入
+def _get_default_template():
+    """返回内置默认模板路径；不存在则构建（table_sign_template.py）。"""
+    from table_sign_template import ensure_default_template
+    return ensure_default_template()
+
+
+DEFAULT_TEMPLATE = _get_default_template()  # 内置默认模板（engine/templates/table_sign.dotx）
 
 # XML 命名空间
 NSMAP = {
@@ -69,40 +75,38 @@ def _calc_font_size(name_len: int) -> int:
     """
     根据名字字符数计算适宜的字号（w:sz 值，半磅单位）。
 
-    模板默认 sz=260（130pt）为两字名设计；字数越多字号同比缩小，
-    确保在 tbRl/btLr 竖排布局中各字符均匀填满单元格高度。
-
-    | 字符数 | sz (半磅) | pt  |
-    |--------|-----------|-----|
-    | 1~2    | 260       | 130 |
-    | 3      | 200       | 100 |
-    | 4      | 160       |  80 |
-    | 5+     | 120       |  60 |
+    基于 WPS 座签模板实测值（方案三修正，对齐模板 2字156pt/4字100pt）：
+    | 字符数 | sz (半磅) | pt   |
+    |--------|-----------|------|
+    | 1~2    | 312       | 156  |
+    | 3      | 240       | 120  |
+    | 4      | 200       | 100  |
+    | 5+     | 160       |  80  |
 
     如需微调各长度字号，修改此函数即可。
     """
-    sizes = {1: 260, 2: 260, 3: 200, 4: 160}
+    sizes = {1: 312, 2: 312, 3: 240, 4: 200}
     if name_len >= 5:
-        return 120
-    return sizes.get(name_len, 260)
+        return 160
+    return sizes.get(name_len, 312)
 
 
 def _format_name(name: str) -> str:
     """
     格式化名字用于桌签竖排显示。
 
-    两字姓名（如"张三"）在字间加空格，使其在 tbRl/btLr 竖排布局中
+    两字姓名（如"张三"）在字间加 2 个空格，使其在 tbRl/btLr 竖排布局中
     视觉上均匀填满单元格；三字及以上保持原样。
 
-    规则：
-    - len(显示字符) == 2 → "张 三"
+    规则（方案三修正：与 WPS 模板一致，2 个空格）：
+    - len(显示字符) == 2 → "张  三"（2个空格）
     - 其他 → 原样
     """
     # 去掉潜在空格再判断
     cleaned = name.replace(' ', '').strip()
     if len(cleaned) == 2:
-        # 在两个字之间插入空格
-        return cleaned[0] + ' ' + cleaned[1]
+        # 在两个字之间插入 2 个空格
+        return cleaned[0] + '  ' + cleaned[1]
     return cleaned
 
 
@@ -126,18 +130,18 @@ def _replace_placeholder_in_xml(xml_bytes: bytes, placeholder: str, new_text: st
     return etree.tostring(root, xml_declaration=True, encoding='UTF-8', standalone=True)
 
 
-def _duplicate_body_for_combined(xml_bytes: bytes, names: List[str]) -> bytes:
+def _duplicate_body_for_combined(xml_bytes: bytes, names: List[str], placeholder: str = "Jose AI") -> bytes:
     """
     合并模式：复制 body 内容 N 次，每次替换占位文本。
     即 body 中含有 N 个人的桌签，每个占 2 页。
+
+    方案五（P2-3）：占位符参数化，不再硬编码。
     """
     root = etree.fromstring(xml_bytes)
     body = root.find(f'{{{W}}}body')
 
     if not body:
         return xml_bytes
-
-    placeholder = "Jose AI"
 
     # 获取第一个人的完整内容（整个 body）
     # 我们需要复制 body 中除了 sectPr 之外的所有内容
@@ -188,7 +192,8 @@ def _duplicate_body_for_combined(xml_bytes: bytes, names: List[str]) -> bytes:
 
 
 def _prepare_docx_from_template(names: List[str], output_path: Path,
-                                  template_path: Path, combined: bool = False) -> Path:
+                                  template_path: Path, combined: bool = False,
+                                  placeholder: str = "Jose AI") -> Path:
     """
     核心函数：从模板生成桌签。
 
@@ -197,9 +202,9 @@ def _prepare_docx_from_template(names: List[str], output_path: Path,
     2. 修改 ZIP 中的 document.xml
        - 独立模式：每人一个文件，直接替换占位文本
        - 合并模式：复制 body 内容 N 次并替换占位文本
-    """
-    placeholder = "Jose AI"
 
+    方案五（P2-3）：占位符参数化，不再硬编码。
+    """
     if not combined:
         # 每人独立文件：复制模板，替换占位文本
         import shutil
@@ -215,7 +220,7 @@ def _prepare_docx_from_template(names: List[str], output_path: Path,
         shutil.copy2(str(template_path), str(output_path))
 
         xml_bytes = _load_xml_from_zip(output_path)
-        xml_bytes = _duplicate_body_for_combined(xml_bytes, names)
+        xml_bytes = _duplicate_body_for_combined(xml_bytes, names, placeholder)
         _write_xml_to_zip(output_path, xml_bytes)
 
     return output_path
@@ -226,6 +231,7 @@ def generate_table_signs(
     output_dir: str | Path = ".",
     prefix: str = "桌签",
     template_path: Optional[Path] = None,
+    placeholder: str = "Jose AI",
 ) -> List[Path]:
     """
     批量生成桌签文档，每人一个独立文件。
@@ -235,6 +241,7 @@ def generate_table_signs(
         output_dir: 输出目录
         prefix: 文件名前缀
         template_path: 桌签模板 .dotx 路径
+        placeholder: 模板中占位文本（方案五 P2-3：参数化）
 
     Returns:
         生成的 .docx 文件路径列表
@@ -252,7 +259,7 @@ def generate_table_signs(
     for i, name in enumerate(names, 1):
         filename = f"{prefix}-{i:02d}-{name}.docx"
         out_path = out_dir / filename
-        _prepare_docx_from_template([name], out_path, tmpl, combined=False)
+        _prepare_docx_from_template([name], out_path, tmpl, combined=False, placeholder=placeholder)
         logger.info(f"桌签已生成: {out_path}")
         results.append(out_path)
 
@@ -263,6 +270,7 @@ def generate_table_signs_combined(
     names: List[str],
     output_path: str | Path,
     template_path: Optional[Path] = None,
+    placeholder: str = "Jose AI",
 ) -> Path:
     """
     生成合并的多页桌签文档（每个姓名占正反 2 页，适合批量打印）。
@@ -271,6 +279,7 @@ def generate_table_signs_combined(
         names: 人员姓名列表
         output_path: 输出 .docx 文件路径
         template_path: 桌签模板 .dotx 路径
+        placeholder: 模板中占位文本（方案五 P2-3：参数化）
 
     Returns:
         生成的 .docx 文件路径
@@ -282,7 +291,7 @@ def generate_table_signs_combined(
         raise FileNotFoundError(f"桌签模板不存在: {tmpl}")
 
     out = Path(output_path)
-    _prepare_docx_from_template(names, out, tmpl, combined=True)
+    _prepare_docx_from_template(names, out, tmpl, combined=True, placeholder=placeholder)
     logger.info(f"合并桌签已生成: {out} ({len(names)} 人)")
     return out
 
@@ -306,3 +315,74 @@ def parse_name_list(text: str) -> List[str]:
             if p and not p.startswith("#"):
                 names.append(p)
     return names
+
+
+def validate_page_setup(docx_path: Path, expected: dict | None = None) -> List[str]:
+    """校验生成座签的页面布局参数（方案八 P2-1）。
+
+    Args:
+        docx_path: 生成的 .docx 路径
+        expected: 期望参数（默认从 table_sign.yaml 的 page_setup 读取）
+
+    Returns:
+        不合规项列表（空列表表示全部合规）
+    """
+    issues: List[str] = []
+    if expected is None:
+        try:
+            from core.rules.manager import load_rules_merged
+            rules = load_rules_merged("table_sign")
+            expected = rules.get("page_setup", {})
+        except Exception:
+            expected = {}
+    if not expected:
+        return ["未获取到期望页面参数（table_sign.yaml page_setup）"]
+
+    from docx import Document
+    from docx.shared import Mm
+
+    doc = Document(str(docx_path))
+    section = doc.sections[0] if doc.sections else None
+    if section is None:
+        return ["文档无节（section）"]
+
+    # 1. 纸张尺寸
+    paper = expected.get("paper_size", "A4").upper()
+    if paper == "A4":
+        width_ok = 190 <= (section.page_width.mm or 0) <= 215
+        height_ok = 290 <= (section.page_height.mm or 0) <= 305
+        if not (width_ok and height_ok):
+            issues.append(f"纸张非 A4（{section.page_width.mm:.1f}x{section.page_height.mm:.1f}mm）")
+
+    # 2. 页边距（容差 0.2cm）
+    margins = {
+        "top": expected.get("top_margin", ""),
+        "bottom": expected.get("bottom_margin", ""),
+        "left": expected.get("left_margin", ""),
+        "right": expected.get("right_margin", ""),
+    }
+    actual_margins = {
+        "top": section.top_margin.mm / 10,
+        "bottom": section.bottom_margin.mm / 10,
+        "left": section.left_margin.mm / 10,
+        "right": section.right_margin.mm / 10,
+    }
+    for key, exp_str in margins.items():
+        exp_cm = float(str(exp_str).replace("cm", "").strip()) if exp_str else None
+        if exp_cm is not None and abs(actual_margins[key] - exp_cm) > 0.2:
+            issues.append(f"边距 {key}: 实际 {actual_margins[key]:.2f}cm ≠ 期望 {exp_cm}cm")
+
+    # 3. 页眉/页脚距离（容差 0.2cm）
+    for key, attr in (("header_distance", "header_distance"),
+                      ("footer_distance", "footer_distance")):
+        exp_str = expected.get(key, "")
+        exp_cm = float(str(exp_str).replace("cm", "").strip()) if exp_str else None
+        if exp_cm is not None:
+            try:
+                actual_cm = getattr(section, attr).cm
+            except Exception:
+                actual_cm = None
+            if actual_cm is not None and abs(actual_cm - exp_cm) > 0.2:
+                issues.append(f"{key}: 实际 {actual_cm:.2f}cm ≠ 期望 {exp_cm}cm")
+
+    return issues

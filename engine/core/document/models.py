@@ -130,6 +130,9 @@ class PageSetup(BaseModel):
     margin_left_mm: Optional[float] = None
     margin_right_mm: Optional[float] = None
     orientation: str = "portrait"
+    # 改动10：页眉/页脚距页边界（cm），由 _common.yaml page_setup 配置传入
+    header_distance_cm: Optional[float] = None
+    footer_distance_cm: Optional[float] = None
 
 
 # ---------------------------------------------------------------------------

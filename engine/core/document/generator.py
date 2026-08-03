@@ -351,8 +351,12 @@ def _apply_page_setup(doc: Document, model: DocumentModel):
     if ps.margin_right_mm is not None and 0 <= ps.margin_right_mm <= 100:
         section.right_margin = Mm(ps.margin_right_mm)
 
-    # 页脚距边界 2.5cm（GB/T 9704 标准）
-    section.footer_distance = Cm(2.5)
+    # 改动10：页眉/页脚距页边界从 page_setup 配置读取（省筹委会规范 footer 2.3cm / header 1.5cm）
+    # fallback 保持 GB/T 9704 默认值（footer 2.5cm / header 1.5cm）
+    footer_dist = getattr(ps, 'footer_distance_cm', None)
+    header_dist = getattr(ps, 'header_distance_cm', None)
+    section.footer_distance = Cm(footer_dist if footer_dist is not None else 2.5)
+    section.header_distance = Cm(header_dist if header_dist is not None else 1.5)
 
 
 # ---------------------------------------------------------------------------

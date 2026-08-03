@@ -9,15 +9,19 @@ template_name: "公共基础规则"
 document_type: common
 
 # --- 页面设置 (A4) ---
+# 页边距基于省筹委会排版规范（改动1）：上2.8/下2.8/左2.7/右2.7cm
+# 红头文件红头区占用页面上部，正文区页边距较 GB/T 9704 国标收窄
 page_setup:
   paper_size: A4
   paper_width_mm: 210
   paper_height_mm: 297
   margins:
-    top: 3.7cm
-    bottom: 3.5cm
-    left: 2.8cm
-    right: 2.6cm
+    top: 2.8cm
+    bottom: 2.8cm
+    left: 2.7cm
+    right: 2.7cm
+  header_distance: 1.5cm   # 页眉距页边界（PDF 规范 0.59 英寸 ≈1.5cm）
+  footer_distance: 2.3cm   # 页脚距页边界（PDF 规范 0.91 英寸 ≈2.3cm）
 
 # --- 公文大标题格式 ---
 doc_title:
@@ -67,6 +71,40 @@ heading_3:
   bold: true
   line_spacing: 33pt
   first_line_indent: 2em
+
+# --- 四级标题格式（（1）（2）…，改动3 新增）---
+heading_4:
+  font: "仿宋_GB2312"
+  font_fallback: "FangSong"
+  size: 16pt
+  bold: false
+  line_spacing: 33pt
+  first_line_indent: 2em
+
+# --- 序号体系（改动5 新增，省筹委会规范）---
+# 中文序号体系：法定公文默认；罗马数字/英文序号体系：附件/法规/技术方案
+numbering_systems:
+  chinese:
+    level_1: "一、二、三…"
+    level_2: "（一）（二）…"
+    level_3: "1. 2. 3.…"
+    level_4: "（1）（2）…"
+    default: true
+  western:
+    level_1: "I. II. III.…"
+    level_2: "A. B. C.…"
+    level_3: "1. 2. 3.…"
+    level_4: "a. b. c.…"
+    default: false
+
+# --- 空行规则（改动6 新增，省筹委会规范）---
+# 供 modifier._insert_blank_lines 在 optimize 路径A中主动插入必要空行
+blank_line_rules:
+  doc_title_before: 1    # 公文大标题前空1行
+  doc_title_after: 1     # 公文大标题后空1行
+  heading_before: 0      # 各级标题前不额外空行（行距已含间距）
+  body_to_signature: 2   # 正文末尾与落款空2行
+  attachment_gap: 1      # 附件标题与正文空1行
 
 # --- 正文默认格式 ---
 body:
@@ -243,8 +281,8 @@ check_rules:
     name: "一级标题行距检查"
     severity: P1
     field: heading_1.line_spacing
-    expected: 28.95pt
-    message: "一级标题行距应为固定值28磅（GB/T 9704标准）"
+    expected: 33pt
+    message: "一级标题行距应为33磅（与标题样式配置一致，改动2统一）"
 
   # --- 二级标题检查 (CHK-C010, C015) ---
   - id: CHK-C010
@@ -265,8 +303,8 @@ check_rules:
     name: "二级标题行距检查"
     severity: P1
     field: heading_2.line_spacing
-    expected: 28.95pt
-    message: "二级标题行距应为固定值28磅（GB/T 9704标准）"
+    expected: 33pt
+    message: "二级标题行距应为33磅（与标题样式配置一致，改动2统一）"
 
   - id: CHK-C036
     name: "二级标题左空二字检查"
@@ -294,8 +332,8 @@ check_rules:
     name: "三级标题行距检查"
     severity: P1
     field: heading_3.line_spacing
-    expected: 28.95pt
-    message: "三级标题行距应为固定值28磅（GB/T 9704标准）"
+    expected: 33pt
+    message: "三级标题行距应为33磅（与标题样式配置一致，改动2统一）"
 
   - id: CHK-C038
     name: "三级标题左空二字检查"
@@ -303,6 +341,35 @@ check_rules:
     field: heading_3.first_line_indent
     expected: "2em"
     message: "三级标题应左空二字编排（GB/T 9704标准）"
+
+  # --- 四级标题检查（改动3 新增）---
+  - id: CHK-C047
+    name: "四级标题字体检查"
+    severity: P1
+    field: heading_4.font
+    expected: "仿宋_GB2312"
+    message: "四级标题应使用仿宋_GB2312"
+
+  - id: CHK-C048
+    name: "四级标题字号检查"
+    severity: P1
+    field: heading_4.size
+    expected: 16pt
+    message: "四级标题应使用三号字(16pt)"
+
+  - id: CHK-C049
+    name: "四级标题行距检查"
+    severity: P1
+    field: heading_4.line_spacing
+    expected: 33pt
+    message: "四级标题行距应为33磅（与标题样式配置一致）"
+
+  - id: CHK-C050
+    name: "四级标题左空二字检查"
+    severity: P1
+    field: heading_4.first_line_indent
+    expected: "2em"
+    message: "四级标题应左空二字编排（GB/T 9704标准）"
 
   # --- 正文格式检查 (CHK-C004~C006, C012~C013) ---
   - id: CHK-C004
@@ -577,7 +644,7 @@ fix_rules:
     ref_check: CHK-C032
     action: set_line_spacing
     target: heading_1
-    value: 28.95pt
+    value: 33pt
 
   # --- 二级标题修复 ---
   - id: FIX-C007
@@ -596,7 +663,7 @@ fix_rules:
     ref_check: CHK-C035
     action: set_line_spacing
     target: heading_2
-    value: 28.95pt
+    value: 33pt
 
   - id: FIX-C034
     ref_check: CHK-C036
@@ -626,12 +693,37 @@ fix_rules:
     ref_check: CHK-C037
     action: set_line_spacing
     target: heading_3
-    value: 28.95pt
+    value: 33pt
 
   - id: FIX-C036
     ref_check: CHK-C038
     action: set_first_line_indent
     target: heading_3
+    value: "2em"
+
+  # --- 四级标题修复（改动3 新增）---
+  - id: FIX-C047
+    ref_check: CHK-C047
+    action: set_font
+    target: heading_4
+    value: "仿宋_GB2312"
+
+  - id: FIX-C048
+    ref_check: CHK-C048
+    action: set_size
+    target: heading_4
+    value: 16pt
+
+  - id: FIX-C049
+    ref_check: CHK-C049
+    action: set_line_spacing
+    target: heading_4
+    value: 33pt
+
+  - id: FIX-C050
+    ref_check: CHK-C050
+    action: set_first_line_indent
+    target: heading_4
     value: "2em"
 
   # --- 正文加粗范围修复（在 set_bold 之后执行，覆盖整段加粗） ---
@@ -690,7 +782,7 @@ fix_rules:
       font: "宋体"
       size: 14pt
       alignment: "center"
-      format: "— {PAGE} —"
+      format: "- {PAGE} -"   # 改动4：半角短横线（PDF 规范），原全角破折号
 
   # --- 段落类型格式修复 (P4/P5/P8: FIX-C013b/FIX-C041~C044) ---
   - id: FIX-C013b

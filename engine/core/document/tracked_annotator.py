@@ -444,7 +444,7 @@ def _normalize_quotes(text: str) -> str:
     """B22 修复：标准化引号编码——将弯引号 U+201C/U+201D 转为直引号 U+0022。
 
     Word 文档 w:t 中通常为直引号，而 changes.json（LLM 生成）可能使用弯引号，
-    编码不一致会导致文本匹配/替换失败、整条变更被跳过（如覃万成职务修正丢失）。
+    编码不一致会导致文本匹配/替换失败、整条变更被跳过（如XXX职务修正丢失）。
     """
     if not text:
         return text

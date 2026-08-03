@@ -557,7 +557,7 @@ def inject_page_number(output_path: str, page_number_config: dict) -> None:
         font      字体（默认 宋体）
         size      字号（默认 14）
         alignment 对齐（center / left / right；right 表示单右双左奇偶排版）
-        format    格式（默认 '— {PAGE} —'，可用 {PAGE} / {NUMPAGES}）
+        format    格式（默认 '- {PAGE} -'，可用 {PAGE} / {NUMPAGES}）
 
     GB/T 9704：页码用四号宋体（14pt），单页码居中，或单右双左奇偶排版。
     """
@@ -573,7 +573,7 @@ def inject_page_number(output_path: str, page_number_config: dict) -> None:
         if not enabled:
             return
 
-        fmt = page_number_config.get('format', '— {PAGE} —')
+        fmt = page_number_config.get('format', '- {PAGE} -')
         font_name = page_number_config.get('font', '宋体')
         size_pt = page_number_config.get('size', 14)
         align = page_number_config.get('alignment') or page_number_config.get('position', 'center')

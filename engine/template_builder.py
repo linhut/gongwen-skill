@@ -11,7 +11,7 @@
 根据公文类型的 YAML 规则生成标准公文模板 DocumentModel。
 
 生成的模板严格遵循 GB/T 9704：
-  - 页边距（上37 下35 左28 右26 mm）
+  - 页边距（上28 下28 左27 右27 mm，省筹委会规范）
   - 标题字体（方正小标宋简体，二号）
   - 正文字体（仿宋_GB2312，三号）
   - eastAsia 字体属性正确写入 XML
@@ -42,10 +42,10 @@ def create_template_document(template_id: str, rules: dict) -> DocumentModel:
         page_setup=PageSetup(
             paper_width_mm=210,
             paper_height_mm=297,
-            margin_top_mm=_parse_margin(margins.get("top", "3.7cm")),
-            margin_bottom_mm=_parse_margin(margins.get("bottom", "3.5cm")),
-            margin_left_mm=_parse_margin(margins.get("left", "2.8cm")),
-            margin_right_mm=_parse_margin(margins.get("right", "2.6cm")),
+            margin_top_mm=_parse_margin(margins.get("top", "2.8cm")),
+            margin_bottom_mm=_parse_margin(margins.get("bottom", "2.8cm")),
+            margin_left_mm=_parse_margin(margins.get("left", "2.7cm")),
+            margin_right_mm=_parse_margin(margins.get("right", "2.7cm")),
         ),
     )
 

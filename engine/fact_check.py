@@ -31,9 +31,9 @@ from utils.logger import logger
 class Entity:
     """从文档中提取的实体。"""
     entity_type: str      # person / org / project / doc_no / data
-    entity_name: str      # 实体名（如"覃万成"）
+    entity_name: str      # 实体名（如"XXX"）
     doc_attribute: str = ""   # V2 新增：文档中的属性（如"省民宗委党组成员、副主任"）
-    doc_context: str = ""     # V2 新增：完整上下文（如"省民宗委党组成员、副主任覃万成..."）
+    doc_context: str = ""     # V2 新增：完整上下文（如"省民宗委党组成员、副主任XXX..."）
     context: str = ""     # 上下文片段
     paragraph_index: int = 0
     status: str = "待核验"  # 待核验 / 已确认 / 存疑 / 无法核验
@@ -249,7 +249,7 @@ def extract_entities(paragraphs: list[str]) -> List[Entity]:
 
 _LLM_EXTRACT_PROMPT = (
     "请从以下中文公文中提取所有需事实核验的实体，包括：\n"
-    "1. 人名（含其职务描述，如\"省民宗委党组成员、副主任覃万成\"）\n"
+    "1. 人名（含其职务描述，如\"省民宗委党组成员、副主任XXX\"）\n"
     "2. 组织机构名（含完整全称）\n"
     "3. 发文字号、关键数据\n"
     "输出 JSON 数组，格式：[{\"type\": \"person|org|doc_no|data\", \"name\": \"实体名\", "
@@ -470,13 +470,13 @@ def _web_verify(entity_name: str, entity_type: str) -> Optional[str]:
     return "互联网检索未直接命中"
 
 
-# N4 修复：人名+职务配对核验——识别"职务+姓名"组合（如"副主任覃万成"）
+# N4 修复：人名+职务配对核验——识别"职务+姓名"组合（如"副主任XXX"）
 # 返回 [(姓名, 职务描述), ...]
 def extract_person_title_pairs(text: str) -> List[tuple[str, str]]:
     """从段落文本中提取 (姓名, 职务描述) 配对。
 
     模式：{职务}（2-8 字，含 主任/副主任/书记/部长 等后缀）+ {姓名}（2-3 字）。
-    如"省民宗委党组成员、副主任覃万成" → ("覃万成", "省民宗委党组成员、副主任")。
+    如"省民宗委党组成员、副主任XXX" → ("XXX", "省民宗委党组成员、副主任")。
     """
     pairs: List[tuple[str, str]] = []
     title_pattern = r'([\u4e00-\u9fa5、]{2,20}(?:' + '|'.join(_TITLE_SUFFIXES) + r'))([\u4e00-\u9fa5]{2,3})(?![、，。；])'

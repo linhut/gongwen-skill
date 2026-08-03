@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.47"
+__version__ = "1.12.48"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -301,6 +301,13 @@ def cmd_optimize(args):
     n_bold = 0
     if doc_type != 'speech':
         n_bold = bold_first_sentence_of_body(fixed)
+    # 改动9：按 blank_line_rules 配置主动插入必要空行（省筹委会规范：标题前后/落款前/附件后）
+    try:
+        from core.document.modifier import _insert_blank_lines
+        from core.rules.manager import load_rules_merged as _lrm
+        n_blank = _insert_blank_lines(fixed, _lrm(doc_type))
+    except Exception:
+        n_blank = 0
     generate_docx(fixed, str(out), no_ai_declaration=getattr(args, "remove_ai_declaration", False))
     print(f"✅ 优化完成: {out}")
     print(f"  修复 {len(issues)} 项 (P0:{len(p0)}, P1:{len(p1)}, P2:{len(p2)})")
@@ -308,6 +315,8 @@ def cmd_optimize(args):
         print(f"  清理 {cleaned} 处路径B标记")
     if n_bold:
         print(f"  首句加粗 {n_bold} 处")
+    if n_blank:
+        print(f"  补齐空行 {n_blank} 处")
     if getattr(args, "remove_ai_declaration", False):
         print("  AI声明段: 已移除（--remove-ai-declaration）")
 
@@ -417,15 +426,29 @@ def cmd_md2docx(args):
         if "mm" in s: return float(s.replace("mm", ""))
         return float(s)
 
-    # 构建 DocumentModel
+    # 构建 DocumentModel（改动1/10：页边距与页眉页脚距离取自 _common.yaml page_setup 配置）
+    page_setup_cfg = rules.get("page_setup", {})
+    hdr_dist = page_setup_cfg.get("header_distance", "1.5cm")
+    ftr_dist = page_setup_cfg.get("footer_distance", "2.3cm")
+
+    def _parse_cm(v) -> float:
+        s = str(v).strip()
+        if "cm" in s:
+            return float(s.replace("cm", ""))
+        if "mm" in s:
+            return float(s.replace("mm", "")) / 10
+        return float(s)
+
     model = DocumentModel(
         metadata=DocumentMetadata(),
         page_setup=PageSetup(
             paper_width_mm=210, paper_height_mm=297,
-            margin_top_mm=_parse_margin(margins.get("top", "3.7cm")),
-            margin_bottom_mm=_parse_margin(margins.get("bottom", "3.5cm")),
-            margin_left_mm=_parse_margin(margins.get("left", "2.8cm")),
-            margin_right_mm=_parse_margin(margins.get("right", "2.6cm")),
+            margin_top_mm=_parse_margin(margins.get("top", "2.8cm")),
+            margin_bottom_mm=_parse_margin(margins.get("bottom", "2.8cm")),
+            margin_left_mm=_parse_margin(margins.get("left", "2.7cm")),
+            margin_right_mm=_parse_margin(margins.get("right", "2.7cm")),
+            header_distance_cm=_parse_cm(hdr_dist),
+            footer_distance_cm=_parse_cm(ftr_dist),
         ),
     )
 
@@ -2264,12 +2287,17 @@ def cmd_table_signs(args):
     if args.combined:
         # 合并模式
         out = Path(args.output) if args.output else Path(f"桌签-合并-{len(names)}人.docx")
-        generate_table_signs_combined(names, out)
+        # 方案一（P0-2）：传入 template_path，避免 ValueError: 缺少桌签模板
+        generate_table_signs_combined(names, out,
+                                      template_path=Path(args.template),
+                                      placeholder=getattr(args, "placeholder", "Jose AI"))
         print(f"✅ 合并桌签已生成: {out}")
     else:
         # 每人独立文件
         out_dir = Path(args.output) if args.output else Path("./桌签")
-        files = generate_table_signs(names, out_dir, prefix=args.prefix)
+        files = generate_table_signs(names, out_dir, prefix=args.prefix,
+                                     template_path=Path(args.template),
+                                     placeholder=getattr(args, "placeholder", "Jose AI"))
         print(f"✅ 共生成 {len(files)} 份桌签:")
         for f in files:
             print(f"   - {f}")
@@ -2497,8 +2525,8 @@ def main():
     p.add_argument("--alignment", default="right",
                    choices=["center", "left", "right"],
                    help="对齐（默认 right 单右双左奇偶排版，适配双面打印；center 居中；left 左对齐）")
-    p.add_argument("--format", default="— {PAGE} —",
-                   help="页码格式，可用 {PAGE} / {NUMPAGES}（默认 '— {PAGE} —'）")
+    p.add_argument("--format", default="- {PAGE} -",
+                   help="页码格式，可用 {PAGE} / {NUMPAGES}（默认 '- {PAGE} -'）")
     p.set_defaults(func=cmd_pagenum)
 
     p = sub.add_parser("md2docx", help="将 Markdown 文本转为格式化的公文 .docx")
@@ -2589,11 +2617,17 @@ def main():
     p.set_defaults(func=cmd_rule_import)
 
     # ---- 桌签批量生成 ----
-    p = sub.add_parser("table-signs", help="从名单批量生成双面桌签（A5横版，黑体130pt），每人一份或合并多页")
+    p = sub.add_parser("table-signs", help="从名单批量生成双面桌签（A4纵向，华文新魏，字号按名长动态调整），每人一份或合并多页")
     p.add_argument("input", help="名单文件路径（每行一人，支持逗号/空格/顿号分隔），或 '-' 从标准输入读取")
     p.add_argument("-o", "--output", help="输出目录（默认 ./桌签/；每人单独文件）或输出 .docx 路径（配合 --combined）")
     p.add_argument("--combined", action="store_true", help="合并为一个多页文档（默认每人一个独立文件）")
     p.add_argument('--prefix', default='桌签', help='独立文件时文件名前缀（默认"桌签"）')
+    # 方案一（P0-1）：--template 必填，指定座签模板 .dotx 路径
+    p.add_argument("--template", required=True,
+                   help="座签模板 .dotx 路径（如 F:/模板/座签模板.dotx）")
+    # 方案五（P2-3）：占位符参数化
+    p.add_argument("--placeholder", default="Jose AI",
+                   help="座签模板中占位文本（默认 Jose AI）")
     p.set_defaults(func=cmd_table_signs)
 
     # ---- 完整审校（路径A + 路径B + 批注） ----

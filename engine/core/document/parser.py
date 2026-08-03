@@ -48,6 +48,13 @@ _H3_PATTERN = re.compile(r'^\d+[.]')
 # 四级标题序号模式（"（1）""（2）"等半角/全角括号+阿拉伯数字）
 _H4_PATTERN = re.compile(r'^[（(]\d+[）)]')
 
+# 改动7：罗马数字/英文序号体系（附件/法规/技术方案，省筹委会规范）
+# I. II. III. → 一级；A. B. C. → 二级；1. 2. 3. → 三级（与中文共用）；a. b. c. → 四级
+# 注意：要求序号后紧跟空白，避免误匹配 "I agree" / "A report" 等英文句子
+_H1_WESTERN_PATTERN = re.compile(r'^[IVXLCDM]+\.\s+')
+_H2_WESTERN_PATTERN = re.compile(r'^[A-Z]\.\s+')
+_H4_WESTERN_PATTERN = re.compile(r'^[a-z]\.\s+')
+
 
 def parse_docx(file_path: Path | str) -> DocumentModel:
     """
@@ -192,10 +199,11 @@ def _parse_page_setup(doc: Document) -> PageSetup:
     return PageSetup(
         paper_width_mm=_safe_mm(section.page_width, 210),
         paper_height_mm=_safe_mm(section.page_height, 297),
-        margin_top_mm=_safe_mm(section.top_margin, 37),
-        margin_bottom_mm=_safe_mm(section.bottom_margin, 35),
-        margin_left_mm=_safe_mm(section.left_margin, 28),
-        margin_right_mm=_safe_mm(section.right_margin, 26),
+        # 改动11：fallback 值与 _common.yaml 页边距同步（省筹委会规范 2.8/2.8/2.7/2.7cm）
+        margin_top_mm=_safe_mm(section.top_margin, 28),
+        margin_bottom_mm=_safe_mm(section.bottom_margin, 28),
+        margin_left_mm=_safe_mm(section.left_margin, 27),
+        margin_right_mm=_safe_mm(section.right_margin, 27),
         orientation="landscape" if section.orientation == 1 else "portrait",
     )
 
@@ -428,6 +436,10 @@ def _detect_heading_heuristic(
     if _H1_PATTERN.match(text_stripped) and len(text_stripped) < 50:
         if is_bold or "黑体" in font_lower:
             return True, 1
+    # 改动7：罗马数字序号 "I. II." → 一级标题（无条件，优先于英文字母 H2 判断——
+    # 否则 "I." 会被 [A-Z]. 模式误判为二级标题）
+    if _H1_WESTERN_PATTERN.match(text_stripped) and len(text_stripped) < 50:
+        return True, 1
 
     # --- Level 2: 二级标题（楷体 + 加粗）---
     if has_font_signal and ("楷体" in font_lower or font_lower in ("kaiti", "楷体_gb2312")) and is_bold:
@@ -435,6 +447,9 @@ def _detect_heading_heuristic(
 
     # "（一）" 格式（无论字体如何，此模式足够唯一）
     if _H2_PATTERN.match(text_stripped) and len(text_stripped) < 50:
+        return True, 2
+    # 改动7：英文大写序号 "A. B." 短文本 → 二级标题
+    if _H2_WESTERN_PATTERN.match(text_stripped) and len(text_stripped) < 50:
         return True, 2
 
     # --- Level 3: 三级标题（仿宋加粗 或 "1." + 加粗）---
@@ -457,6 +472,9 @@ def _detect_heading_heuristic(
     # B-1: "一、" 开头 + 短文本 → 一级标题（无需加粗/黑体）
     if _H1_PATTERN.match(text_stripped) and len(text_stripped) < 40:
         return True, 1
+    # 改动7：罗马数字 "I." 开头 + 短文本 → 一级标题
+    if _H1_WESTERN_PATTERN.match(text_stripped) and len(text_stripped) < 40:
+        return True, 1
 
     # B-3: "1." 开头 + 短文本 → 三级标题（无需加粗）
     if _H3_PATTERN.match(text_stripped) and len(text_stripped) < 40:
@@ -464,6 +482,9 @@ def _detect_heading_heuristic(
 
     # B-4: "（1）" 开头 + 短文本 → 四级标题
     if _H4_PATTERN.match(text_stripped) and len(text_stripped) < 40:
+        return True, 4
+    # 改动7：英文小写序号 "a." 开头 + 短文本 → 四级标题
+    if _H4_WESTERN_PATTERN.match(text_stripped) and len(text_stripped) < 40:
         return True, 4
 
     return False, None

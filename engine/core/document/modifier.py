@@ -57,6 +57,9 @@ def _select_paragraphs(model: DocumentModel, target: str) -> list[Paragraph]:
         return [p for p in model.paragraphs if p.is_heading and p.heading_level == 2]
     elif target == "heading_3":
         return [p for p in model.paragraphs if p.is_heading and p.heading_level == 3]
+    elif target == "heading_4":
+        # 改动3：四级标题（（1）（2）…）
+        return [p for p in model.paragraphs if p.is_heading and p.heading_level == 4]
     elif target == "body":
         # P2-3 说明：body 选择器排除空行段落（p.text.strip() 为空的段落不参与格式修复），
         # 因为空行无格式可修且会干扰签名区判定。优先使用 role 字段，回退到启发式。
@@ -275,6 +278,87 @@ def remove_extra_blank_lines(model: DocumentModel, mode: str = 'delete_single',
 
     for i, p in enumerate(model.paragraphs):
         p.index = i
+
+
+def _insert_blank_lines(model: DocumentModel, rules: dict | None = None) -> int:
+    """根据 blank_line_rules 配置主动插入必要空行（改动9，省筹委会规范）。
+
+    与 remove_extra_blank_lines（删除多余空行）互补——此函数在空行清理之后执行，
+    按规范补齐缺失的空行：
+      - doc_title_before: 公文大标题前空 N 行
+      - doc_title_after:  公文大标题后空 N 行
+      - body_to_signature: 正文末尾与落款前空 N 行
+      - attachment_gap:    附件标题与正文间空 N 行
+
+    Args:
+        model: 文档模型（原地修改）
+        rules: 合并后的规则字典（含 blank_line_rules 配置）
+
+    Returns:
+        插入的空行段落数
+    """
+    if not rules:
+        return 0
+    bl = (rules.get('blank_line_rules') or {}) if isinstance(rules, dict) else {}
+    if not bl:
+        return 0
+    inserted = 0
+
+    def _blank_para() -> Paragraph:
+        return Paragraph(index=0, text="", role="body", runs=[], format=ParagraphFormat())
+
+    # 1. 公文大标题前/后空行
+    title_indices = [i for i, p in enumerate(model.paragraphs)
+                     if p.is_heading and p.heading_level == 0]
+    if title_indices:
+        before = int(bl.get('doc_title_before', 0) or 0)
+        after = int(bl.get('doc_title_after', 0) or 0)
+        first = title_indices[0]
+        # 标题前：往前找首个非空段落，在其后插入空行（避免文档开头堆空行）
+        if before > 0:
+            anchor = -1
+            for j in range(first - 1, -1, -1):
+                if model.paragraphs[j].text.strip():
+                    anchor = j
+                    break
+            if anchor >= 0:
+                for _ in range(before):
+                    model.paragraphs.insert(anchor + 1, _blank_para())
+                    inserted += 1
+                    anchor += 1
+        # 标题后：在标题段后插入空行
+        if after > 0:
+            for _ in range(after):
+                model.paragraphs.insert(first + 1, _blank_para())
+                inserted += 1
+                first += 1
+
+    # 2. 正文末尾与落款前空 N 行（body_to_signature）
+    sig_gap = int(bl.get('body_to_signature', 0) or 0)
+    if sig_gap > 0:
+        sig_idx = next((i for i, p in enumerate(model.paragraphs)
+                        if p.role in ('signature', 'date') and p.text.strip()), None)
+        if sig_idx is not None:
+            for _ in range(sig_gap):
+                model.paragraphs.insert(sig_idx, _blank_para())
+                inserted += 1
+
+    # 3. 附件标题与正文间空 N 行（attachment_gap）
+    att_gap = int(bl.get('attachment_gap', 0) or 0)
+    if att_gap > 0:
+        att_idx = next((i for i, p in enumerate(model.paragraphs)
+                        if p.role == 'attachment' and p.text.strip()), None)
+        if att_idx is not None:
+            for _ in range(att_gap):
+                model.paragraphs.insert(att_idx + 1, _blank_para())
+                inserted += 1
+                att_idx += 1
+
+    if inserted:
+        for i, p in enumerate(model.paragraphs):
+            p.index = i
+        logger.info(f"_insert_blank_lines: inserted {inserted} blank line(s)")
+    return inserted
 
 
 # 空行处理模式常量
@@ -716,6 +800,30 @@ def normalize_heading_content(model: DocumentModel) -> int:
                     changes += 1
                 continue
 
+        # 改动8：罗马数字一级标题 I. xxx → 一、xxx（附件/法规/技术方案序号体系）
+        m = re.match(r'^([IVXLCDM]+)\.\s+(.+)', text)
+        if m and para.is_heading and para.heading_level == 1:
+            num = _roman_to_int(m.group(1))
+            cn = _arabic_to_chinese(num)
+            if cn:
+                new_text = f'{cn}、{m.group(2)}'
+                if new_text != text:
+                    _apply_heading_text(para, new_text)
+                    changes += 1
+                continue
+
+        # 改动8：英文字母二级标题 A. xxx → （一）xxx（英文序号体系二级）
+        m = re.match(r'^([A-Z])\.\s+(.+)', text)
+        if m and para.is_heading and para.heading_level == 2:
+            letter_ord = ord(m.group(1)) - ord('A') + 1
+            cn = _arabic_to_chinese(letter_ord)
+            if cn:
+                new_text = f'（{cn}）{m.group(2)}'
+                if new_text != text:
+                    _apply_heading_text(para, new_text)
+                    changes += 1
+                continue
+
         # 二级标题：(一)xxx → （一）xxx
         m = re.match(r'^\(([一二三四五六七八九十]+)\)(.+)', text)
         if m:
@@ -743,6 +851,30 @@ def normalize_heading_content(model: DocumentModel) -> int:
                 changes += 1
 
     return changes
+
+
+# 改动8：罗马数字→整数转换（省筹委会规范：附件/法规/技术方案用罗马数字序号）
+_ROMAN_MAP = {'I': 1, 'V': 5, 'X': 10, 'L': 50, 'C': 100, 'D': 500, 'M': 1000}
+
+
+def _roman_to_int(s: str) -> int:
+    """将罗马数字字符串转为整数（支持 I-XCIX，即 1-99）。
+
+    非法字符返回 0（调用方据此跳过转换）。
+    """
+    if not s:
+        return 0
+    result = 0
+    upper = s.upper()
+    for i, ch in enumerate(upper):
+        if ch not in _ROMAN_MAP:
+            return 0
+        val = _ROMAN_MAP[ch]
+        if i + 1 < len(upper) and _ROMAN_MAP.get(upper[i + 1], 0) > val:
+            result -= val
+        else:
+            result += val
+    return result
 
 
 def _arabic_to_chinese(n: int) -> str:

@@ -114,7 +114,7 @@ Licensed under the MIT License. See the LICENSE file for details.
    更新命令：cd <gongwen-skill目录> && git pull && git fetch --tags
    ```
 
-### 七、会话交接（长任务收尾必须遵守，v1.12.45+）
+### 七、会话交接（长任务收尾必须遵守）
 
 **目的**：跨会话上下文传递。当会话结束（上下文溢出/超时/人为中断/用户说"下次继续"）时，新会话的 Agent 必须能**无需用户复述**即可继续任务。
 
@@ -177,7 +177,7 @@ python gongwen.py handoff --latest --summary # 最新交接文档（Markdown 摘
 - **路径 A - 格式修复**：用户有文档，只需排版标准化（GB/T 9704），不改文字内容
 - **路径 B - 内容优化**：用户有文档，需要润色文字并生成修订对比版（原稿 vs 优化稿，红色标注修改处）
 - **路径 C - 生成公文**：用户没有文档，根据背景和要求从零生成新的公文。四步流程：编写 Markdown 草稿 → md2docx 转换 → 引用路径 A optimize 套国标格式 → check 验证交付。
-- **路径 D - 一键格式修复**（`fix-common`，v1.12.44 新增）：用户有文档，只需快速规范化常见格式问题（段落类型修正/编号拆分/首句加粗/加粗范围修复），一步到位，输出不含 AI 声明段的干净文档。与路径 A 的区别：不依赖规则引擎、不追加 AI 声明段，适合对"干净中间稿"做最终格式规范化。
+- **路径 D - 一键格式修复**（`fix-common` 新增）：用户有文档，只需快速规范化常见格式问题（段落类型修正/编号拆分/首句加粗/加粗范围修复），一步到位，输出不含 AI 声明段的干净文档。与路径 A 的区别：不依赖规则引擎、不追加 AI 声明段，适合对"干净中间稿"做最终格式规范化。
 
 ### 路径判断规则
 
@@ -363,7 +363,7 @@ python gongwen.py handoff --latest --summary # 最新交接文档（Markdown 摘
 - 每次执行 skill 命令后，必须在回复中记录：调用了哪个命令、参数是什么、输出文件路径
 - 不得省略 skill 命令调用记录，不得只报告最终结果
 
-#### 规则 5：Agent 协作模式（v1.12.33，V1/V4）
+#### 规则 5：Agent 协作模式（V1/V4）
 - **Agent 环境中优先用 `--output-tasks` / `--input-tasks` 协作，不依赖 `GONGWEN_LLM_API`**：
   1. `python gongwen.py optimize-content 文档.docx --changes changes.json --output-tasks tasks.json --apply --mode tracked -t news`
      → Skill 输出待核验实体 + 风格增强请求到 tasks.json，同时生成基础版文档（内容修订+结构/焦点检查批注）
@@ -782,7 +782,7 @@ python gongwen.py pagenum 文件.docx --alignment center
 
 ---
 
-## 路径 D：一键格式修复（fix-common，v1.12.44+）
+## 路径 D：一键格式修复（fix-common）
 
 **快速规范化常见格式问题，一步到位。** 使用 `fix-common` 命令，输出**不含 AI 声明段**的干净文档。
 
@@ -822,7 +822,7 @@ python gongwen.py fix-common 文件.docx -o 成品.docx
 - 需编辑 OOXML 层时使用 Python `python-docx` + `lxml`（项目内 `engine/core/document/generator.py` 的 `_accept_all_revisions` 即为参考实现）
 - 违反此规范的操作视为不合格执行
 
-### AI 声明段控制（v1.12.44+）
+### AI 声明段控制
 
 默认所有生成文档末尾会追加 AI 声明段（"（内容由GongWen-skill-AI生成，仅供参考）"，楷体 9pt 居中，pStyle=Annotation 避免 check 误判）。以下参数可控制：
 
@@ -1013,7 +1013,7 @@ Agent: 📋 审稿汇总报告
 5. 用户确认后调用 `session.finalize("成品.docx")` 输出
 6. 将生成的 `.changes.json` 路径告知用户，供后续参考
 
-### 路径 B / 增强命令（v1.12.15+ 新增）
+### 路径 B / 增强命令（新增）
 
 路径 B 提供两种增强输出模式，Agent 应根据用户需求选用：
 
@@ -2840,27 +2840,3 @@ Agent: 是否需要对此对比文档走格式优化，生成排版合规的无�
 - 引擎核心目录：`engine/core/document/`（parser / generator / modifier / models / font_utils）
 
 **版权**：(c) 2026 Jose AI（https://www.linhut.cn），MIT 许可证。完整命令与架构见 `REFERENCE.md`。
-
----
-
-## 版本历史
-
-> **NI11 版本体系说明**：本文件采用双版本号——**SKILL.md 文档版本（v2.x）** 与 **引擎代码版本（v1.12.x，见 `gongwen.py` `__version__`）**。二者一一对应（如 SKILL.md v2.9 ↔ 代码 v1.12.18），发布时同步递增，不混用。
-
-| 版本 | 日期 | 变更 |
-|------|------|------|
-| v2.14 | 2026-08-03 | 对应代码 v1.12.47 加粗机制优化（B-01~B-10 全部）：统一三套加粗边界正则 FIRST_SENTENCE_DELIMITERS（句号/叹号/问号/冒号，顿号/分号不分句）；fix_bold_range 文种感知（speech 跳过整段加粗修复，CHK-C030 同步）；CHK-C030 段落类型感知；编号词领句整体加粗（editor 对齐 modifier）；移除 30 字阈值；导语/过渡/署名正则补充（为了/经/据/奉、因此/故/由此可见、〇字符+印发后缀）；FIX-C031 依赖重排（_reorder_by_dependencies）；optimize 增加首句加粗能力；PARAGRAPH_TYPE_RULES 显式注册 title/annotation |
-| v2.13 | 2026-08-03 | 对应代码 v1.12.46 全量审计优化（v4 方案，P0×4+P1×14+P2×33+P3×40 全部修复）：P0 表格位置错位/修订接受前置/W 未定义/_m 未绑定；P1 多 run markdown 清理/合并单元格去重/checker 去重汇总/fix-common 复用规则引擎/handoff 合并+原子写入等；P2 段落类型字段检查支持（recipient/attachment/cc+5 段落类型）、页码字号检查 CHK-C046、title→doc_title 键名统一等 33 项；P3 重复导入清理/AI声明独立函数/缓存 mtime 感知/page_number 检查实现/参数风格统一等 40 项；新增 tests/conftest.py、test_font_utils.py，补充 font_utils/models/handoff 并发/save-delete 规则测试（70 用例） |
-| v2.12 | 2026-08-02 | 对应代码 v1.12.45 会话交接机制（Handoff）：新增 `engine/handoff.py`（write_handoff/read_latest_handoff/list_handoffs/summarize_handoff）与 `handoff` 子命令（--list/--latest/--summary）；交接文档存于 `~/.gongwen-skill/handoffs/`（APP_DATA_DIR，git pull 不覆盖，与 user_rules 同属用户持久化目录）；SKILL.md 新增硬门控第七节"会话交接"（长任务收尾必写、新会话先查）；清除 `--resume`/`--session` 死代码与 finally 会话追踪（C1-C3）、config.py SESSION_DIR→HANDOFF_DIR（C4）；新增 tests/test_handoff.py（11 用例） |
-| v2.11 | 2026-08-02 | 对应代码 v1.12.44 优化方案修复（P1-P10 + N1-N3 全部）：AI 声明段可选删除（--no-ai-declaration/--remove-ai-declaration）；段落类型感知的首句加粗（detect_paragraph_type，称呼/导语/过渡/署名/会议日期不加粗）；tracked changes 自动接受清理（_accept_all_revisions）；署名段居中 18pt；称呼段左对齐无缩进；编号段落自动拆分；新增 fix-common 一键修复命令（路径D，7步流程）；会议日期段格式；页码 WPS 兼容（MERGEFORMAT）；署名前 2 空行；fix_paragraph_type 规则引擎 action + 5 个段落类型 target；新增 OOXML 编辑规范（禁用 PowerShell 操作 docx） |
-| v2.10 | 2026-07-31 | 对应代码 v1.12.19 审计修复：批注拆分多 w:t 合并预处理（NEW-B1/I1）、倒挂锚定防护（NEW-B2）、RSID 重试上限与重置调用（NEW-I2/I3）、.rels ID 冲突与去重（NEW-I4/I7）、比例分配空 run（NEW-I5）；audit 文档与实现对齐（NI12）、版本体系说明（NI11） |
-| v2.9 | 2026-07-31 | 对应代码 v1.12.18 全面审计修复：批注 end 边界字符级锚定、五角色审阅者区分（author 从 reason 提取）、修订追踪完整格式保留、persons.xml 集成、原子写入、ZIP 炸弹防护、值解析/错误处理统一；新增 utils/parse.py 与 utils/errors.py |
-| v2.8 | 2026-07-31 | 新增批注模式（optimize-content --comment-mode，Word 原生批注可接受/拒绝）；新增完整审校（full-review 一条命令：格式修复+内容优化+批注）；新增样式学习（style-learn/style-list，从标准文档学习排版样式生成命名模板，含字间距等细微属性）；新增修订追踪（tracked-change，ins/del 修订标记）；模板存储于 ~/.gongwen-skill/user_rules/（仓库外，更新不丢失） |
-| v2.7 | 2026-07-31 | 新增人事信息准确性铁律（强制规则第 9 条）：严禁编造领导姓名/机构全称/职务/人物姓名/文号/数据，缺失用 `[XXX]` 占位；三条路径均有对应落地点（聚合禁令、路径 B 内容保留优先原则、路径 C 第〇步、使用红线） |
-| v2.6 | 2026-07-26 | 三点式入口重构：将 SKILL.md 按 A格式修复/B内容优化/C生成公文 三条路径重新组织；路径 C 新增 5 类公文标准段落骨架（通知/请示/报告/函/纪要，共 10 种子类型）和惯用语库；各路径内容归入对应章节；共享规则（格式基准、命名规范、22 种类型、使用红线）移至附录 |
-| v2.5 | 2026-07-26 | 新增段落类型优化检查清单（9 种类型，每类 4-8 项检查维度，强制 修订内容 附录检查结果）；风格词典补齐六维度描述（句式特征/用词偏好/结构要求/语气调性/典型句式/反面示例）；修正旧风格名称残留（简洁明快→简洁精炼） |
-| v2.4 | 2026-07-26 | 新增上下文感知原则（全文通读两遍制、背景来源优先级、跨段一致性检查、背景驱动扩展约束）；风格词典从6种扩充为8种（庄重严谨/简洁精炼/庄重得体/务实汇报/请示恳切/动员激励/总结回顾/逻辑严密），每种含六维度详细指引；新增风格组合与叠加规则（优先级裁决、按维度合并、同段不拆分、全文档一致性、典型场景速查） |
-| v2.3 | 2026-07-25 | 修改说明格式升级：reason/style/reference 三字段分离，注释段输出 `【修改说明】…【风格】…【依据】…`；新增三步思考法（判类型→查规范→出意见）；文件命名：路径B为`{原文档名}+风格+日期+版本号`、路径A/C为`修订版+{原文档名}+日期+版本号`；扩展文档格式支持范围（.docx/.doc/.odt） |
-| v2.2 | 2026-07-25 | 路径 B 完全隔离：移除「第3步 optimize 生成无标记成品」，路径 B 交付差异对比文档后必须主动询问是否走路径 A；更新对话流程示例 |
-| v2.0 | 2026-07-25 | 新增交互指引、格式继承原则、表格/图片处理说明 |
-| v1.0 | 2026-07-24 | 初始版本，支持路径 A/B/C |

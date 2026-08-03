@@ -1,44 +1,106 @@
-template_name: 桌签
+template_name: 座签
 document_type: table_sign
 
-# --- 桌签特有格式 ---
-# 桌签非 GB/T 9704 标准公文，使用自定义大号字体
+# --- 座签特有格式（基于WPS模板实测，方案二重写） ---
+# 座签非 GB/T 9704 标准公文，使用自定义大号字体（华文新魏，不加粗）
+font:
+  name: 华文新魏
+  bold: false
+  align: center
+
 title:
-  size: 50pt
-  bold: true
+  size: dynamic  # 按名长动态计算（见 font_size_table）
+  bold: false
   align: center
+
 body:
-  size: 50pt
-  bold: true
+  size: dynamic
+  bold: false
   align: center
+
+# 动态字号表（名长→pt，WPS 模板实测：2字名156pt / 4字名100pt）
+font_size_table:
+  1: 156
+  2: 156
+  3: 120
+  4: 100
+  5: 80
+
+# 座签页面布局（WPS 模板实测）
+page_setup:
+  paper_size: A4
+  orientation: portrait
+  top_margin: 2.69cm
+  bottom_margin: 2.69cm
+  left_margin: 2.79cm
+  right_margin: 2.79cm
+  header_distance: 1.50cm
+  footer_distance: 1.75cm
+
+# 座签表格布局（42行1列表格，行高 9.65cm At Least，居中）
+table:
+  rows: 1
+  columns: 1
+  alignment: center
+  row_height: 9.65cm
+  row_height_rule: at_least
+  width: 541.9pt
 
 check_rules:
   - id: CHK-TS001
-    name: 桌签字号检查
-    severity: P0
+    name: 座签字号检查
+    severity: P1
     field: title.size
-    expected: 50pt
-    message: 桌签应使用大号字体以确保远距离可读
+    expected: dynamic
+    message: 座签字号应按名长动态调整（2字名156pt，3字名120pt，4字名100pt）
     category: format
 
   - id: CHK-TS002
-    name: 桌签加粗检查
-    severity: P0
+    name: 座签加粗检查
+    severity: P2
     field: title.bold
-    expected: true
-    message: 桌签文字应加粗显示
+    expected: false
+    message: 座签文字不应加粗（华文新魏字体本身笔画较粗，加粗影响可读性）
+    category: format
+
+  - id: CHK-TS003
+    name: 座签字体检查
+    severity: P1
+    field: font.name
+    expected: 华文新魏
+    message: 座签应使用华文新魏字体
+    category: format
+
+  - id: CHK-TS004
+    name: 座签对齐检查
+    severity: P1
+    field: title.align
+    expected: center
+    message: 座签文字应居中排列
+    category: format
+
+  - id: CHK-TS005
+    name: 座签纸张检查
+    severity: P2
+    field: page_setup.paper_size
+    expected: A4
+    message: 座签应使用A4纵向纸张
     category: format
 
 fix_rules:
   - id: FIX-TS001
-    action: set_size
+    action: set_size_dynamic
     target: doc_title
-    value: 50pt
+    value: dynamic  # 按 font_size_table 计算
   - id: FIX-TS002
     action: set_bold
     target: doc_title
-    value: true
+    value: false
   - id: FIX-TS003
+    action: set_font
+    target: doc_title
+    value: 华文新魏
+  - id: FIX-TS004
     action: set_alignment
     target: doc_title
     value: center
