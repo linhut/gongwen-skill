@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.46"
+__version__ = "1.12.47"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -294,13 +294,20 @@ def cmd_optimize(args):
     selected = args.selected_rules.split(",") if args.selected_rules else None
     _, fixed = engine.check_and_fix(model, doc_type, selected)
     # 清理路径 B 遗留的修改说明段落和删除线标记（确保干净成品）
-    from core.document.modifier import clean_path_b_markers
+    from core.document.modifier import clean_path_b_markers, bold_first_sentence_of_body
     cleaned = clean_path_b_markers(fixed)
+    # B-03（方案八）：optimize 增加首句加粗能力——修复后补齐缺失的首句加粗，
+    # 与 fix-common 行为对齐（speech 文种跳过：整段加粗为朗读件规范）
+    n_bold = 0
+    if doc_type != 'speech':
+        n_bold = bold_first_sentence_of_body(fixed)
     generate_docx(fixed, str(out), no_ai_declaration=getattr(args, "remove_ai_declaration", False))
     print(f"✅ 优化完成: {out}")
     print(f"  修复 {len(issues)} 项 (P0:{len(p0)}, P1:{len(p1)}, P2:{len(p2)})")
     if cleaned:
         print(f"  清理 {cleaned} 处路径B标记")
+    if n_bold:
+        print(f"  首句加粗 {n_bold} 处")
     if getattr(args, "remove_ai_declaration", False):
         print("  AI声明段: 已移除（--remove-ai-declaration）")
 
@@ -2099,8 +2106,8 @@ def cmd_fix_common(args):
     n_bold = bold_first_sentence_of_body(model)
     print(f"[5/7] 首句加粗: {n_bold} 处")
 
-    # [6/7] 加粗范围修复
-    n_range = fix_bold_range(model)
+    # [6/7] 加粗范围修复（B-01 方案二：传递文种，speech 跳过整段加粗修复）
+    n_range = fix_bold_range(model, doc_type=doc_type)
     print(f"[6/7] 加粗范围修复: {n_range} 处")
 
     # [7/7] 生成文档（no_ai_declaration=True，不含AI声明段）

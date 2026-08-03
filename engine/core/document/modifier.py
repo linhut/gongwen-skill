@@ -298,7 +298,14 @@ PARAGRAPH_TYPE_BODY = 'body'                    # 默认正文
 PARAGRAPH_TYPE_TITLE = 'title'                  # 标题（P2-9：常量代替字面量）
 PARAGRAPH_TYPE_ANNOTATION = 'annotation'        # 注释/修改说明段（P2-9）
 
+# B-02（方案一）：首句边界正则——三套加粗实现（fix_bold_range /
+# bold_first_sentence_of_body / editor._get_bold_prefix）统一使用此常量。
+# 边界字符：句号/叹号/问号/冒号（顿号、分号是并列关系，不作为分句边界）
+FIRST_SENTENCE_DELIMITERS = re.compile(r'[。！？：:]')
+
 # 首句加粗规则：True=应加粗首句，False=不应加粗
+# B-10（方案九）：显式注册 title/annotation 为 False，消除 should_bold_first_sentence
+# 的默认 True 兜底漏洞——此前这两类段落未被注册，会被误判为"应加粗"
 PARAGRAPH_TYPE_RULES: dict[str, bool] = {
     PARAGRAPH_TYPE_SALUTATION: False,
     PARAGRAPH_TYPE_INTRODUCTION: False,
@@ -307,14 +314,20 @@ PARAGRAPH_TYPE_RULES: dict[str, bool] = {
     PARAGRAPH_TYPE_BODY: True,
     PARAGRAPH_TYPE_SIGNATURE: False,
     PARAGRAPH_TYPE_MEETING_DATE: False,
+    PARAGRAPH_TYPE_TITLE: False,
+    PARAGRAPH_TYPE_ANNOTATION: False,
 }
 
 # 各段落类型的开头正则模式
 _SALUTATION_RE = re.compile(r'^\s*(尊敬的|各位|同志们|女士们|先生们)')
+# B-08（方案六）：导语正则补充"为了/经/据/奉"等开头词
 _INTRODUCTION_RE = re.compile(
-    r'^\s*(按照|根据|遵照|依据|为贯彻|为落实|为认真|为深入|为切实|为全面)'
+    r'^\s*(按照|根据|遵照|依据|为了|为贯彻|为落实|为认真|为深入|为切实|为全面|经|据|奉)'
 )
-_TRANSITION_RE = re.compile(r'^\s*(针对|基于|鉴于|综上|为此|对此|结合|围绕|就\S+问题)')
+# B-08（方案六）：过渡正则补充"因此/故/由此可见/从上述"等
+_TRANSITION_RE = re.compile(
+    r'^\s*(针对|基于|鉴于|综上|为此|对此|结合|围绕|就\S+问题|因此|故|由此可见|从上述)'
+)
 _NUMBERED_RE = re.compile(
     r'^\s*(一是|二是|三是|四是|五是|六是|七是|八是|九是|'
     r'一要|二要|三要|四要|五要|'
@@ -323,7 +336,12 @@ _NUMBERED_RE = re.compile(
     r'[（(]\s*\d+\s*[）)])'
 )
 _MEETING_DATE_RE = re.compile(r'^\s*于\s*\d{3,4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日')
-_SIGNATURE_RE = re.compile(r'^\s*[一二三四五六七八九十\d]+\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日\s*$')
+# B-07（方案六）：署名正则保留末尾锚定（避免误匹配），补充"〇"字符支持，
+# 并允许日期后跟"印发/部/草/修订"等词（如"2026年8月3日印发"）
+_SIGNATURE_RE = re.compile(
+    r'^\s*[一二三四五六七八九十〇\d]+\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日'
+    r'(\s*[印发部草修订]*\s*)?$'
+)
 
 
 def detect_paragraph_type(text: str | None, role: str | None = None) -> str:
@@ -486,23 +504,31 @@ def split_numbered_paragraphs(model: DocumentModel) -> int:
     return changes
 
 
-def fix_bold_range(model: DocumentModel) -> int:
+def fix_bold_range(model: DocumentModel, doc_type: str | None = None) -> int:
     """
     正文段落加粗范围修复：
     1. 有冒号/句号边界 → 仅首句加粗，后续取消
     2. 无边界但整段加粗 → 全部取消加粗
+
+    B-01（方案二）：文种感知——讲话稿/主持词（speech）正文整段加粗是规范，
+    跳过修复，避免 FIX-C031 破坏朗读件格式。
     """
     changes = 0
-    _EXCLUDE_ROLES = {'signature', 'date', 'annotation'}
-    _CLAUSE_RE = re.compile(r'[:：。、]')
+    # B-01：整段加粗为规范要求的文种（讲话稿/主持词）
+    _SPEECH_SKIP_TYPES = {'speech'}
+    if doc_type and str(doc_type).lower() in _SPEECH_SKIP_TYPES:
+        return 0
+    # B-10（方案九）：移除 _EXCLUDE_ROLES 分支，完全统一到 should_bold_first_sentence
+    # 单层判断——PARAGRAPH_TYPE_RULES 已显式注册 signature/date/title/annotation 为 False，
+    # 不再需要第二层角色过滤，消除两层逻辑不一致的维护成本
+    _CLAUSE_RE = FIRST_SENTENCE_DELIMITERS
 
     for para in model.paragraphs:
         if para.is_heading and para.heading_level is not None and para.heading_level <= 2:
             continue
-        if para.role in _EXCLUDE_ROLES:
-            continue
-        # P2-13 修复：30 字符阈值过短会漏检较短正文段，降低到 4 字符（仅要求有实质内容）
-        if not para.text.strip() or len(para.text.strip()) <= 4:
+        # B-06（方案五）：移除 30 字阈值（及 P2-13 的 4 字阈值）——
+        # 所有整段加粗段落均执行修复，短段落（如编号拆分后的"二是聚焦主责主业。"）不再遗漏
+        if not para.text.strip():
             continue
         if not para.runs or not all(r.format.bold for r in para.runs if r.text.strip()):
             continue
@@ -1330,8 +1356,8 @@ def bold_first_sentence_of_body(model: DocumentModel) -> int:
         if not should_bold_first_sentence(para.text, para.role):
             continue
 
-        # 找到首句结束位置（。！？：；）
-        m = re.search(r'[。！？：；]', text)
+        # 找到首句结束位置（B-02：统一边界正则 [。！？：:]）
+        m = FIRST_SENTENCE_DELIMITERS.search(text)
         if not m:
             continue
         first_end = m.end()

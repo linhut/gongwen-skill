@@ -51,15 +51,55 @@ _ACTION_MAP = {
     ),
     "strip_markdown": lambda model, target, value, _rules: convert_markdown(model),
     "convert_markdown": lambda model, target, value, _rules: convert_markdown(model),
-    "fix_bold_range": lambda model, target, value, _rules: fix_bold_range(model),
+    "fix_bold_range": lambda model, target, value, _rules: fix_bold_range(
+        model, doc_type=(_rules.get('_doc_type') if isinstance(_rules, dict) else None)
+    ),
     "normalize_punctuation": lambda model, target, value, _rules: normalize_punctuation(model),
     "normalize_headings": lambda model, target, value, _rules: normalize_heading_content(model),
     "set_page_number": lambda model, target, value, _rules: _apply_page_number(model, target, value),
     "fix_paragraph_type": lambda model, target, value, _rules: _apply_fix_paragraph_type(model, target, value),
 }
 
+# B-04（方案七）：规则执行顺序依赖——FIX-C031（fix_bold_range）必须在
+# FIX-C041~C044（段落类型格式修正）之后执行，否则会对导语/过渡段做无意义的
+# 中间态修复（先加粗再取消），产生冗余操作与隐性依赖。
+_RULE_DEPENDENCIES: dict[str, list[str]] = {
+    "FIX-C031": ["FIX-C041", "FIX-C042", "FIX-C043", "FIX-C044"],
+}
 
-def apply_fixes(model: DocumentModel, rules: dict[str, Any], selected_rule_ids: list[str] | None = None) -> DocumentModel:
+
+def _reorder_by_dependencies(fix_rules: list[dict]) -> list[dict]:
+    """按依赖声明重排规则顺序：依赖者（如 FIX-C031）排在被依赖者（FIX-C041~C044）之后。
+
+    采用稳定排序思路：对每条规则，若它声明的依赖项也出现在列表中，
+    则确保它排在最后一个依赖项之后。
+    """
+    rule_ids = [r.get("id") for r in fix_rules]
+    ordered: list[dict] = []
+    placed: set[str] = set()
+
+    def _place(rule: dict) -> None:
+        rid = rule.get("id")
+        if rid in placed:
+            return
+        deps = _RULE_DEPENDENCIES.get(rid, [])
+        # 先放置尚未放置的依赖项
+        for dep in deps:
+            if dep in rule_ids and dep not in placed:
+                for r in fix_rules:
+                    if r.get("id") == dep:
+                        _place(r)
+                        break
+        ordered.append(rule)
+        placed.add(rid)
+
+    for rule in fix_rules:
+        _place(rule)
+    return ordered
+
+
+def apply_fixes(model: DocumentModel, rules: dict[str, Any], selected_rule_ids: list[str] | None = None,
+                doc_type: str | None = None) -> DocumentModel:
     """
     Apply fix_rules from the rule set to the document model.
 
@@ -71,11 +111,17 @@ def apply_fixes(model: DocumentModel, rules: dict[str, Any], selected_rule_ids: 
         rules: Merged rule dictionary (common + type-specific)
         selected_rule_ids: If provided, only apply rules with these IDs.
                           If None, apply all rules.
+        doc_type: 公文类型（B-01 方案二：供 fix_bold_range 等文种感知规则使用）
 
     Returns:
         A new DocumentModel with fixes applied
     """
     import copy
+    # B-01（方案二）：将 doc_type 注入 rules 上下文（浅拷贝，不污染规则缓存），
+    # 供 fix_bold_range 等文种感知规则读取
+    if doc_type is not None:
+        rules = dict(rules)
+        rules['_doc_type'] = doc_type
     fixed = copy.deepcopy(model)
     fix_rules = rules.get("fix_rules", [])
 
@@ -86,6 +132,9 @@ def apply_fixes(model: DocumentModel, rules: dict[str, Any], selected_rule_ids: 
         logger.info(f"Applying {len(fix_rules)} of {len(rules.get('fix_rules', []))} fix rules (selected: {len(selected_set)} IDs)")
     else:
         logger.info(f"Applying {len(fix_rules)} fix rules")
+
+    # B-04（方案七）：按依赖声明重排——确保 FIX-C031 在 FIX-C041~C044 之后执行
+    fix_rules = _reorder_by_dependencies(fix_rules)
 
     applied = 0
     skipped = 0

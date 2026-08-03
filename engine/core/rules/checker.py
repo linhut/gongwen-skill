@@ -67,6 +67,10 @@ def check_document(model: DocumentModel, rules: dict[str, Any]) -> list[CheckIss
         elif field_path.startswith("heading_3."):
             issues.extend(_check_heading_level(model, rule_id, severity, name, field_path, expected, message, level=3))
         elif field_path.startswith("body."):
+            # B-01（方案二）：speech 文种正文整段加粗是规范，跳过 CHK-C030 整段加粗检查
+            if rules.get('_doc_type') == 'speech' and field_path.endswith('bold_range'):
+                logger.info(f"check_document: speech 文种跳过 CHK-C030（整段加粗为规范）")
+                continue
             issues.extend(_check_body(model, rule_id, severity, name, field_path, expected, message))
         elif field_path.startswith("page_setup."):
             issues.extend(_check_page_setup(model, rule_id, severity, name, field_path, expected, message))
@@ -391,9 +395,14 @@ def _check_body(model, rule_id, severity, name, field_path, expected, message) -
                 ))
         elif sub_field == "bold_range":
             # 检查正文段落是否整段加粗（通常只有首句/点题词应加粗）
-            if len(para.text.strip()) > 30 and para.runs:
+            if para.runs and para.text.strip():
                 all_bold = all(r.format.bold for r in para.runs if r.text.strip())
                 if all_bold:
+                    # B-09（方案三）：排除不应加粗的段落类型（称呼/导语/过渡/署名/会议日期等），
+                    # 避免这些段落被误标为 body 后报告"整段加粗"问题造成噪音
+                    from core.document.modifier import should_bold_first_sentence
+                    if not should_bold_first_sentence(para.text, para.role):
+                        continue
                     issues.append(CheckIssue(
                         rule_id=rule_id, check_type="content", severity=severity,
                         name=name, location=f"paragraph:{para.index}",

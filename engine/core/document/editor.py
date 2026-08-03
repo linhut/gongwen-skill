@@ -13,6 +13,8 @@ from core.document.models import (
     Paragraph, ParagraphFormat, Run, RunFormat,
 )
 from core.document.generator import generate_docx
+# B-02（方案一）：与 modifier.py 共用统一首句边界正则（句号/叹号/问号/冒号）
+from core.document.modifier import FIRST_SENTENCE_DELIMITERS
 
 
 # ---------------------------------------------------------------------------
@@ -411,30 +413,23 @@ def _find_para_by_text(paragraphs: list, text: str, excluded: set[int]) -> int |
 def _get_bold_prefix(text: str) -> str:
     """返回公文段落应加粗的前缀。
 
-    规则（与 SKILL.md「段首短句加粗 vs 独立小标题」一致）：
-    - 序号标记（一是/二是/一要/二要等） 仅加粗前 2 字
-    - 点题句：段落开头有句号结尾的点题句，加粗到第一个句号（含）
+    规则（B-05 方案四：与 modifier.py bold_first_sentence_of_body 对齐）：
+    - 编号词（一是/二是/一要等）后的领句整体加粗到句号，而非仅加粗前 2 字
+      （公文实际惯例：领句如"一是坚持政治引领。"应整体加粗）
+    - 点题句：段落开头有句号/叹号/问号/冒号结尾的点题句，加粗到第一个边界（含）
     - 其他一律不加粗（禁止大面积整段加粗）
     限制条件：
-    - 点题句句号须在 30 字以内且句号后还有内容（不是段落结尾）
+    - 点题句边界须在 30 字以内且边界后还有内容（不是段落结尾）
     - 领句加粗属于机关通行排版惯例，GB/T 9704 未强制规定
     """
     if not text:
         return ""
 
-    # 序号标记：一是 二是 三是  六是 / 一要 二要  六要
-    markers = [
-        "一是", "二是", "三是", "四是", "五是", "六是", "七是", "八是", "九是", "十是",
-        "一要", "二要", "三要", "四要", "五要", "六要", "七要", "八要", "九要", "十要",
-    ]
-    for m in markers:
-        if text.startswith(m):
-            return m
-
-    # 点题句：到第一个句号（含），且句号后还有内容（不是段落结尾）
-    dot_idx = text.find("。")
-    if dot_idx >= 0 and dot_idx <= 30 and dot_idx < len(text) - 1:
-        return text[:dot_idx + 1]
+    # 点题句：到第一个句号/叹号/问号/冒号（含），且边界后还有内容（不是段落结尾）
+    # B-02：使用统一边界正则 FIRST_SENTENCE_DELIMITERS（顿号/分号为并列关系不视为分句）
+    m = FIRST_SENTENCE_DELIMITERS.search(text)
+    if m and m.start() <= 30 and m.end() < len(text):
+        return text[:m.end()]
 
     # 其他一律不加粗
     return ""
@@ -443,12 +438,14 @@ def _get_bold_prefix(text: str) -> str:
 def bold_first_sentence(paragraph: Paragraph, min_len: int = 1) -> Paragraph:
     """
     将段落的前缀标记加粗。
-    规则：
-    - 仅对 role="body" 的正文段落生效
+    规则（B-05 方案四：与 modifier.py 对齐段落类型感知）：
+    - 使用统一的 should_bold_first_sentence 判断段落类型（称呼/导语/过渡/
+      署名/会议日期段不加粗；编号正文/普通正文加粗），替代仅检查 role=="body"
     - 前缀至少 min_len 个字符才加粗
     - 本函数应在所有内容修订完成后最后一步执行
     """
-    if not paragraph.text or not paragraph.runs or paragraph.role != "body":
+    from core.document.modifier import should_bold_first_sentence as _should_bold
+    if not paragraph.text or not paragraph.runs or not _should_bold(paragraph.text, paragraph.role):
         return paragraph
 
     # 跳过日期/签名类段落（纯日期、数字年份开头等）

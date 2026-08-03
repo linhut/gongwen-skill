@@ -52,21 +52,27 @@ class RuleEngine:
 
     def check(self, model: DocumentModel, doc_type: str) -> list[CheckIssue]:
         rules = self.load_rules(doc_type)
+        # B-01（方案二）：注入 _doc_type 供 checker 文种感知（如 CHK-C030 跳过 speech 整段加粗检查）
+        rules = dict(rules)
+        rules['_doc_type'] = doc_type
         issues = check_document(model, rules)
         logger.info(f"Check complete: {len(issues)} issues found")
         return issues
 
     def fix(self, model: DocumentModel, doc_type: str, selected_rule_ids: list[str] | None = None) -> DocumentModel:
         rules = self.load_rules(doc_type)
-        fixed_model = apply_fixes(model, rules, selected_rule_ids)
+        fixed_model = apply_fixes(model, rules, selected_rule_ids, doc_type=doc_type)
         logger.info(f"Fixes applied for type: {doc_type}")
         return fixed_model
 
     def check_and_fix(self, model: DocumentModel, doc_type: str, selected_rule_ids: list[str] | None = None) -> tuple[list[CheckIssue], DocumentModel]:
         rules = self.load_rules(doc_type)
+        # B-01（方案二）：注入 _doc_type 供 checker 文种感知
+        rules = dict(rules)
+        rules['_doc_type'] = doc_type
         issues = check_document(model, rules)
         logger.info(f"Found {len(issues)} issues before fixing")
-        fixed_model = apply_fixes(model, rules, selected_rule_ids)
+        fixed_model = apply_fixes(model, rules, selected_rule_ids, doc_type=doc_type)
         logger.info(f"Applied fixes for type: {doc_type}")
         return issues, fixed_model
 
