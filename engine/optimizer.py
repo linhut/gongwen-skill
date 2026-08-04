@@ -561,29 +561,9 @@ def create_diff_document(
             _apply_bold_from_source(runs_data, para)
 
             # 自动加粗提纲编号词（一是/二是/三是等），适用长段落中嵌入编号的场景
+            # P1-9 修复：_auto_bold_outline_items 已完整处理"编号词首句加粗 + ≥2 编号词拆分"，
+            # 删除下方重复的内联 outline 拆分逻辑（原双重执行产生 run 碎片化）
             _auto_bold_outline_items(runs_data)
-
-            # 长段嵌入场景：同段存在 >=2 个编号词时，仅加粗编号词本身
-            # 规则：将 "一是xxx" 拆为 BOLD "一是" + NORM "xxx"
-            import re as _re_outline
-            _outline_re = _re_outline.compile(r'^([一二三四五六七八九十])是')
-            _outline_indices = [i for i, rd in enumerate(runs_data)
-                               if _outline_re.match(rd.get("text", "").strip())]
-            if len(_outline_indices) >= 2:
-                _new_runs_data = []
-                for i, rd in enumerate(runs_data):
-                    _m = _outline_re.match(rd.get("text", "").strip())
-                    if _m:
-                        _prefix = _m.group()
-                        _rest = rd["text"][len(_prefix):]
-                        if _rest:
-                            _new_runs_data.append(dict(rd, text=_prefix, bold=True))
-                            _new_runs_data.append(dict(rd, text=_rest, bold=False))
-                        else:
-                            _new_runs_data.append(rd)
-                    else:
-                        _new_runs_data.append(rd)
-                runs_data = _new_runs_data
 
             # 加粗泄漏防护：body 段落中，不以编号词开头的 run 取消加粗
             # _apply_bold_from_source 会继承原文档 run 级 bold，可能将正文内容错误加粗

@@ -52,7 +52,7 @@ check_rules:
     severity: P1
     field: title.size
     expected: dynamic
-    message: 座签字号应按名长动态调整（2字名156pt，3字名120pt，4字名100pt）
+    message: 座签字号应按名长动态调整（1-2字名156pt，3字名120pt，4字名100pt，5字及以上80pt）
     category: format
 
   - id: CHK-TS002

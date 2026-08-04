@@ -389,8 +389,10 @@ def make_revision_model(
     for orig_idx, note_text in pending_notes:
         result.paragraphs.append(Paragraph(
             index=len(result.paragraphs), text=note_text, role="annotation",
+            # P2-11 修复：修改说明段字号与 optimizer.py 统一为五号 10.5pt、
+            # 灰色 #999999（原 12.0pt/#888888 与 optimizer 不一致）
             runs=[Run(index=0, text=note_text,
-                      format=RunFormat(font_name="楷体_GB2312", font_size_pt=12.0, color="888888"))],
+                      format=RunFormat(font_name="楷体_GB2312", font_size_pt=10.5, color="999999"))],
             format=ParagraphFormat(alignment="justify", line_spacing_pt=22.0),
         ))
 
@@ -514,6 +516,8 @@ def generate_revision_doc(
     output_path: str,
     doc_type: str = "notice",
     original_texts: list[tuple[str, str]] | None = None,
+    perspective: str = "",
+    background: str = "",
 ) -> str:
     """
     生成修订对比文档的完整流程。
@@ -524,6 +528,8 @@ def generate_revision_doc(
         output_path:   输出路径
         doc_type:      公文类型
         original_texts: 原文段落列表（可选，不提供则从文件解析）
+        perspective:   修改视角（P0-3：透传给 make_revision_model，写入【视角】）
+        background:    修改依据/背景（P0-3：透传给 make_revision_model，写入【依据】）
 
     Returns:
         输出文件路径
@@ -545,7 +551,9 @@ def generate_revision_doc(
     sections = compare_paragraphs(original_texts, revised_texts)
 
     # 生成修订模型（保留原文格式设定）
-    rev_model = make_revision_model(orig_model, sections, doc_type)
+    # P0-3 修复：透传 perspective/background，使修改说明包含【视角】【依据】
+    rev_model = make_revision_model(orig_model, sections, doc_type,
+                                    perspective=perspective, background=background)
 
     # 段落首句自动加粗
     bold_first_sentence_in_model(rev_model)

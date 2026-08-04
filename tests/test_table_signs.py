@@ -179,18 +179,20 @@ def test_missing_template_raises(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_table_signs_cli_requires_template():
-    """--template 必填：缺省时 argparse 报错。"""
+    """P0-7：--template 已改为非必填（内置默认模板兜底），缺省不再报 argparse 错误。"""
     import subprocess
-    r = subprocess.run([sys.executable, "gongwen.py", "table-signs", "-"],
-                       capture_output=True, text=True, timeout=60)
-    assert r.returncode != 0
-    assert "--template" in (r.stderr or "")
+    r = subprocess.run([sys.executable, "gongwen.py", "table-signs", "--help"],
+                       capture_output=True, text=True, encoding="utf-8", timeout=60)
+    assert r.returncode == 0
+    assert "--template" in (r.stdout or "")
+    assert "默认使用内置模板" in (r.stdout or "")  # 帮助文本提示零配置
 
 
 def test_table_signs_cli_placeholder_registered():
-    """--placeholder 参数已注册（help 显示）。"""
+    """--placeholder 参数已注册（help 显示；utf-8 编码防 Windows GBK 解码失败）。"""
     import subprocess
     r = subprocess.run([sys.executable, "gongwen.py", "table-signs", "--help"],
-                       capture_output=True, text=True, timeout=60)
-    assert "--placeholder" in r.stdout
-    assert "--template" in r.stdout
+                       capture_output=True, text=True, encoding="utf-8", timeout=60)
+    assert r.returncode == 0
+    assert "--placeholder" in (r.stdout or "")
+    assert "--template" in (r.stdout or "")

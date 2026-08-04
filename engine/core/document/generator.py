@@ -962,8 +962,9 @@ def _add_page_number_field(para, para_model: Paragraph) -> None:
             fld_default = OxmlElement('w:r')
             rPr_def = OxmlElement('w:rPr')
             rFonts_def = OxmlElement('w:rFonts')
-            rFonts_def.set(qn('w:eastAsia'), '宋体')
-            rFonts_def.set(qn('w:ascii'), 'Times New Roman')
+            # P1-10 修复：页码默认显示值字体改用 PAGE_NUMBER_FONT 常量，不再硬编码 '宋体'
+            rFonts_def.set(qn('w:eastAsia'), PAGE_NUMBER_FONT)
+            rFonts_def.set(qn('w:ascii'), PAGE_NUMBER_LATIN_FONT)
             rPr_def.append(rFonts_def)
             sz_def = OxmlElement('w:sz')
             sz_def.set(qn('w:val'), '28')

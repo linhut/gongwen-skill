@@ -22,24 +22,22 @@ from typing import Optional
 
 from lxml import etree
 
+from utils.logger import logger  # P0-1 修复：except 分支使用 logger 但未导入，异常时二次崩溃
+
+# P2-10 修复：修订 ID 计数器/生成/重置统一从 tracked_common 导入，
+# 消除与 tracked_annotator 的重复实现（w:id 全文档唯一语义本就该共享）
+from core.document.tracked_common import _next_rev_id, _reset_rev_counter  # noqa: F401
+
 W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 NSMAP = {'w': W}
 
-# 全局修订 ID 计数器（B3 修复：w:id 必须全文档唯一）
-_rev_id_counter = [0]
 # NS3 修复：RSID 集合上限，防止无界增长
 _RSID_SET_MAX = 4096
 
 
-def _next_rev_id() -> str:
-    """生成下一个全局唯一修订 ID。"""
-    _rev_id_counter[0] += 1
-    return str(_rev_id_counter[0])
-
-
 def _reset_rsid_tracking() -> None:
     """NS3 修复：重置修订 ID 追踪（新文档会话开始时调用）。"""
-    _rev_id_counter[0] = 0
+    _reset_rev_counter()
 
 
 class RSIDManager:

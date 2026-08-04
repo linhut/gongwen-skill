@@ -359,15 +359,82 @@ def extract_entities_hybrid(paragraphs: list[str]) -> List[Entity]:
 #  基准构建（背景资料解析）
 # ---------------------------------------------------------------------------
 
+# SEC-2/SEC-3 修复：安全 URL 抓取辅助——拒绝内网/回环地址（SSRF 防护），
+# 并限制重定向跳数（防重定向循环 / 跳转到内网后探测）
+_PRIVATE_IP_PREFIXES = (
+    "127.", "10.", "192.168.",
+    "172.16.", "172.17.", "172.18.", "172.19.", "172.2", "172.30.", "172.31.",
+    "0.", "169.254.",
+)
+
+
+def _safe_fetch_url(url: str, timeout: int = 10) -> Optional[str]:
+    """安全抓取 URL 文本内容（SSRF 防护 + 重定向限制）。
+
+    Returns:
+        响应文本（utf-8 解码），失败/不安全返回 None
+    """
+    import ipaddress
+    import socket
+    import urllib.request
+
+    # 1. scheme 校验：仅 http/https
+    if not str(url).lower().startswith(("http://", "https://")):
+        logger.warning(f"拒绝非 http(s) URL: {url[:60]}")
+        return None
+
+    # 2. 主机解析 + 内网/回环地址拒绝
+    try:
+        from urllib.parse import urlparse
+        host = urlparse(url).hostname or ""
+        # 处理 localhost 字面量
+        if host in ("localhost", "localhost.localdomain", ""):
+            logger.warning(f"拒绝内网/回环主机: {url[:60]}")
+            return None
+        # IP 字面量检查
+        try:
+            ip = ipaddress.ip_address(host)
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                logger.warning(f"拒绝内网/保留地址: {url[:60]}")
+                return None
+        except ValueError:
+            # 域名：解析后校验（解析失败按不安全处理）
+            try:
+                for _info in socket.getaddrinfo(host, None):
+                    _ip = _info[4][0]
+                    if _ip.startswith(_PRIVATE_IP_PREFIXES) or _ip in ("::1", "0.0.0.0"):
+                        logger.warning(f"拒绝内网解析地址: {url[:60]}")
+                        return None
+            except Exception:
+                logger.warning(f"域名解析失败，视为不安全: {url[:60]}")
+                return None
+    except Exception as e:
+        logger.warning(f"URL 主机校验失败: {url[:60]}: {e}")
+        return None
+
+    # 3. 限制重定向跳数（默认 urllib 最多 10 跳，收紧为 3 跳）
+    class _LimitedRedirect(urllib.request.HTTPRedirectHandler):
+        max_redirections = 3
+
+    opener = urllib.request.build_opener(_LimitedRedirect)
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with opener.open(req, timeout=timeout) as resp:
+            return resp.read().decode("utf-8", errors="ignore")
+    except Exception as e:
+        logger.debug(f"安全 URL 抓取失败: {url[:60]}: {e}")
+        return None
+
+
 def _extract_text_from_background(path: str) -> str:
     """从背景资料提取纯文本（支持 docx/pdf/md/txt/url）。"""
     p = str(path).strip().lower()
     if p.startswith(('http://', 'https://')):
-        # URL：尽力抓取正文（网络不可用时返回空）
+        # URL：尽力抓取正文（网络不可用时返回空；SEC-2 防 SSRF、SEC-3 限重定向）
         try:
-            import urllib.request
-            with urllib.request.urlopen(path, timeout=10) as resp:
-                html = resp.read().decode('utf-8', errors='ignore')
+            html = _safe_fetch_url(path, timeout=10)
+            if html is None:
+                return ""
             # 简单去 HTML 标签
             import re as _re
             return _re.sub(r'<[^>]+>', ' ', html)
@@ -418,7 +485,10 @@ def build_baseline(background_paths: list[str]) -> dict[str, dict]:
         text = _extract_text_from_background(bp)
         if not text.strip():
             continue
-        entities = extract_entities([text])
+        # P1-11 修复：按行切分为段落列表再提取实体——整篇背景作为单个"段落"会导致
+        # 跨段落上下文混淆、匹配效率低（长文档事实核验性能差）
+        para_list = [ln.strip() for ln in text.splitlines() if ln.strip()] or [text]
+        entities = extract_entities(para_list)
         for e in entities:
             prev = baseline.get(e.entity_name)
             if prev is None:
@@ -460,9 +530,10 @@ def _web_verify(entity_name: str, entity_type: str) -> Optional[str]:
     for engine_name, url_template in engines:
         try:
             url = url_template.format(q=query)
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                html = resp.read().decode('utf-8', errors='ignore')
+            # SEC-2/SEC-3 修复：改用安全抓取（SSRF 防护 + 重定向限制）
+            html = _safe_fetch_url(url, timeout=8)
+            if html is None:
+                continue
             if entity_name in html:
                 return f"互联网检索到 {entity_name} 相关信息（来源：{engine_name}，请人工核对权威性）"
         except Exception as e:

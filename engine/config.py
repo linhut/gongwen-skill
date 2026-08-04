@@ -42,7 +42,16 @@ if _env_data:
             f"GONGWEN_DATA_DIR 必须为绝对路径: {_env_data!r}，回退默认目录")
         APP_DATA_DIR = Path.home() / ".gongwen-skill"
     else:
-        APP_DATA_DIR = Path(_env_data).expanduser().resolve()
+        _data_path = Path(_env_data).expanduser()
+        # SEC-1 修复：拒绝符号链接目录（防路径替换攻击——恶意符号链接指向敏感目录时
+        # 写入规则/交接文档可能被重定向）
+        if _data_path.is_symlink():
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                f"GONGWEN_DATA_DIR 是符号链接，出于安全考虑拒绝: {_env_data!r}，回退默认目录")
+            APP_DATA_DIR = Path.home() / ".gongwen-skill"
+        else:
+            APP_DATA_DIR = _data_path.resolve()
 else:
     APP_DATA_DIR = Path.home() / ".gongwen-skill"
 

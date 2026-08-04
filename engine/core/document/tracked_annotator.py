@@ -31,17 +31,8 @@ W16 = 'http://schemas.microsoft.com/office/word/2018/wordml'  # T1 修复：W16 
 
 XML_SPACE = '{http://www.w3.org/XML/1998/namespace}space'
 
-# 全局修订 ID 计数器（与 tracked_changes 共用语义：w:id 全文档唯一）
-_rev_id_counter = [0]
-
-
-def _next_rev_id() -> str:
-    _rev_id_counter[0] += 1
-    return str(_rev_id_counter[0])
-
-
-def _reset_rev_counter() -> None:
-    _rev_id_counter[0] = 0
+# P2-10 修复：修订 ID 计数器/生成/重置统一从 tracked_common 导入（w:id 全文档唯一）
+from core.document.tracked_common import _next_rev_id, _reset_rev_counter  # noqa: F401,E402
 
 
 def _append_ai_disclaimer(root, skill_name: str = "GongWen-Skill") -> bool:

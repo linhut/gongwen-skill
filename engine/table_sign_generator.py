@@ -140,7 +140,9 @@ def _duplicate_body_for_combined(xml_bytes: bytes, names: List[str], placeholder
     root = etree.fromstring(xml_bytes)
     body = root.find(f'{{{W}}}body')
 
-    if not body:
+    # P0-2 修复：lxml Element 的布尔值为 True（即使无子元素），`if not body:` 恒为 False，
+    # 空 body 文档会静默跳过。改为显式判空。
+    if body is None or len(body) == 0:
         return xml_bytes
 
     # 获取第一个人的完整内容（整个 body）

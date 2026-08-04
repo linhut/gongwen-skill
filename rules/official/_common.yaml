@@ -191,33 +191,34 @@ table:
 # ============================================================
 check_rules:
   # --- 页面设置检查 (CHK-C001~C003, C011, C018) ---
+  # P0-6 修复：页边距期望值与 page_setup.margins 配置（省筹委会规范 2.8/2.8/2.7/2.7cm）对齐
   - id: CHK-C001
     name: "上边距检查"
     severity: P0
     field: page_setup.margins.top
-    expected: "3.7cm"
-    message: "上边距应为3.7cm（GB/T 9704标准）"
+    expected: "2.8cm"
+    message: "上边距应为2.8cm（省筹委会规范，红头文件正文区收窄）"
 
   - id: CHK-C002
     name: "左边距检查"
     severity: P0
     field: page_setup.margins.left
-    expected: "2.8cm"
-    message: "左边距应为2.8cm（GB/T 9704标准）"
+    expected: "2.7cm"
+    message: "左边距应为2.7cm（省筹委会规范）"
 
   - id: CHK-C003
     name: "右边距检查"
     severity: P0
     field: page_setup.margins.right
-    expected: "2.6cm"
-    message: "右边距应为2.6cm（GB/T 9704标准）"
+    expected: "2.7cm"
+    message: "右边距应为2.7cm（省筹委会规范）"
 
   - id: CHK-C011
     name: "下边距检查"
     severity: P0
     field: page_setup.margins.bottom
-    expected: "3.5cm"
-    message: "下边距应为3.5cm（GB/T 9704标准）"
+    expected: "2.8cm"
+    message: "下边距应为2.8cm（省筹委会规范）"
 
   - id: CHK-C018
     name: "纸张大小检查"
@@ -533,7 +534,7 @@ check_rules:
     severity: P1
     field: page_number.alignment
     expected: "center"
-    message: "页码应居中标注，格式为— X —（全角短横线）（GB/T 9704标准）"
+    message: "页码应居中标注，格式为- X -（半角短横线）（GB/T 9704标准）"
 
   - id: CHK-C029
     name: "页码字号检查"

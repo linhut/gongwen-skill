@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.48"
+__version__ = "1.12.49"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -1141,9 +1141,10 @@ def _latest_tag_from_remote(remote_url: str, timeout: int = 15) -> tuple[bool, s
     """
     import subprocess
     try:
+        # P0-4 修复：显式 utf-8 编码，避免 Windows GBK 下中文 tag 乱码/解码失败
         result = subprocess.run(
             ["git", "ls-remote", "--tags", remote_url],
-            capture_output=True, text=True, timeout=timeout,
+            capture_output=True, text=True, timeout=timeout, encoding="utf-8",
         )
         if result.returncode != 0:
             return False, result.stderr.strip()[:120] or "git ls-remote 失败"
@@ -1236,8 +1237,9 @@ def cmd_optimize_content(args):
     W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
 
     # 改进 A：加载文档类型规则（structure/focus_checks/skip_checks/title 内容层定义）
+    # P1-1 修复：统一传 None（空字符串与 None 虽同为 falsy，但混用有维护隐患）
     doc_type, type_source = _detect_doc_type(
-        Path(args.input), getattr(args, 'doc_type', None) or '')
+        Path(args.input), getattr(args, 'doc_type', None))
     content_rules: dict = {}
     try:
         from core.rules.manager import load_rules_merged
@@ -1318,8 +1320,8 @@ def cmd_optimize_content(args):
     # R1 修复：风格增强直接合入已有变更 optimized_text（auto-accept），不生成独立修订
     if args.input_tasks:
         try:
-            import json as _json
-            task_data = _json.loads(Path(args.input_tasks).read_text(encoding="utf-8"))
+            # P2-7 修复：顶层已导入 json，删除冗余 import json as _json
+            task_data = json.loads(Path(args.input_tasks).read_text(encoding="utf-8"))
             n_merge = 0
             confirmed_entities = set()  # B5：已确认实体集合
             seen_keys = set()  # B15：精确去重键集合
@@ -1550,7 +1552,8 @@ def cmd_optimize_content(args):
             "para_index": c.get("paragraph_index", 0),
             "original_text": c.get("original_text", ""),
             "optimized_text": c.get("optimized_text", ""),
-            "revision_author": c.get("revision_author", ""),  # B11 修复：传递修订作者
+            # P1-2 修复：修订作者缺省时用默认作者，避免 Word 中显示空白作者
+            "revision_author": c.get("revision_author") or "GongWen-Skill修订",  # B11 修复：传递修订作者
         } for c in changes]
         result = inject_tracked_changes(args.input, out_name, tc_changes)
         print(f"✅ 修订版文档已生成: {result}")
@@ -1570,7 +1573,8 @@ def cmd_optimize_content(args):
 
         # M2 修复：--reviewers 白名单模式——事实核验员不被截断
         # 3 精简版取核心 3 角色；5 完整版取全部 6 角色（含事实核验员）；6 显式完整版
-        reviewers_count = getattr(args, 'reviewers', 5)
+        # P1-3 修复：fallback 与 argparse 默认值（6）对齐
+        reviewers_count = getattr(args, 'reviewers', 6)
         if reviewers_count == 3:
             _ACTIVE_ROLES = ["格式审校员", "用语审校员", "综合审校员"]
         else:
@@ -1580,7 +1584,8 @@ def cmd_optimize_content(args):
             "para_index": c.get("paragraph_index", 0),
             "original_text": c.get("original_text", ""),
             "optimized_text": c.get("optimized_text", ""),
-            "revision_author": c.get("revision_author", ""),  # B11 修复：传递修订作者（风格审校）
+            # P1-2 修复：修订作者缺省时用默认作者，避免 Word 中显示空白作者
+            "revision_author": c.get("revision_author") or "GongWen-Skill修订",  # B11 修复：传递修订作者（风格审校）
         } for c in changes]
         _echo_progress(args, 2, 6, "文本匹配预检", f"{len(tc_changes)}/{len(tc_changes)} 完全匹配")
 
@@ -1643,7 +1648,7 @@ def cmd_optimize_content(args):
         # V1：--output-tasks 模式——收集待 Agent 处理任务输出 JSON，跳过核验/风格批注注入
         if args.output_tasks:
             try:
-                import json as _json
+                # P2-7 修复：顶层已导入 json，删除冗余 import json as _json
                 # 实体提取（不做互联网核验，交 Agent）
                 from fact_check import extract_entities_hybrid
                 from core.document.parser import parse_docx as _fc_parse
@@ -1677,12 +1682,14 @@ def cmd_optimize_content(args):
                 # 风格评分（数据驱动）
                 style_scores = _compute_style_scores(
                     _fc_paras, content_rules, paragraph_roles,
+                    # P1-4 修复：paragraph_index 为 None 时不再转 -1（-1 会被误关联到段落），
+                    # 保留 None 由 _compute_style_scores 内部统一处理
                     [{"severity": i.severity, "section_name": i.section_name,
                       "issue_type": i.issue_type, "message": i.message,
-                      "elements": i.elements, "paragraph_index": i.paragraph_index if i.paragraph_index is not None else -1}
+                      "elements": i.elements, "paragraph_index": i.paragraph_index}
                      for i in struct_issues],
                     [{"severity": i.severity, "check_name": i.check_name,
-                      "message": i.message, "paragraph_index": i.paragraph_index if i.paragraph_index is not None else -1}
+                      "message": i.message, "paragraph_index": i.paragraph_index}
                      for i in focus_issues],
                     changes,
                     style_prompt=style_prompt,  # E2：传入风格提示词供偏差方向提示
@@ -1767,8 +1774,7 @@ def cmd_optimize_content(args):
                 }
                 Path(args.output_tasks).write_text(
                     _json.dumps(tasks_data, ensure_ascii=False, indent=2), encoding="utf-8")
-                print(f"📤 --output-tasks(v2): 已输出 {len(entity_tasks)} 个待核验实体 + 风格增强请求（含段落角色/规则摘要/结构焦点问题/风格评分）→ {args.output_tasks}")
-                print(f"📤 --output-tasks: 已输出 {len(entity_tasks)} 个待核验实体 + 风格增强请求 → {args.output_tasks}")
+                print(f"📤 --output-tasks: 已输出 {len(entity_tasks)} 个待核验实体 + 风格增强请求（含段落角色/规则摘要/结构焦点问题/风格评分）→ {args.output_tasks}")
                 print("   （基础版文档仍生成：含内容修订+结构/焦点检查批注，不含事实核验与风格建议）")
             except Exception as e:
                 print(f"  ⚠️ --output-tasks 输出失败（{e}），继续默认流程", file=sys.stderr)
@@ -1981,7 +1987,8 @@ def cmd_full_review(args):
     from core.document.annotator import GongwenAnnotator, CommentSuggestion
 
     input_path = Path(args.input)
-    doc_type = _detect_doc_type(input_path, getattr(args, 'doc_type', ''))[0]
+    # P1-1 修复：统一传 None
+    doc_type = _detect_doc_type(input_path, getattr(args, 'doc_type', None))[0]
 
     # 1. 路径 A：格式修复
     print(f"🔧 步骤1/3 格式修复（路径 A，类型 {doc_type}）...")
@@ -2111,12 +2118,15 @@ def cmd_fix_common(args):
 
     # [3/7] 段落类型检测与格式修正（P1-12：复用规则引擎 apply_fixes，
     # 与 optimize 走同一套 FIX-C041~C044 修复逻辑，不再独立硬编码）
-    doc_type, type_source = _detect_doc_type(input_path, getattr(args, 'doc_type', None) or '')
+    # P1-1 修复：统一传 None
+    doc_type, type_source = _detect_doc_type(input_path, getattr(args, 'doc_type', None))
     rules = load_rules_merged(doc_type)
     snapshot = _copy.deepcopy(model)
-    fixed = apply_fixes(model, rules, selected_rule_ids=[
-        'FIX-C013b', 'FIX-C041', 'FIX-C042', 'FIX-C043', 'FIX-C044',
-    ])
+    # P1-5 修复：selected_rule_ids 从当前文种实际存在的 fix_rules 中动态筛选，
+    # 不再硬编码——非 notice 文种若未定义某规则则不应用，避免意外修复
+    _ALLOWED = {'FIX-C013b', 'FIX-C041', 'FIX-C042', 'FIX-C043', 'FIX-C044'}
+    _avail = {r.get('id') for r in rules.get('fix_rules', [])}
+    fixed = apply_fixes(model, rules, selected_rule_ids=sorted(_ALLOWED & _avail))
     n_fmt = _count_fmt_changes(snapshot, fixed)
     model = fixed
     print(f"[3/7] 段落类型格式修正（规则引擎 FIX-C041~C044, {doc_type}）: {n_fmt} 处")
@@ -2287,16 +2297,18 @@ def cmd_table_signs(args):
     if args.combined:
         # 合并模式
         out = Path(args.output) if args.output else Path(f"桌签-合并-{len(names)}人.docx")
-        # 方案一（P0-2）：传入 template_path，避免 ValueError: 缺少桌签模板
+        # 方案一（P0-2）：传入 template_path（P0-7：None 时由生成器 fallback 到内置默认模板）
+        tmpl = Path(args.template) if getattr(args, "template", None) else None
         generate_table_signs_combined(names, out,
-                                      template_path=Path(args.template),
+                                      template_path=tmpl,
                                       placeholder=getattr(args, "placeholder", "Jose AI"))
         print(f"✅ 合并桌签已生成: {out}")
     else:
         # 每人独立文件
         out_dir = Path(args.output) if args.output else Path("./桌签")
+        tmpl = Path(args.template) if getattr(args, "template", None) else None
         files = generate_table_signs(names, out_dir, prefix=args.prefix,
-                                     template_path=Path(args.template),
+                                     template_path=tmpl,
                                      placeholder=getattr(args, "placeholder", "Jose AI"))
         print(f"✅ 共生成 {len(files)} 份桌签:")
         for f in files:
@@ -2306,7 +2318,6 @@ def cmd_table_signs(args):
 def cmd_audit(args):
     """审计文档处理链：检查文档格式合规性、删除线问题、bold-first 影响。"""
     from lxml import etree
-    from docx.oxml.ns import qn
     from core.document.parser import parse_docx
     from pathlib import Path
 
@@ -2579,7 +2590,7 @@ def main():
     p.add_argument("--no-style-enhance", action="store_true",
                    help="V3：禁用风格增强步骤（默认启用）")
     p.add_argument("--quiet", action="store_true", help="安静模式：仅输出最终结果，不显示分步进度")
-    p.add_argument("--verbose", action="store_true", help="详细模式：输出每个 run 的匹配细节")
+    # P1-8 修复：移除从未使用的 --verbose 参数（cmd 函数内无任何引用）
     p.set_defaults(func=cmd_optimize_content)
 
     p = sub.add_parser("bold-first", help="正文段落首句加粗（符合公文规范：点题第一句话默认加粗）")
@@ -2622,9 +2633,10 @@ def main():
     p.add_argument("-o", "--output", help="输出目录（默认 ./桌签/；每人单独文件）或输出 .docx 路径（配合 --combined）")
     p.add_argument("--combined", action="store_true", help="合并为一个多页文档（默认每人一个独立文件）")
     p.add_argument('--prefix', default='桌签', help='独立文件时文件名前缀（默认"桌签"）')
-    # 方案一（P0-1）：--template 必填，指定座签模板 .dotx 路径
-    p.add_argument("--template", required=True,
-                   help="座签模板 .dotx 路径（如 F:/模板/座签模板.dotx）")
+    # P0-7 修复：--template 改非必填——方案六已内置默认模板（engine/templates/table_sign.dotx），
+    # 未传时走默认模板，实现零配置；传了则覆盖
+    p.add_argument("--template",
+                   help="座签模板 .dotx 路径（默认使用内置模板；如 F:/模板/座签模板.dotx）")
     # 方案五（P2-3）：占位符参数化
     p.add_argument("--placeholder", default="Jose AI",
                    help="座签模板中占位文本（默认 Jose AI）")
