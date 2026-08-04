@@ -727,6 +727,12 @@ fix_rules:
     target: heading_4
     value: "2em"
 
+  # --- 文字颜色统一（FIX-C051：正文区文字统一为黑色，跳过 annotation 标注段） ---
+  - id: FIX-C051
+    action: set_color
+    target: all
+    value: "000000"
+
   # --- 正文加粗范围修复（在 set_bold 之后执行，覆盖整段加粗） ---
   - id: FIX-C031
     action: fix_bold_range

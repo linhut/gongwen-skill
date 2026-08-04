@@ -114,6 +114,41 @@ def modify_font(model: DocumentModel, target: str, font_name: str) -> None:
                 run.format.font_name = font_name
 
 
+def unify_text_color(model: DocumentModel, color: str = "000000") -> int:
+    """
+    统一正文/标题/署名等正文区 run 的文字颜色为黑色（缺省 000000）。
+
+    修复"格式优化未考虑颜色"的问题：AI 生成或复制内容常带有红/蓝/彩色文字，
+    按公文规范正文区应统一为黑色。跳过 annotation 角色（修改说明段/批注段
+    的灰色/红色标注是有意保留的）。
+
+    Args:
+        model: 文档模型（原地修改）
+        color: 目标颜色（RGB 十六进制，不含 #）
+
+    Returns:
+        被修改的 run 数
+    """
+    if not color:
+        return 0
+    color = str(color).lstrip('#').lower()
+    if len(color) != 6:
+        return 0
+    changes = 0
+    for para in model.paragraphs:
+        if para.role == 'annotation':
+            continue  # 修改说明/批注段保留原标注色
+        for run in para.runs:
+            if run.format and run.text and run.text.strip():
+                cur = (run.format.color or "").lstrip('#').lower()
+                if cur and cur != color:
+                    run.format.color = color
+                    changes += 1
+    if changes:
+        logger.info(f"unify_text_color: {changes} run(s) 颜色统一为 #{color}")
+    return changes
+
+
 def modify_size(model: DocumentModel, target: str, size_pt: float | None) -> None:
     """修改指定段落的字号。无论当前值是否为 None，统一设置为目标字号。"""
     if size_pt is None:
@@ -211,11 +246,29 @@ def clean_path_b_markers(model: DocumentModel) -> int:
 
 
 def remove_extra_spaces(model: DocumentModel) -> None:
-    """清除段落中的多余空格（连续2个以上空格压缩为1个）。"""
+    """清除段落中的多余空格（AI 生成内容通病修复）。
+
+    处理三类：
+    1. 连续 2+ 空格压缩为 1 个
+    2. 段落开头的句前空格（^ +）删除——首行缩进由 first_line_indent 属性实现，
+       不应依赖空格
+    3. 中文标点（，。；：！？、）前的空格删除（中文排版标点前不应有空格）
+    """
     for para in model.paragraphs:
         for run in para.runs:
-            if run.text and '  ' in run.text:
-                run.text = re.sub(r' {2,}', ' ', run.text)
+            if not run.text:
+                continue
+            t = run.text
+            # 1. 连续空格压缩
+            if '  ' in t:
+                t = re.sub(r' {2,}', ' ', t)
+            # 2. 句前空格：run 开头（或段落开头）的空格删除
+            if t.startswith(' '):
+                t = re.sub(r'^ +', '', t)
+            # 3. 中文标点前空格删除（，。；：！？、）——AI 生成常在标点前加空格
+            if re.search(r' [，。；：！？、]', t):
+                t = re.sub(r' ([，。；：！？、])', r'\1', t)
+            run.text = t
 
 
 def remove_extra_blank_lines(model: DocumentModel, mode: str = 'delete_single',

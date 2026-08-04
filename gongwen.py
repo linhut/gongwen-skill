@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.49"
+__version__ = "1.12.50"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -561,6 +561,10 @@ def cmd_md2docx(args):
         ))
 
     # 生成 docx（P1: --no-ai-declaration 跳过 AI 声明段）
+    # AI 生成内容通病修复：去除句前空格 + 统一文字颜色为黑色（md2docx 不走规则引擎，手动调用）
+    from core.document.modifier import remove_extra_spaces, unify_text_color
+    remove_extra_spaces(model)
+    unify_text_color(model)
     if args.output:
         out = Path(args.output)
     else:
@@ -2124,7 +2128,9 @@ def cmd_fix_common(args):
     snapshot = _copy.deepcopy(model)
     # P1-5 修复：selected_rule_ids 从当前文种实际存在的 fix_rules 中动态筛选，
     # 不再硬编码——非 notice 文种若未定义某规则则不应用，避免意外修复
-    _ALLOWED = {'FIX-C013b', 'FIX-C041', 'FIX-C042', 'FIX-C043', 'FIX-C044'}
+    # 颜色统一（FIX-C051）+ 空格清理（FIX-C004）一并纳入
+    _ALLOWED = {'FIX-C013b', 'FIX-C041', 'FIX-C042', 'FIX-C043', 'FIX-C044',
+                'FIX-C004', 'FIX-C051'}
     _avail = {r.get('id') for r in rules.get('fix_rules', [])}
     fixed = apply_fixes(model, rules, selected_rule_ids=sorted(_ALLOWED & _avail))
     n_fmt = _count_fmt_changes(snapshot, fixed)

@@ -20,6 +20,7 @@ from core.document.modifier import (
     remove_extra_spaces, remove_extra_blank_lines,
     normalize_punctuation, normalize_heading_content,
     convert_markdown, fix_bold_range,
+    unify_text_color,  # 颜色统一：正文区文字统一为黑色
     _parse_pt_value, _parse_indent_value,
 )
 from utils.logger import logger
@@ -58,6 +59,9 @@ _ACTION_MAP = {
     "normalize_headings": lambda model, target, value, _rules: normalize_heading_content(model),
     "set_page_number": lambda model, target, value, _rules: _apply_page_number(model, target, value),
     "fix_paragraph_type": lambda model, target, value, _rules: _apply_fix_paragraph_type(model, target, value),
+    # 颜色统一：正文区文字统一为黑色（跳过 annotation 标注段）
+    "set_color": lambda model, target, value, _rules: unify_text_color(model, str(value)),
+    "unify_color": lambda model, target, value, _rules: unify_text_color(model, str(value)),
 }
 
 # B-04（方案七）：规则执行顺序依赖——FIX-C031（fix_bold_range）必须在
