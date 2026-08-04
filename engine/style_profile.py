@@ -334,10 +334,10 @@ def build_user_rule_yaml(profile: StyleProfile, template_name: str) -> str:
             'paper_width_mm': profile.page.get('width_mm'),
             'paper_height_mm': profile.page.get('height_mm'),
             'margins': {
-                'top': f"{profile.margins.get('top', 3.7)}cm",
-                'bottom': f"{profile.margins.get('bottom', 3.5)}cm",
-                'left': f"{profile.margins.get('left', 2.8)}cm",
-                'right': f"{profile.margins.get('right', 2.6)}cm",
+                'top': f"{profile.margins.get('top', 2.8)}cm",
+                'bottom': f"{profile.margins.get('bottom', 2.8)}cm",
+                'left': f"{profile.margins.get('left', 2.7)}cm",
+                'right': f"{profile.margins.get('right', 2.7)}cm",
             },
         }
 

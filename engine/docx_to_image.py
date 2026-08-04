@@ -33,7 +33,7 @@ def _convert_with_soffice(docx_path: Path, pdf_path: Path, soffice: str) -> bool
     try:
         subprocess.run(
             [soffice, "--headless", "--convert-to", "pdf", "--outdir", str(pdf_path.parent), str(docx_path)],
-            capture_output=True, timeout=120,
+            capture_output=True, timeout=120, encoding='utf-8',  # FIX-C002：统一 encoding
         )
         produced = pdf_path.parent / f"{docx_path.stem}.pdf"
         if produced.exists():
@@ -70,7 +70,7 @@ def _render_pdf_to_images(pdf_path: Path, outdir: Path, dpi: int, fmt: str, page
                 pass
         cmd += [str(pdf_path), str(prefix)]
         try:
-            subprocess.run(cmd, capture_output=True, timeout=120)
+            subprocess.run(cmd, capture_output=True, timeout=120, encoding='utf-8')  # FIX-C002：统一 encoding
             images = sorted(outdir.glob(f"page-*.{fmt}"))
             if images:
                 return images

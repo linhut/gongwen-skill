@@ -93,14 +93,14 @@ def inject_header(output_path: str, header_config: dict) -> None:
         set_run_font(run_org, TITLE_FONT)
         run_org.font.size = Pt(30)
         run_org.font.color.rgb = RGBColor(0xE0, 0x00, 0x00)
-        p_org.paragraph_format.line_spacing = Pt(28.95)
+        p_org.paragraph_format.line_spacing = Pt(33)
         p_org.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
         _insert_before(p_org, first_p, body)
 
         # 2. 空二行（保持版头与发文字号之间的间距）
         for _ in range(2):
             p_empty = doc.add_paragraph()
-            p_empty.paragraph_format.line_spacing = Pt(28.95)
+            p_empty.paragraph_format.line_spacing = Pt(33)
             p_empty.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
             _insert_before(p_empty, first_p, body)
 
@@ -123,7 +123,7 @@ def inject_header(output_path: str, header_config: dict) -> None:
             p_num = doc.add_paragraph()
             p_num.alignment = WD_ALIGN_PARAGRAPH.LEFT
             pf = p_num.paragraph_format
-            pf.line_spacing = Pt(28.95)
+            pf.line_spacing = Pt(33)
             pf.line_spacing_rule = WD_LINE_SPACING.EXACTLY
 
             tabs_el = OxmlElement('w:tabs')
@@ -150,7 +150,7 @@ def inject_header(output_path: str, header_config: dict) -> None:
             run_num = p_num.add_run(doc_number)
             set_run_font(run_num, BODY_FONT)
             run_num.font.size = Pt(16)
-            p_num.paragraph_format.line_spacing = Pt(28.95)
+            p_num.paragraph_format.line_spacing = Pt(33)
             p_num.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
             _insert_before(p_num, first_p, body)
         elif signer:
@@ -160,7 +160,7 @@ def inject_header(output_path: str, header_config: dict) -> None:
             run_signer = p_signer.add_run(f'签发人：{signer}')
             set_run_font(run_signer, BODY_FONT)
             run_signer.font.size = Pt(16)
-            p_signer.paragraph_format.line_spacing = Pt(28.95)
+            p_signer.paragraph_format.line_spacing = Pt(33)
             p_signer.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
             _insert_before(p_signer, first_p, body)
 
@@ -226,7 +226,7 @@ def inject_footer(output_path: str, footer_config: dict) -> None:
             ph, tm, bm = section.page_height, section.top_margin, section.bottom_margin
             if ph and tm and bm:
                 content_height_emu = ph - tm - bm
-                line_height_emu = 367665  # ≈ 28.95pt
+                line_height_emu = 419100  # ≈ 33pt（FIX-A001：28.95pt→33pt 同步）
                 lines_per_page = int(content_height_emu / line_height_emu)
                 para_count = len(doc.paragraphs)
                 MIN_LINES_FOR_FOOTER = 3
@@ -295,7 +295,7 @@ def inject_footer(output_path: str, footer_config: dict) -> None:
             run_cc = p_cc.add_run(f'抄送：{cc}。')
             set_run_font(run_cc, BODY_FONT)
             run_cc.font.size = Pt(16)
-            p_cc.paragraph_format.line_spacing = Pt(28.95)
+            p_cc.paragraph_format.line_spacing = Pt(33)
             p_cc.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
             pPr_cc = p_cc._element.get_or_add_pPr()
             ind_cc = OxmlElement('w:ind')
@@ -322,7 +322,7 @@ def inject_footer(output_path: str, footer_config: dict) -> None:
             tabs_el.append(tab_el)
             pPr_info.append(tabs_el)
             spacing = OxmlElement('w:spacing')
-            spacing.set(qn('w:line'), '579')
+            spacing.set(qn('w:line'), '660')
             spacing.set(qn('w:lineRule'), 'exact')
             pPr_info.append(spacing)
             if printer:

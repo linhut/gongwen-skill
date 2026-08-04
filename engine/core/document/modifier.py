@@ -1328,7 +1328,7 @@ def _split_inline_headings(model: DocumentModel) -> None:
                 font_name='仿宋_GB2312', font_size_pt=16,
             ))],
             format=ParagraphFormat(
-                alignment='justify', line_spacing_pt=28.95, first_line_indent_pt=32.0,
+                alignment='justify', line_spacing_pt=33, first_line_indent_pt=32.0,
             ),
         )
 

@@ -111,7 +111,7 @@ body:
   font: "仿宋_GB2312"
   font_fallback: "FangSong"
   size: 16pt
-  line_spacing: 28.95pt
+  line_spacing: 33pt
   first_line_indent: 2em
   align: justify
 
@@ -391,8 +391,8 @@ check_rules:
     name: "正文行距检查"
     severity: P1
     field: body.line_spacing
-    expected: 28.95pt
-    message: "正文行距应为固定值28磅（GB/T 9704标准）"
+    expected: 33pt
+    message: "正文行距应为固定值33磅（与标题行距统一，省筹委会规范）"
 
   - id: CHK-C012
     name: "正文首行缩进检查"
@@ -585,17 +585,17 @@ fix_rules:
     ref_check: CHK-C006
     action: set_line_spacing
     target: body
-    value: 28.95pt
+    value: 33pt
 
   # --- 页面设置修复 ---
   - id: FIX-C003
     action: set_page_margins
     target: page_setup
     value:
-      top: 3.7cm
-      bottom: 3.5cm
-      left: 2.8cm
-      right: 2.6cm
+      top: 2.8cm
+      bottom: 2.8cm
+      left: 2.7cm
+      right: 2.7cm
 
   # --- 大标题修复 ---
   - id: FIX-C016

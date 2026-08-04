@@ -157,6 +157,50 @@ def test_generate_with_default_template(tmp_path):
     assert "张三" in files[0].name
 
 
+def test_default_template_layout_matches_sample():
+    """默认模板排版参数与示例模板（E:/座签制作/示新座签.docx）一致。
+
+    校验：A4 页面/页边距/表格 2 行 1 列/表格宽 10838 twips/行高 9.65cm/
+    边框 single sz=4 color=auto/华文新魏 156pt 不加粗。
+    """
+    from table_sign_template import build_default_template, DEFAULT_TEMPLATE_PATH
+    from docx import Document
+
+    build_default_template()  # 确保按当前代码重新生成
+    doc = Document(str(DEFAULT_TEMPLATE_PATH))
+    s = doc.sections[0]
+    t = doc.tables[0]
+    W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+    tblW = t._tbl.tblPr.find(W + 'tblW')
+    borders = t._tbl.tblPr.find(W + 'tblBorders')
+    trH = t.rows[0]._tr.trPr.find(W + 'trHeight')
+    run = t.cell(0, 0).paragraphs[0].runs[0]
+
+    # 页面：A4 纵向 + 边距（示例实测）
+    assert abs(s.page_width.cm - 20.99) < 0.05
+    assert abs(s.page_height.cm - 29.70) < 0.05
+    assert abs(s.top_margin.cm - 2.69) < 0.05 and abs(s.bottom_margin.cm - 2.69) < 0.05
+    assert abs(s.left_margin.cm - 2.79) < 0.05 and abs(s.right_margin.cm - 2.79) < 0.05
+
+    # 表格：2 行 1 列（正反各 1 行）、宽 10838 twips、行高 5472 twips atLeast
+    assert len(t.rows) == 2 and len(t.columns) == 1
+    assert tblW is not None and tblW.get(W + 'w') == '10838'
+    assert trH is not None and abs(int(trH.get(W + 'val')) - 5472) <= 1
+    assert trH.get(W + 'hRule') == 'atLeast'
+
+    # 边框：single sz=4 color=auto
+    assert borders is not None
+    b = borders[0]
+    assert b.get(W + 'val') == 'single' and b.get(W + 'sz') == '4' and b.get(W + 'color') == 'auto'
+
+    # 字体字号：华文新魏 156pt 不加粗，占位符两行均有
+    assert run.font.name == '华文新魏'
+    assert run.font.size.pt == 156
+    assert run.font.bold is False
+    assert 'Jose AI' in t.cell(0, 0).paragraphs[0].text
+    assert 'Jose AI' in t.cell(1, 0).paragraphs[0].text
+
+
 def test_generate_combined_with_default_template(tmp_path):
     """使用内置默认模板生成合并桌签。"""
     from table_sign_generator import DEFAULT_TEMPLATE

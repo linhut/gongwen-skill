@@ -102,8 +102,8 @@ def _format_name(name: str) -> str:
     - len(显示字符) == 2 → "张  三"（2个空格）
     - 其他 → 原样
     """
-    # 去掉潜在空格再判断
-    cleaned = name.replace(' ', '').strip()
+    # 去掉潜在空格再判断（FIX-B001 L3：深层剥离残留 BOM 字符）
+    cleaned = name.replace(' ', '').replace('\ufeff', '').strip()
     if len(cleaned) == 2:
         # 在两个字之间插入 2 个空格
         return cleaned[0] + '  ' + cleaned[1]
@@ -304,7 +304,12 @@ def parse_name_list(text: str) -> List[str]:
     - 每行一个人名
     - 逗号/空格/顿号分隔的多个人名（在同一行）
     - 空行和 # 注释被忽略
+
+    FIX-B001 L2（防御）：入口剥离 UTF-8 BOM（\ufeff 的 isspace() 为 False，
+    strip()/正则 \\s 均无法去除），防止首个名字长度 +1 导致字号降档。
     """
+    if text and text[0] == '\ufeff':
+        text = text[1:]
     names: List[str] = []
     for line in text.splitlines():
         line = line.strip()

@@ -33,21 +33,22 @@ PLACEHOLDER = "Jose AI"
 FONT_NAME = "华文新魏"
 FONT_SIZE_PT = 156  # 两字名
 TABLE_COLUMNS = 1
+TABLE_ROWS = 2       # 每名占 2 行（正反各 1 行，对齐示例模板结构）
 TABLE_ROW_HEIGHT_CM = 9.65
 TABLE_WIDTH_PT = 541.9
 
 
 def _set_cell_shading_and_borders(table) -> None:
-    """为表格设置边框（细黑框），使座签在打印时轮廓清晰。"""
+    """为表格设置边框（示例模板：single sz=4 color=auto），使座签在打印时轮廓清晰。"""
     tbl = table._tbl
     tblPr = tbl.tblPr
-    # 边框定义
+    # 边框定义（对齐示例文档：val=single sz=4 color=auto）
     borders = OxmlElement("w:tblBorders")
     for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
         el = OxmlElement(f"w:{edge}")
         el.set(qn("w:val"), "single")
         el.set(qn("w:sz"), "4")  # 0.5pt
-        el.set(qn("w:color"), "000000")
+        el.set(qn("w:color"), "auto")
         borders.append(el)
     tblPr.append(borders)
 
@@ -76,10 +77,10 @@ def build_default_template(output_path: Path | None = None) -> Path:
 
     doc = Document()
 
-    # 页面设置：A4 纵向 + 页边距 + 页眉/页脚距离
+    # 页面设置：A4 纵向 + 页边距 + 页眉/页脚距离（对齐示例模板实测）
     section = doc.sections[0]
-    section.page_width = Cm(21.0)
-    section.page_height = Cm(29.7)
+    section.page_width = Cm(20.99)
+    section.page_height = Cm(29.70)
     section.top_margin = Cm(2.69)
     section.bottom_margin = Cm(2.69)
     section.left_margin = Cm(2.79)
@@ -87,34 +88,40 @@ def build_default_template(output_path: Path | None = None) -> Path:
     section.header_distance = Cm(1.50)
     section.footer_distance = Cm(1.75)
 
-    # 1 列表格：行高 9.65cm At Least，对齐居中，宽度 541.9pt
-    table = doc.add_table(rows=1, cols=TABLE_COLUMNS)
+    # 1 列表格（每名占 2 行：正反各 1 行，对齐示例 42 行整卷模板的行结构）：
+    # 行高 9.65cm At Least，对齐居中，宽度 541.9pt
+    table = doc.add_table(rows=TABLE_ROWS, cols=TABLE_COLUMNS)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.autofit = False
-    # 设置表格宽度（541.9pt ≈ 19.12cm）
+    # 设置表格宽度（541.9pt ≈ 19.12cm，对齐示例 10838 twips）
     tbl = table._tbl
     tblPr = tbl.tblPr
+    # 修复：doc.add_table 会自动创建 <w:tblW w:w="0" type="auto"/>，若直接 append 新 tblW
+    # 会形成两个节点，python-docx 读取到的是 auto 0 值。先移除旧节点再写入正确宽度。
+    old_tblW = tblPr.find(qn("w:tblW"))
+    if old_tblW is not None:
+        tblPr.remove(old_tblW)
     tblW = OxmlElement("w:tblW")
-    tblW.set(qn("w:w"), str(int(TABLE_WIDTH_PT * 20)))  # 1pt = 20 twips
+    tblW.set(qn("w:w"), str(int(TABLE_WIDTH_PT * 20)))  # 1pt = 20 twips → 10838
     tblW.set(qn("w:type"), "dxa")
     tblPr.append(tblW)
     _set_cell_shading_and_borders(table)
 
-    cell = table.cell(0, 0)
-    _set_row_height(table.rows[0], TABLE_ROW_HEIGHT_CM)
-
-    # 单元格内容：华文新魏 156pt 不加粗，占位符 "Jose AI"
-    para = cell.paragraphs[0]
-    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = para.add_run(PLACEHOLDER)
-    run.font.name = FONT_NAME
-    run._element.rPr.rFonts.set(qn("w:eastAsia"), FONT_NAME)
-    run.font.size = Pt(FONT_SIZE_PT)
-    run.font.bold = False
-    # 段落无缩进，垂直方向尽量居中
-    para.paragraph_format.space_before = Pt(0)
-    para.paragraph_format.space_after = Pt(0)
-    para.paragraph_format.line_spacing = 1.0
+    # 每行：行高 9.65cm At Least + 单元格内容（华文新魏 156pt 不加粗，占位符）
+    for row in table.rows:
+        _set_row_height(row, TABLE_ROW_HEIGHT_CM)
+        cell = row.cells[0]
+        para = cell.paragraphs[0]
+        para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = para.add_run(PLACEHOLDER)
+        run.font.name = FONT_NAME
+        run._element.rPr.rFonts.set(qn("w:eastAsia"), FONT_NAME)
+        run.font.size = Pt(FONT_SIZE_PT)
+        run.font.bold = False
+        # 段落无缩进，垂直方向尽量居中
+        para.paragraph_format.space_before = Pt(0)
+        para.paragraph_format.space_after = Pt(0)
+        para.paragraph_format.line_spacing = 1.0
 
     # 保存为 .dotx 模板
     doc.save(str(out))

@@ -321,20 +321,20 @@ def _collect_para_nodes(body) -> list:
 
 
 def _anchor_comment(p, cid: int) -> bool:
-    """在段落上锚定 commentRangeStart/End/Reference（整段锚定，D2 回退方案）。
+    """在段落上锚定 commentRangeStart/End/Reference（整段锚定）。
 
-    M4 修复：锚定失败（段落无文本 run）时返回 False 并记录日志，供调用方排查。
-    S1-B 修复：修订标记（w:del/w:ins）内 run 也参与搜索，避免锚定失败。
+    FIX-A002 修复：修订标记（w:del/w:ins）内 run 的父级不是 w:p 直接子元素，
+    addprevious/addnext 会把 commentRangeStart/End 插到 w:del/w:ins 内部——
+    OOXML 规范要求 commentRangeStart/End 必须是 w:p 直接子元素。
+    因此先向上追溯，找到 run 在 w:p 下的直接子元素作为锚定点。
+
+    FIX-B003 修复：纯删除段落的 run 只有 w:delText（无 w:t），
+    搜索条件同时匹配 w:t 与 w:delText；删除原 S1-B 的 p.iter(tag) 重复搜索。
     """
-    runs = [r for r in p.iter(f'{{{W}}}r') if ''.join(t.text or '' for t in r.findall(f'{{{W}}}t'))]
-    if not runs:
-        # S1-B：尝试在 w:del / w:ins 内搜索文本 run（修订标记包裹的段落）
-        for tag in (f'{{{W}}}del', f'{{{W}}}ins'):
-            for parent in p.iter(tag):
-                for r in parent.findall(f'{{{W}}}r'):
-                    text = ''.join(t.text or '' for t in r.findall(f'{{{W}}}t'))
-                    if text:
-                        runs.append(r)
+    # 搜索含文本的 run（含 w:delText），不再用 p.iter(tag) 二次搜索
+    runs = [r for r in p.iter(f'{{{W}}}r')
+            if ''.join(t.text or '' for t in r.findall(f'{{{W}}}t'))
+            or any(dt.text for dt in r.findall(f'{{{W}}}delText'))]
     if not runs:
         try:
             from utils.logger import logger
@@ -342,12 +342,31 @@ def _anchor_comment(p, cid: int) -> bool:
         except Exception:
             pass
         return False
+
+    # FIX-A002 关键修复：向上追溯，找到 run 在 w:p 直接子元素中的锚定点
+    def _find_insert_point(run):
+        """向上追溯，返回 run 所在的 w:p 直接子元素（w:ins/w:del/r 等）。"""
+        node = run
+        while node is not None and node.getparent() is not p:
+            node = node.getparent()
+        return node
+
+    first_anchor = _find_insert_point(runs[0])
+    last_anchor = _find_insert_point(runs[-1])
+    if first_anchor is None or last_anchor is None:
+        from utils.logger import logger
+        logger.warning(f"批注 #{cid} 锚定失败：run 不在段落直接子元素链上")
+        return False
+
     crs = etree.Element(f'{{{W}}}commentRangeStart')
     crs.set(f'{{{W}}}id', str(cid))
-    runs[0].addprevious(crs)
+    first_anchor.addprevious(crs)
+
     cre = etree.Element(f'{{{W}}}commentRangeEnd')
     cre.set(f'{{{W}}}id', str(cid))
-    runs[-1].addnext(cre)
+    last_anchor.addnext(cre)
+
+    # commentReference run（附加到 w:p 末尾）
     cr = etree.Element(f'{{{W}}}r')
     crPr = etree.SubElement(cr, f'{{{W}}}rPr')
     rStyle = etree.SubElement(crPr, f'{{{W}}}rStyle')

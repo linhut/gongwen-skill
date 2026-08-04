@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.50"
+__version__ = "1.12.51"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -373,16 +373,17 @@ def cmd_md2docx(args):
     from core.document.modifier import convert_markdown
     from core.rules.manager import load_rules_merged
 
-    # 读取输入
+    # 读取输入（FIX-C001：utf-8-sig 自动剥离 BOM——BOM 字符使 Markdown # 号标题正则失配，
+    # BOM 和 # 被原样写入 docx；无 BOM 时 utf-8-sig 与 utf-8 完全一致）
     text: str
     source_desc: str
     input_src = args.input
     if input_src == "-":
         raw = sys.stdin.buffer.read()
-        text = raw.decode("utf-8")
+        text = raw.decode("utf-8-sig")
         source_desc = "stdin"
     else:
-        text = Path(input_src).read_text(encoding="utf-8")
+        text = Path(input_src).read_text(encoding="utf-8-sig")
         source_desc = input_src
 
     # 解析 Front Matter
@@ -463,7 +464,7 @@ def cmd_md2docx(args):
         model.paragraphs.append(Paragraph(
             index=0, text=rcp_text, role="recipient",
             runs=[Run(index=0, text=rcp_text, format=RunFormat(font_name="仿宋_GB2312", font_size_pt=16.0))],
-            format=ParagraphFormat(alignment="justify", first_line_indent_pt=0, line_spacing_pt=28.95),
+            format=ParagraphFormat(alignment="justify", first_line_indent_pt=0, line_spacing_pt=33),
         ))
 
     # 正文行：每行一个段落
@@ -475,7 +476,7 @@ def cmd_md2docx(args):
         model.paragraphs.append(Paragraph(
             index=para_offset + i, text=stripped, role="body",
             runs=[Run(index=0, text=stripped, format=RunFormat())],
-            format=ParagraphFormat(alignment="justify", line_spacing_pt=28.95),
+            format=ParagraphFormat(alignment="justify", line_spacing_pt=33),
         ))
 
     # 执行 Markdown 转换（#标题 → 标题样式，**加粗** → bold，|表格| → Word 表格）
@@ -530,21 +531,21 @@ def cmd_md2docx(args):
             model.paragraphs.append(Paragraph(
                 index=idx, text="", role="body",
                 runs=[],
-                format=ParagraphFormat(line_spacing_pt=28.95),
+                format=ParagraphFormat(line_spacing_pt=33),
             ))
     if signer:
         idx = len(model.paragraphs)
         model.paragraphs.append(Paragraph(
             index=idx, text=signer, role="signature",
             runs=[Run(index=0, text=signer, format=RunFormat(font_name="仿宋_GB2312", font_size_pt=18.0))],
-            format=ParagraphFormat(alignment="center", line_spacing_pt=28.95),
+            format=ParagraphFormat(alignment="center", line_spacing_pt=33),
         ))
     if doc_date:
         idx = len(model.paragraphs)
         model.paragraphs.append(Paragraph(
             index=idx, text=doc_date, role="date",
             runs=[Run(index=0, text=doc_date, format=RunFormat(font_name="仿宋_GB2312", font_size_pt=16.0))],
-            format=ParagraphFormat(alignment="right", line_spacing_pt=28.95),
+            format=ParagraphFormat(alignment="right", line_spacing_pt=33),
         ))
 
     # 附件说明
@@ -557,7 +558,7 @@ def cmd_md2docx(args):
         model.paragraphs.append(Paragraph(
             index=idx, text=att_text, role="attachment",
             runs=[Run(index=0, text=att_text, format=RunFormat(font_name="仿宋_GB2312", font_size_pt=16.0))],
-            format=ParagraphFormat(alignment="justify", line_spacing_pt=28.95),
+            format=ParagraphFormat(alignment="justify", line_spacing_pt=33),
         ))
 
     # 生成 docx（P1: --no-ai-declaration 跳过 AI 声明段）
@@ -571,6 +572,19 @@ def cmd_md2docx(args):
         today = _dt.today().strftime("%Y-%m-%d")
         out = Path(f"修订版+{doc_type}-草稿+{today}+v1.docx")
     generate_docx(model, str(out), no_ai_declaration=getattr(args, "no_ai_declaration", False))
+
+    # FIX-B002：md2docx 补充页码注入（默认居中，- X - 格式，省筹委会规范）
+    try:
+        from inject import inject_page_number
+        inject_page_number(str(out), {
+            "enabled": True,
+            "font": "宋体",
+            "size": 14,
+            "alignment": "center",
+            "format": "- {PAGE} -",
+        })
+    except Exception as e:
+        print(f"  ⚠️ 页码注入失败（{e}），跳过", file=sys.stderr)
 
     print(f"公文已生成: {out}")
     print(f"  类型: {doc_type}, 段落: {len(model.paragraphs)}, Markdown 转换: {changes} 处")
@@ -1238,7 +1252,9 @@ def cmd_optimize_content(args):
     # --output-tasks 模式到达 'if _m is None' 时触发 UnboundLocalError）
     _m = None
     # P0-3 修复：W 命名空间常量（此前 tracked 分支内 f'{{{W}}}comment' 引用未定义变量，NameError 被静默吞掉）
-    W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+    # FIX-A003 修复：不带花括号——f'{{{W}}}comment' 展开为 {http://...}comment，与 lxml 元素 tag 一致；
+    # 原带花括号时展开为 {{http://...}}comment，findall 永远匹配 0 条（验证误报）
+    W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 
     # 改进 A：加载文档类型规则（structure/focus_checks/skip_checks/title 内容层定义）
     # P1-1 修复：统一传 None（空字符串与 None 虽同为 falsy，但混用有维护隐患）
@@ -2283,12 +2299,12 @@ def cmd_table_signs(args):
     """从名单批量生成双面桌签。"""
     from table_sign_generator import parse_name_list, generate_table_signs, generate_table_signs_combined
 
-    # 读取名单
+    # 读取名单（FIX-B001 L1：utf-8-sig 自动剥离 BOM，避免首个名字长度 +1 导致字号降档）
     if args.input == "-":
-        raw = sys.stdin.buffer.read().decode("utf-8")
+        raw = sys.stdin.buffer.read().decode("utf-8-sig")
         source_desc = "stdin"
     else:
-        raw = Path(args.input).read_text(encoding="utf-8")
+        raw = Path(args.input).read_text(encoding="utf-8-sig")
         source_desc = args.input
     names = parse_name_list(raw)
     if not names:
