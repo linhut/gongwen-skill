@@ -1045,7 +1045,7 @@ def _apply_paragraph_format(para, para_model: Paragraph):
         rule = fmt.line_spacing_rule or "exact"
         if rule == "multiple":
             # MULTIPLE 模式：python-docx 期望倍数（如 1.5），而非 Pt 值
-            # 公文标准字号 16pt，行距 28.95pt → 28.95/16 ≈ 1.8
+            # 公文标准字号 16pt，行距 33pt → 33/16 ≈ 2.06
             multiple = spacing_pt / 16.0
             pf.line_spacing = multiple
             pf.line_spacing_rule = WD_LINE_SPACING.MULTIPLE

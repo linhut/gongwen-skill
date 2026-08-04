@@ -93,7 +93,7 @@ def create_template_document(template_id: str, rules: dict) -> DocumentModel:
             format=ParagraphFormat(
                 alignment=alignment,
                 first_line_indent_pt=indent,
-                line_spacing_pt=_parse_size(body_config.get("line_spacing", 28.95)),
+                line_spacing_pt=_parse_size(body_config.get("line_spacing", 33)),
             ),
             runs=[
                 Run(

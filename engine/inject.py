@@ -560,7 +560,13 @@ def inject_page_number(output_path: str, page_number_config: dict) -> None:
         format    格式（默认 '- {PAGE} -'，可用 {PAGE} / {NUMPAGES}）
 
     GB/T 9704：页码用四号宋体（14pt），单页码居中，或单右双左奇偶排版。
+
+    修复（md2docx 页码注入 PermissionError）：generate_docx 刚写完文件后立即调用本函数时，
+    Windows 文件句柄可能未完全释放，Document() 打开会抛 PermissionError。
+    打开文件前重试等待，避免注入失败。
     """
+    import time as _time
+
     try:
         from docx import Document
         from docx.oxml import OxmlElement
@@ -580,7 +586,19 @@ def inject_page_number(output_path: str, page_number_config: dict) -> None:
         if align == 'right-left':
             align = 'right'
 
-        doc = Document(output_path)
+        # 文件锁重试：generate_docx 后文件可能尚未释放，最多等待 1s
+        doc = None
+        last_err: Exception | None = None
+        for attempt in range(5):
+            try:
+                doc = Document(output_path)
+                break
+            except (PermissionError, OSError) as e:
+                last_err = e
+                _time.sleep(0.2)
+        if doc is None:
+            raise PermissionError(
+                f"无法打开文件（文件可能被占用）: {output_path}: {last_err}") from last_err
 
         is_odd_even = align in ('left', 'right', 'right-left')
         if is_odd_even:
