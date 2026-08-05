@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.52"
+__version__ = "1.12.53"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -1950,13 +1950,19 @@ def cmd_optimize_content(args):
             _tb.print_exc()
             print(f"  ⚠️ 批注颜色/扩展注册验证失败: {e}（详见上方 traceback）")
 
-        # 校验：comments.xml 与修订标记存在
+        # 校验：comments.xml 与修订标记存在（FIX-A003：拆分修订/批注验证，
+        # 批注完整性由 S1-A 独立验证（实际批注数 == 预期数），修订标记为 0 时不误报）
         ok = False
         try:
             import zipfile as _zipfile
             with _zipfile.ZipFile(result) as z:
                 names = z.namelist()
-                ok = 'word/comments.xml' in names and b'w:ins' in z.read('word/document.xml')
+                has_comments = 'word/comments.xml' in names
+                has_revision = b'w:ins' in z.read('word/document.xml')
+                # 有批注预期时批注必须存在；有修订预期时修订必须存在
+                ok = has_comments
+                if len(tc_changes) > 0:
+                    ok = ok and has_revision
         except Exception:
             pass
         _t_elapsed = time.time() - _t_start

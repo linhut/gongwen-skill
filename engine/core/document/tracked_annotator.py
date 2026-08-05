@@ -584,15 +584,46 @@ def inject_tracked_with_comments(
                         applied += len(a_changes)
 
     # 2. 批注锚定（在修订后的段落上）
+    # FIX-A002：建立内容段落映射（跳过无文本 run 的空段/格式段），
+    # 使 sug.para_index 与 XML 段落节点正确对齐
+    def _build_content_para_map(para_nodes):
+        """返回 {content_index: para_node}，仅包含有文本 run 的段落。"""
+        mapping = {}
+        content_idx = 0
+        for node in para_nodes:
+            has_text = False
+            for r in node.iter(f'{{{W}}}r'):
+                for t in r.findall(f'{{{W}}}t'):
+                    if t.text:
+                        has_text = True
+                        break
+                if not has_text:
+                    for dt in r.findall(f'{{{W}}}delText'):
+                        if dt.text:
+                            has_text = True
+                            break
+                if has_text:
+                    break
+            if has_text:
+                mapping[content_idx] = node
+                content_idx += 1
+        return mapping
+
+    content_map = _build_content_para_map(para_nodes)
     for i, sug in enumerate(suggestions, start=1):
-        if not (0 <= sug.para_index < len(para_nodes)):
-            continue
-        # M4 修复：锚定失败时保底尝试相邻段落（+1/-1），避免批注整体缺失
-        anchored = _anchor_comment(para_nodes[sug.para_index], id_offset + i)
+        # FIX-A002：优先用内容段落映射，回退到原始索引
+        target_node = content_map.get(sug.para_index)
+        if target_node is None:
+            if 0 <= sug.para_index < len(para_nodes):
+                target_node = para_nodes[sug.para_index]
+            else:
+                continue
+        anchored = _anchor_comment(target_node, id_offset + i)
         if not anchored:
             for delta in (1, -1):
                 alt_idx = sug.para_index + delta
-                if 0 <= alt_idx < len(para_nodes) and _anchor_comment(para_nodes[alt_idx], id_offset + i):
+                alt_node = content_map.get(alt_idx)
+                if alt_node is not None and _anchor_comment(alt_node, id_offset + i):
                     try:
                         from utils.logger import logger
                         logger.warning(f"批注 #{id_offset + i} 保底锚定到相邻段落 {alt_idx}（原 {sug.para_index}）")

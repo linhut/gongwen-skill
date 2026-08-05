@@ -35,15 +35,29 @@ def _insert_before(new_para, reference_p, body) -> None:
 
 
 def _atomic_save(doc, output_path: str) -> None:
-    """NI8 修复：doc 原子保存（临时文件 + os.replace，崩溃不产生半写文件）。"""
-    import os as _os, tempfile as _tempfile
+    """NI8 修复：doc 原子保存（临时文件 + os.replace，崩溃不产生半写文件）。
+
+    FIX-A001：os.replace 在 Windows 上可能因文件锁失败（与打开阶段同理），
+    增加重试（3次，0.3s间隔）。
+    """
+    import os as _os, tempfile as _tempfile, time as _time
     output_path = str(output_path)
     out_dir = _os.path.dirname(_os.path.abspath(output_path))
     tmp_fd, tmp_path = _tempfile.mkstemp(dir=out_dir, suffix='.tmp', prefix='.gongwen_')
     _os.close(tmp_fd)
     try:
         doc.save(tmp_path)
-        _os.replace(tmp_path, output_path)
+        # FIX-A001：重试 os.replace（Windows 文件锁释放窗口）
+        last_err = None
+        for _attempt in range(4):  # 1次立即 + 3次重试
+            try:
+                _os.replace(tmp_path, output_path)
+                return
+            except PermissionError as e:
+                last_err = e
+                _time.sleep(0.3)
+        raise PermissionError(
+            f"无法替换文件（文件可能被占用）: {output_path}: {last_err}") from last_err
     except Exception:
         try:
             _os.unlink(tmp_path)

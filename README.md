@@ -183,7 +183,7 @@ python gongwen.py optimize-content 新闻稿.docx --changes changes.json \
 
 ### 讲话稿/主持词（speech 朗读件）
 
-标题方正小标宋简体 24pt 居中、主持人信息/日期楷体_GB2312 18pt 居中、正文仿宋_GB2312 18pt 加粗、正文行距 28.95pt exact、标题行距 35pt；跳过版头/版记/发文字号/密级检查。
+标题方正小标宋简体 24pt 居中、主持人信息/日期楷体_GB2312 18pt 居中、正文仿宋_GB2312 18pt 加粗、正文行距 33pt exact、标题行距 35pt；跳过版头/版记/发文字号/密级检查。
 
 ## 📚 支持的 25 种公文类型
 
@@ -273,7 +273,7 @@ pip install -r requirements.txt
 用户：帮我优化这份会议通知的第二章节措辞
 
 Agent：📋 合规自检报告
-Skill 版本: v1.12.52（多渠道自检已确认最新）
+Skill 版本: v1.12.53（多渠道自检已确认最新）
 路径判定: B（内容优化）
 依据: 用户指定了已有文档，且要求"优化措辞"
 命令调用: 1. python gongwen.py optimize-content 会议通知.docx --changes changes.json --apply --paragraphs "5-8"
