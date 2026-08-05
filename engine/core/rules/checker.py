@@ -88,6 +88,9 @@ def check_document(model: DocumentModel, rules: dict[str, Any]) -> list[CheckIss
             # P3-10 修复：page_number.* 检查规则（CHK-C023/024/029）此前无处理分支，
             # 从页脚段落中检查页码域字体/对齐/字号
             issues.extend(_check_page_number(model, rule_id, severity, name, field_path, expected, message))
+        elif field_path.startswith("ending."):
+            # FIX-V153-02：ending.check 结语检查（CHK-N001/R001/RPT001/RP002/L002 等）
+            issues.extend(_check_ending(model, rule_id, severity, name, expected, message))
         else:
             # P1-6 修复：删除 generic else 中的硬编码索引逻辑（model.paragraphs[0]/[1]
             # 不一定是标题/正文，检查结果会指向错误段落），未识别的 field 直接 skip + warning
@@ -582,6 +585,100 @@ def _check_paragraph_type_field(model, rule_id, severity, name, field_path, expe
                         original_text=f"{para.format.first_line_indent_pt}pt", suggested_fix=str(expected),
                         reason=message,
                     ))
+
+    return issues
+
+
+# FIX-V153-02：各文种规范结语词映射（ending.check 检查用）
+_ENDING_KEYWORDS = {
+    "notice":  ["特此通知"],
+    "request": ["妥否，请批示", "以上请示，请予批复", "请批示", "请批复"],
+    "report":  ["特此报告"],
+    "reply":   ["此复", "特此批复"],
+    "letter":  ["特此函复", "请予函复", "专此函达", "特此函达"],
+}
+
+# FIX-V153-02：各文种结语检查的尾段数（不同文种布局不同——
+# 通知/报告常带落款+日期取 5 段；批复/函较短收窄范围避免误判）
+_ENDING_TAIL_SIZE = {
+    "notice":  5,
+    "request": 5,
+    "report":  5,
+    "reply":   3,
+    "letter":  3,
+}
+
+
+def _infer_doc_type_from_rule(rule_id: str) -> str | None:
+    """从规则ID前缀推断文种。CHK-N001→notice, CHK-R001→request 等。
+
+    FIX-V153-02：前缀按长度降序匹配——CHK-R 是 CHK-RPT/CHK-RP 的前缀，
+    必须先匹配更长前缀（report/reply），否则会被 CHK-R 误判为 request。
+    """
+    prefix_map = {
+        "CHK-RPT": "report",    # 报告（先匹配，避免被 CHK-R 捕获）
+        "CHK-RP":  "reply",     # 批复（先匹配，避免被 CHK-R 捕获）
+        "CHK-N":   "notice",    # 通知
+        "CHK-R":   "request",   # 请示
+        "CHK-L":   "letter",    # 函
+    }
+    for prefix, dtype in prefix_map.items():
+        if rule_id.startswith(prefix):
+            return dtype
+    return None
+
+
+def _check_ending(model, rule_id: str, severity: str, name: str,
+                  expected: str, message: str) -> list[CheckIssue]:
+    """FIX-V153-02：检查文档是否包含对应文种的规范结语。
+
+    策略：取文档末尾若干正文段落（排除落款/日期/批注段），检查是否包含文种对应的结语关键词。
+    - 尾段数按文种配置（不同文种布局不同，如通知/报告常带落款+日期，函/批复较短）
+    - 排除 role 为 signature/date/annotation 的段落，避免落款占用检查名额、结语被挤出
+    - 部分字段可为空（original_text 无法截取时留空，location 简单标注）
+    """
+    issues = []
+    try:
+        body_paras = []
+        for p in model.paragraphs:
+            text = getattr(p, 'text', '') or ''
+            text = text.strip()
+            role = getattr(p, 'role', '') or ''
+            # 排除标题、落款（signature/date）、批注（annotation）段——这些不是正文结语
+            if text and not getattr(p, 'is_title', False) \
+                    and role not in ('signature', 'date', 'annotation'):
+                body_paras.append(text)
+
+        if not body_paras:
+            return issues
+
+        doc_type = _infer_doc_type_from_rule(rule_id)
+        # 按文种配置尾段数（默认 5；批复/函较短，收窄范围避免误判）
+        tail_size = _ENDING_TAIL_SIZE.get(doc_type, 5)
+        tail_texts = body_paras[-tail_size:]
+        tail_joined = ''.join(tail_texts)
+
+        keywords = _ENDING_KEYWORDS.get(doc_type, None)
+
+        # 无法推断文种时，使用全量关键词做宽松匹配（宁可多报不漏报）
+        if keywords is None:
+            keywords = [kw for kws in _ENDING_KEYWORDS.values() for kw in kws]
+
+        found = any(kw in tail_joined for kw in keywords)
+        if not found:
+            issues.append(CheckIssue(
+                rule_id=rule_id,
+                check_type="format",
+                severity=severity,
+                name=name,
+                location="文档末尾",
+                # 部分字段可为空：tail 无内容时 original_text 留空
+                original_text=tail_joined[-60:] if tail_joined else "",
+                suggested_fix=expected,
+                reason=message or f"文档缺少规范结语（期望: {expected}）",
+            ))
+    except Exception as e:
+        logger.warning(f"_check_ending 检查失败: {e}")
 
     return issues
 

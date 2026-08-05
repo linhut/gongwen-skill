@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.53"
+__version__ = "1.12.54"
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -1952,19 +1952,23 @@ def cmd_optimize_content(args):
 
         # 校验：comments.xml 与修订标记存在（FIX-A003：拆分修订/批注验证，
         # 批注完整性由 S1-A 独立验证（实际批注数 == 预期数），修订标记为 0 时不误报）
+        # FIX-V153-01：0 处批注时直接通过（无变更 → 无 comments.xml 属正常，不应误报失败）
         ok = False
-        try:
-            import zipfile as _zipfile
-            with _zipfile.ZipFile(result) as z:
-                names = z.namelist()
-                has_comments = 'word/comments.xml' in names
-                has_revision = b'w:ins' in z.read('word/document.xml')
-                # 有批注预期时批注必须存在；有修订预期时修订必须存在
-                ok = has_comments
-                if len(tc_changes) > 0:
-                    ok = ok and has_revision
-        except Exception:
-            pass
+        if len(suggestions) == 0:
+            ok = True
+        else:
+            try:
+                import zipfile as _zipfile
+                with _zipfile.ZipFile(result) as z:
+                    names = z.namelist()
+                    has_comments = 'word/comments.xml' in names
+                    has_revision = b'w:ins' in z.read('word/document.xml')
+                    # 有批注预期时批注必须存在；有修订预期时修订必须存在
+                    ok = has_comments
+                    if len(tc_changes) > 0:
+                        ok = ok and has_revision
+            except Exception:
+                pass
         _t_elapsed = time.time() - _t_start
         _echo_progress(args, 6, 6, "生成文档", f"已保存 ({_t_elapsed:.1f}s)")
         print(f"✅ 修订+批注版文档已生成: {result}")
@@ -2050,7 +2054,8 @@ def cmd_full_review(args):
     buf.seek(0)
     result = ann.inject_comments(buf, suggestions, out_name)
 
-    ok = ann.verify_comments(result)
+    # FIX-V153-01：0 处批注时直接通过（无变更 → 无 comments.xml 属正常，不应误报失败）
+    ok = True if len(suggestions) == 0 else ann.verify_comments(result)
     print(f"✅ 完整审校完成: {result}")
     print(f"  格式修复 {len(issues)} 项 + 批注 {len(suggestions)} 处（可审阅→接受/拒绝）")
     print(f"  批注完整性验证: {'通过' if ok else '失败'}")
