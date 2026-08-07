@@ -747,24 +747,25 @@ def _add_table(doc: Document, table_model: TableModel):
                 body.remove(tbl_elem)
                 target_elem.addnext(tbl_elem)
 
-        # 设置表格样式（带边框）
-        try:
-            table.style = 'Table Grid'
-        except KeyError:
-            # 文档中没有 'Table Grid' 样式时，手动添加边框
-            from docx.oxml.ns import qn
-            tbl = table._tbl
-            tblPr = tbl.tblPr if tbl.tblPr is not None else tbl._add_tblPr()
-            borders = tblPr.makeelement(qn('w:tblBorders'), {})
-            for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
-                border = borders.makeelement(qn(f'w:{edge}'), {
-                    qn('w:val'): 'single',
-                    qn('w:sz'): '4',
-                    qn('w:space'): '0',
-                    qn('w:color'): '000000',
-                })
-                borders.append(border)
-            tblPr.append(borders)
+        # 设置表格边框（虚线 dashed——公文表格规范常用虚线表线，直接格式覆盖样式）
+        # 无论 'Table Grid' 样式是否存在都显式写入 tblBorders，保证虚线生效
+        from docx.oxml.ns import qn
+        tbl = table._tbl
+        tblPr = tbl.tblPr if tbl.tblPr is not None else tbl._add_tblPr()
+        # 移除可能已存在的 tblBorders（避免残留实线定义）
+        old_borders = tblPr.find(qn('w:tblBorders'))
+        if old_borders is not None:
+            tblPr.remove(old_borders)
+        borders = tblPr.makeelement(qn('w:tblBorders'), {})
+        for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+            border = borders.makeelement(qn(f'w:{edge}'), {
+                qn('w:val'): 'dashed',   # 虚线表线
+                qn('w:sz'): '4',
+                qn('w:space'): '0',
+                qn('w:color'): '000000',
+            })
+            borders.append(border)
+        tblPr.append(borders)
 
         # 智能对齐：表头行居中加粗，数据行按内容类型对齐
         total_cols = max(1, table_model.cols)

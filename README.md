@@ -273,7 +273,7 @@ pip install -r requirements.txt
 用户：帮我优化这份会议通知的第二章节措辞
 
 Agent：📋 合规自检报告
-Skill 版本: v1.12.54（多渠道自检已确认最新）
+Skill 版本: v1.12.55（多渠道自检已确认最新）
 路径判定: B（内容优化）
 依据: 用户指定了已有文档，且要求"优化措辞"
 命令调用: 1. python gongwen.py optimize-content 会议通知.docx --changes changes.json --apply --paragraphs "5-8"
