@@ -9,21 +9,18 @@ Licensed under the MIT License. See the LICENSE file for details.
   <img src="./logo/A_professional_skill_cover_2026-07-23T02-25-30.png" alt="gongwen-skill 中文公文全流程处理" width="560">
 </p>
 
-> 中文公文全流程处理工具——基于 **GB/T 9704《党政机关公文格式》** 国家标准，支持 **格式检查与修复、内容优化（Word 原生修订+批注/差异对比版）、模板生成、Markdown 转公文、版头版记页码注入、事实核验、风格增强** 等完整能力。打包为可被 AI Agent 直接调用的 Skill，完全自包含，克隆即用。
+> 中文公文全流程处理工具——基于 **GB/T 9704《党政机关公文格式》** 国家标准，支持 **格式检查与修复、内容优化（Word 原生修订+批注/差异对比版）、模板生成、Markdown 转公文、版头版记页码注入、事实核验、风格增强** 等完整能力。原生支持 **DeepSeek Harness (DSH)** 技能系统，打包为可被 AI Agent 直接调用的 Skill，完全自包含，克隆即用。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)
 ![GB/T 9704](https://img.shields.io/badge/standard-GB%2FT%209704-red.svg)
+![DSH](https://img.shields.io/badge/DSH-Compatible-brightgreen?logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgZmlsbD0ibm9uZSIgdmlld0JveD0iMCAwIDY0IDY0Ij48cGF0aCBmaWxsPSIjZmZmIiBkPSJNMzIgNEMxNi41MzYgNCA0IDE2LjUzNiA0IDMyczEyLjUzNiAyOCAyOCAyOCAyOC0xMi41MzYgMjgtMjhTNDcuNDY0IDQgMzIgNHoiLz48cGF0aCBmaWxsPSIjMTg4M2ZmIiBkPSJNMjIgMjBoMjB2MjRIMjJ6Ii8+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTI4IDI4aDh2OGgtOHoiLz48L3N2Zz4=)
 
-本 Skill 源自开源桌面项目 [AI 公文智能优化助手](https://github.com/linhut/document-ai-assistant)，将其核心格式引擎抽取、剥离桌面端/数据库依赖后独立发行，支持公文的**模板建立、解析、规则检查、自动修复、内容优化、Markdown 转公文**全流程能力。
+本 Skill 源自开源桌面项目 [AI 公文智能优化助手](https://github.com/linhut/document-ai-assistant)，将其核心格式引擎抽取、剥离桌面端/数据库依赖后独立发行，支持公文的**模板建立、解析、规则检查、自动修复、内容优化、Markdown 转公文**全流程能力。同时原生集成 **DeepSeek Harness (DSH)** 技能系统，支持 DSH Agent 自动发现与加载。
 
 ---
 
 ## ✨ 能力一览
-
-<p align="center">
-  <img src="logo/A_vertical_promotional_2026-07-23T02-25-30.png" alt="公文技能工作流：输入 .docx → 检查 → 修复 → 合规公文" width="420">
-</p>
 
 | 能力 | 命令 | 说明 |
 |------|------|------|
@@ -230,6 +227,56 @@ Agent 加载 skill 后**必须执行版本追新自检**，确保使用最新版
 
 > 严禁只用本地 `git describe` 判断版本——它只读本地可达 tag，未 fetch 时会误判本地即最新。
 
+
+
+## 🚀 DeepSeek Harness (DSH) 集成
+
+本 Skill 完全兼容 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) 技能系统，可被 DSH Agent 自动发现并加载。
+
+### 技能发现方式
+
+DSH 自动扫描以下目录中的技能，优先级从高到低：
+
+| 优先级 | 目录 | 说明 |
+|:------:|:-----|:------|
+| 100 | `{project}/.dsh/skills/` | 项目级 DSH 技能目录 |
+| 200 | `{project}/.agents/skills/` | 项目级 Agent 技能目录 |
+| 400 | `~/.dsh/skills/` | 用户级 DSH 技能目录 |
+| 500 | `~/.agents/skills/` | 用户级 Agent 技能目录 |
+
+### 快速安装
+
+```bash
+# 方式一：注册到项目级（推荐，跟随项目）
+git clone https://github.com/linhut/gongwen-skill.git
+cd gongwen-skill
+pip install -r requirements.txt
+# DSH 自动发现项目根目录下的 .dsh/skills/ 目录
+
+# 方式二：注册到用户级（全局可用）
+git clone https://github.com/linhut/gongwen-skill.git
+cd gongwen-skill
+mkdir -p ~/.dsh/skills/gongwen-skill
+cp SKILL.md ~/.dsh/skills/gongwen-skill/SKILL.md
+```
+
+### DSH 技能市场说明
+
+> **DSH 技能体系基于本地文件系统**，没有中心化的技能市场/商店。
+> 技能通过 GitHub 仓库分发，克隆到 DSH 的技能目录即可使用。
+> 本仓库地址：https://github.com/linhut/gongwen-skill
+
+### DSH 兼容性
+
+| 检查项 | 状态 |
+|:-------|:----:|
+| SKILL.md YAML frontmatter (name + description) | ✅ |
+| 技能名称规范 (gongwen-skill) | ✅ |
+| 目录技能格式 (.dsh/skills/gongwen-skill/SKILL.md) | ✅ |
+| 单文件技能格式 (.dsh/skills/gongwen-skill.md) | ✅ 双格式兼容 |
+| CLI 独立可执行 | ✅ python gongwen.py |
+| 零外部依赖 | ✅ 仅需 pip install |
+
 ## 🤖 通过 Agent 调用
 
 本 Skill 可直接被 AI Agent（如 AtomCode、Claude Code 等）加载并调用，无需手动操作。
@@ -309,3 +356,4 @@ MIT License · **(c) 2026 Jose AI** · https://www.linhut.cn
 - GitHub：https://github.com/linhut/gongwen-skill
 - GitCode：https://gitcode.com/linhut/gongwen-skill
 - AtomGit：https://atomgit.com/linhut/gongwen-skill
+
