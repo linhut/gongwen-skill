@@ -27,8 +27,8 @@ def setup_logger(name: str = "official_doc_ai", level: int = logging.INFO) -> lo
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    # Console handler
-    console = logging.StreamHandler(sys.stdout)
+    # Console handler —— 输出到 stderr 避免污染 stdout（影响 --json / 管道输出）
+    console = logging.StreamHandler(sys.stderr)
     console.setFormatter(fmt)
     logger.addHandler(console)
 

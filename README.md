@@ -39,12 +39,14 @@ Licensed under the MIT License. See the LICENSE file for details.
 | 📑 版记 | `footer` | 注入抄送机关 + 印发机关 + 印发日期 + 分隔线 |
 | 🔢 页码 | `pagenum` | 注入 Word PAGE 域动态页码（宋体 4 号，默认单右双左适配双面打印） |
 | 🖊️ 首句加粗 | `bold-first` | 正文段落首句自动加粗（公文规范） |
+| 🧰 一键修复 | `fix-common` | 路径 D 一键修复常见格式：段落类型修正 + 编号拆分 + 首句加粗 + 加粗范围修复 |
 | 📋 桌签生成 | `table-signs` | 批量生成 A5 横版会议桌签 |
 | 🔍 审稿生成 | `review` | 按五角色审稿机制生成审稿意见 |
 | 🧩 完整审校 | `full-review` | 修订+批注联合命令（句子级差异修订 + 分类批注） |
 | 🎨 样式学习 | `style-learn` / `style-list` | 从标准文档学习 Run/段落/页面三级样式，生成命名模板持久化 |
 | 🔄 版本自检 | `check-update` | 多渠道版本自检（GitHub/GitCode/AtomGit 三仓库比对取最新） |
 | 🕵️ 文档审计 | `audit` | 检查删除线/加粗/AI 声明等痕迹 |
+| 🤝 会话交接 | `handoff` | 跨会话上下文传递（`--list` / `--latest` / Agent 长任务收尾必写） |
 | ⚙️ 规则管理 | `rule-export/import/list` | YAML 规则三层定制（官方/单位/用户） |
 
 ## 使用示例

@@ -2,10 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master]
     tags: ['v*']
   pull_request:
-    branches: [main]
+    branches: [master]
 
 jobs:
   test:
@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.10', '3.11', '3.12', '3.13']
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -22,9 +22,9 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install pytest
-      - name: Run tests
-        run: pytest tests/ -v --tb=short
+          pip install pytest pytest-cov
+      - name: Run tests with coverage
+        run: pytest tests/ -v --tb=short --cov=gongwen --cov=engine --cov-report=term-missing --cov-fail-under=50
 
   lint:
     name: Lint
@@ -44,7 +44,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
+      id-token: write  # OIDC trusted publishing (PEP 539 / 740)
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -55,5 +55,6 @@ jobs:
           python -m build
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          password: ${{ secrets.PYPI_API_TOKEN }}
+        # OIDC trusted publishing: 不再使用 PYPI_API_TOKEN
+        # 需在 https://pypi.org/manage/account/publishing/ 配置 GitHub trusted publisher:
+        #   owner: linhut, repo: gongwen-skill, workflow: ci.yml, env: (空)

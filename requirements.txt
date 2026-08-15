@@ -9,7 +9,12 @@
 #
 # 安装：pip install -r requirements.txt
 # 测试安装：pip install -r requirements.txt pytest
+#
+# P2-5：依赖单源化——以 pyproject.toml 为权威声明，requirements.txt 仅用于
+# `pip install -r` 传统安装方式。版本下限以 pyproject.toml 为准。
+# （python-docx>=1.1.0 / pydantic>=2.0.0 / pyyaml>=6.0 见 pyproject.toml）
 
 python-docx>=1.1.0
 pydantic>=2.0.0
 pyyaml>=6.0
+

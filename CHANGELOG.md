@@ -1,5 +1,34 @@
 # Changelog
 
+## v1.12.58 (2026-08-16)
+
+### Fixed (P0)
+- **CI 监测失效修复**：`.github/workflows/ci.yml` 主分支触发器从 `main` 改为 `master`（项目实际主分支是 `master`，原配置导致 171 次提交从未触发自动测试/发布）
+- PyPI 发布从 `PYPI_API_TOKEN` 改为 **OIDC trusted publishing**（PEP 740），与 README 宣称一致；无需手动管理 token
+
+### Added (P1)
+- **测试覆盖扩展 +48 用例**：99 → 147（+48 个）全绿
+  - `tests/test_commands_smoke.py`：24 个 `argparse --help` 入口 + 7 个关键参数断言（锁住所有子命令注册，防止重构 silently 丢命令）
+  - `tests/test_optimize_e2e.py`：`check --json` / `optimize --apply` / `fix-common` / `bold-first` / `audit` 端到端
+  - `tests/test_inject_e2e.py`：`header` / `footer` / `pagenum` 端到端 + 必填参数缺失校验
+  - `tests/test_optimize_content_e2e.py`：tracked / inline 模式 + 缺 --changes 报错 + 无效 --mode reject
+- **PEP 561 类型标记**：新增空 `engine/py.typed` 和 `gongwen/py.typed`，pyproject + MANIFEST 同步包含，下游 IDE/mypy 可识别为 typed package
+- CI Python 矩阵补 3.14（与 pyproject classifier 一致）
+- CI 加 `pytest --cov=gongwen --cov=engine --cov-fail-under=50` 覆盖率门槛
+
+### Changed (P1)
+- **logger 输出从 stdout 改到 stderr**：修复 `logger.py` 把 INFO 日志喷到 stdout 污染 `--json` / 管道输出的问题；`check --json` 等结构化输出现在是纯净 JSON
+
+### Docs (P2)
+- README 能力一览表补齐 `fix-common`（路径 D 一键修复）和 `handoff`（会话交接）两行
+- AUDIT_REPORT.md：新增完整 P8 标准审计报告（340 行，22 KB），含 P0/P1/P2 优先级清单
+- requirements.txt 加注释化交叉引用说明（依赖以 pyproject.toml 为权威，避免版本下限漂移）
+
+### Notes
+- P1-1 (`_legacy.py` 2400 行按 5 子包拆分) + P2-2 (≥500 行单文件拆分) 推迟到 v1.12.59 单独 PR 处理，避免此次改动量过大难 review；测试覆盖已就位，回归网完整
+- P1-4 (42 处 `except+pass`) 核查后确认均为合理容错（字段读取兜底/临时文件清理/`raise` 配对），不引入噪声日志
+- P2-7 (`live_edit.py` 当前无 CLI 入口) 添加 docstring 注释保留为 Agent 交互编辑预留 API
+
 ## v1.12.57 (2026-08-15)
 
 ### Added

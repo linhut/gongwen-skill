@@ -11,6 +11,10 @@ LiveEdit —— 内存级 DocumentModel 编辑会话。
       session.edit_text(5, "优化后文字", reason="措辞更规范")
       session.edit_text(8, "更多修改", reason="【文字校对】术语统一")
       session.finalize("成品.docx")  # 仅一次 generate
+
+注（P2-7 审计结论）：截至 v1.12.58，本模块尚未被任何 CLI 子命令或 engine
+其他模块 import 引用（仅为 chat_review.py 注释中提及）。当前保留为面向未来
+Agent 交互式编辑场景的预留 API；若计划删除需先评估"无 CLI 入口"的语义。
 """
 from __future__ import annotations
 import copy
