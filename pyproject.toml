@@ -44,5 +44,4 @@ Changelog = "https://github.com/linhut/gongwen-skill/blob/main/CHANGELOG.md"
 gongwen = "gongwen:main"
 
 [tool.setuptools.packages.find]
-include = ["engine*", "gongwen*"]
-exclude = ["tests*", "rules*"]
+packages = ["engine*", "gongwen*"]

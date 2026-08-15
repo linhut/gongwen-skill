@@ -6,4 +6,5 @@ recursive-include engine/ *.py
 recursive-include engine/ *.dotx
 recursive-include rules/ *.yaml
 recursive-include prompts/ *.md
+recursive-include gongwen/ *.py
 recursive-include .dsh/ **

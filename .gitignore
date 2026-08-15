@@ -32,6 +32,9 @@ Thumbs.db
 # Temp reports
 _report_*.md
 
+# npm packages
+*.tgz
+
 # Build artifacts
 dist/
 build/

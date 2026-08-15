@@ -225,7 +225,7 @@ def test_missing_template_raises(tmp_path):
 def test_table_signs_cli_requires_template():
     """P0-7：--template 已改为非必填（内置默认模板兜底），缺省不再报 argparse 错误。"""
     import subprocess
-    r = subprocess.run([sys.executable, "gongwen.py", "table-signs", "--help"],
+    r = subprocess.run([sys.executable, "-m", "gongwen", "table-signs", "--help"],
                        capture_output=True, text=True, encoding="utf-8", timeout=60)
     assert r.returncode == 0
     assert "--template" in (r.stdout or "")
@@ -235,7 +235,7 @@ def test_table_signs_cli_requires_template():
 def test_table_signs_cli_placeholder_registered():
     """--placeholder 参数已注册（help 显示；utf-8 编码防 Windows GBK 解码失败）。"""
     import subprocess
-    r = subprocess.run([sys.executable, "gongwen.py", "table-signs", "--help"],
+    r = subprocess.run([sys.executable, "-m", "gongwen", "table-signs", "--help"],
                        capture_output=True, text=True, encoding="utf-8", timeout=60)
     assert r.returncode == 0
     assert "--placeholder" in (r.stdout or "")

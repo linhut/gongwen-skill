@@ -50,7 +50,7 @@ from pathlib import Path
 
 # 将 engine/ 加入模块搜索路径，使内部 `from core... / from utils... / from config`
 # 的绝对导入生效——这是独立运行的关键。
-_ENGINE_DIR = Path(__file__).resolve().parent / "engine"
+_ENGINE_DIR = Path(__file__).resolve().parent.parent / "engine"
 sys.path.insert(0, str(_ENGINE_DIR))
 
 # Windows 控制台中文输出保护（借鉴 docx-skill 强制 UTF-8 策略）
