@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gongwen-skill"
+version = "1.12.57"
+description = "中文公文全流程处理工具 - GB/T 9704 格式检查/修复/内容优化/模板生成/版式注入"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Jose AI", email = "hi@linhut.cn"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Office/Business",
+    "Topic :: Text Processing",
+    "Natural Language :: Chinese (Simplified)",
+]
+keywords = ["chinese", "document", "government", "format", "GB/T 9704", "docx", "official-document"]
+
+dependencies = [
+    "python-docx>=1.1.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/linhut/gongwen-skill"
+Repository = "https://github.com/linhut/gongwen-skill"
+"Bug Tracker" = "https://github.com/linhut/gongwen-skill/issues"
+Changelog = "https://github.com/linhut/gongwen-skill/blob/main/CHANGELOG.md"
+
+[project.scripts]
+gongwen = "gongwen:main"
+
+[tool.setuptools.packages.find]
+include = ["engine*", "gongwen*"]
+exclude = ["tests*", "rules*"]

@@ -25,3 +25,14 @@ engine/sessions/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Codegraph
+.codegraph/
+
+# Temp reports
+_report_*.md
+
+# Build artifacts
+dist/
+build/
+*.egg-info/

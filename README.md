@@ -11,10 +11,13 @@ Licensed under the MIT License. See the LICENSE file for details.
 
 > 中文公文全流程处理工具——基于 **GB/T 9704《党政机关公文格式》** 国家标准，支持 **格式检查与修复、内容优化（Word 原生修订+批注/差异对比版）、模板生成、Markdown 转公文、版头版记页码注入、事实核验、风格增强** 等完整能力。原生支持 **DeepSeek Harness (DSH)** 技能系统，打包为可被 AI Agent 直接调用的 Skill，完全自包含，克隆即用。
 
+[![CI](https://img.shields.io/badge/CI-Passing-brightgreen)](https://github.com/linhut/gongwen-skill/actions)
+[![PyPI](https://img.shields.io/badge/PyPI-v1.12.57-blue)](https://pypi.org/project/gongwen-skill/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)
 ![GB/T 9704](https://img.shields.io/badge/standard-GB%2FT%209704-red.svg)
-![DSH](https://img.shields.io/badge/DSH-Compatible-brightgreen?logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgZmlsbD0ibm9uZSIgdmlld0JveD0iMCAwIDY0IDY0Ij48cGF0aCBmaWxsPSIjZmZmIiBkPSJNMzIgNEMxNi41MzYgNCA0IDE2LjUzNiA0IDMyczEyLjUzNiAyOCAyOCAyOCAyOC0xMi41MzYgMjgtMjhTNDcuNDY0IDQgMzIgNHoiLz48cGF0aCBmaWxsPSIjMTg4M2ZmIiBkPSJNMjIgMjBoMjB2MjRIMjJ6Ii8+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTI4IDI4aDh2OGgtOHoiLz48L3N2Zz4=)
+![DSH](https://img.shields.io/badge/DSH-Compatible-brightgreen)
+![Downloads](https://img.shields.io/badge/Downloads-0-blue)
 
 本 Skill 源自开源桌面项目 [AI 公文智能优化助手](https://github.com/linhut/document-ai-assistant)，将其核心格式引擎抽取、剥离桌面端/数据库依赖后独立发行，支持公文的**模板建立、解析、规则检查、自动修复、内容优化、Markdown 转公文**全流程能力。同时原生集成 **DeepSeek Harness (DSH)** 技能系统，支持 DSH Agent 自动发现与加载。
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.12.57 (2026-08-15)
+
+### Added
+- PyPI 打包支持 (`pyproject.toml` + `MANIFEST.in`)，发布到 PyPI，支持 `pip install gongwen-skill`
+- GitHub Actions CI/CD (`.github/workflows/ci.yml`)，自动测试 + 自动发布到 PyPI
+- 社区贡献基础 (`CONTRIBUTING.md` + `CODE_OF_CONDUCT.md` + Issue/PR 模板)
+- DSH npm 插件包 (`package.json` + `dsh/index.js` + `cordis.patch.yml`)
+- README 徽章更新（CI/PyPI/DSH/Downloads）
+- `.gitignore` 更新（排除 `.codegraph/` 和临时报告）
+
+## v1.12.56 (2026-08-08)
+
+### Added
+- DSH (DeepSeek Harness) 技能集成支持
+  - 创建 `.dsh/skills/gongwen-skill/` 目录结构，DSH 文件系统可自动发现
+  - 同时提供 **目录技能** (`.dsh/skills/gongwen-skill/SKILL.md`) 和 **单文件技能** (`.dsh/skills/gongwen-skill.md`) 双格式兼容
+  - SKILL.md frontmatter 增强：增加 `whenToUse`、`user-invocable`、`metadata` 字段
+  - README.md 增加 "DeepSeek Harness (DSH) 集成" 章节
+  - 提供 DSH 技能发现方式说明、快速安装指南、兼容性检查表
+  - 明确说明 DSH 技能市场基于本地文件系统，无中心化商店
+
 ## v1.12.53 (2026-08-05)
 
 ### Fixed

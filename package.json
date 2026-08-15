@@ -1,0 +1,42 @@
+{
+  "name": "gongwen-skill",
+  "version": "1.12.57",
+  "description": "中文公文全流程处理工具 - GB/T 9704 格式检查/修复/内容优化/模板生成/版式注入",
+  "type": "module",
+  "main": "dsh/index.js",
+  "exports": {
+    ".": "./dsh/index.js",
+    "./dsh": "./dsh/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dsh/",
+    "skills/",
+    "cordis.patch.yml",
+    "SKILL.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "keywords": [
+    "chinese",
+    "document",
+    "government",
+    "format",
+    "GB/T 9704",
+    "docx",
+    "official-document",
+    "dsh",
+    "deepseek-harness"
+  ],
+  "author": "Jose AI",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/linhut/gongwen-skill.git"
+  }
+}
