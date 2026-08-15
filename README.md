@@ -352,12 +352,6 @@ Skill 定位为**工具层**，默认不依赖 LLM（确定性工作全自包含
 
 欢迎加入社区，参与讨论、交流使用问题、插件开发和项目进展：
 
-<p align="left">
-  <a href="https://discord.gg/4qT7TPdft">
-    <img src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white" alt="Discord">
-  </a>
-</p>
-
 | 平台 | 说明 |
 |:-----|:------|
 | 💬 **Discord** | [加入 Discord 服务器](https://discord.gg/4qT7TPdft) — 实时交流、问题讨论、版本更新通知 |
