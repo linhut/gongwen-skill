@@ -62,14 +62,6 @@ try:
 except Exception:
     pass
 
-# 注册 tmp 目录进程退出自动清理
-try:
-    from tmp import register_cleanup
-    register_cleanup()
-except Exception:
-    pass
-
-
 # ---------------------------------------------------------------------------
 #  共享辅助
 # ---------------------------------------------------------------------------

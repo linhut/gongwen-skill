@@ -82,3 +82,26 @@ for _d in (APP_DATA_DIR, CUSTOM_RULES_DIR, USER_RULES_DIR, LOG_DIR, HANDOFF_DIR,
         _d.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
         _log.warning("无法创建目录 %s: %s，功能将自动降级", _d, exc)
+
+
+# ---------------------------------------------------------------------------
+#  进程退出时自动清理临时目录（替代旧 engine/tmp.py 的 register_cleanup）
+# ---------------------------------------------------------------------------
+import atexit
+import shutil
+
+
+def _cleanup_tmp_dir() -> None:
+    """进程退出时清空 TMP_DIR（保留目录本身，仅删除其中文件/子目录）。"""
+    if TMP_DIR.exists():
+        for item in TMP_DIR.iterdir():
+            try:
+                if item.is_file() or item.is_symlink():
+                    item.unlink()
+                elif item.is_dir():
+                    shutil.rmtree(item)
+            except OSError as exc:
+                _log.warning("清理临时文件失败 %s: %s", item, exc)
+
+
+atexit.register(_cleanup_tmp_dir)

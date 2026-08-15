@@ -33,6 +33,13 @@
 - 结语检查 `ending.check` 实现（FIX-V153-02）：5 种文种（通知/请示/报告/批复/函）结尾格式检查从"跳过"变为实际触发
 - 0 处批注时验证逻辑短路（FIX-V153-01），optimize-content / full-review 不再误报
 
+## v1.12.52 (2026-08-04)
+
+### Fixed
+- `inject.py`: `inject_page_number` 打开文件前增加重试机制（5×0.2s），解决 `generate_docx` 后文件句柄未释放导致的 `PermissionError`
+- `template_builder.py`: `body_config` fallback 行距 28.95→33（与 YAML 配置一致）
+- `generator.py`: 注释中 28.95pt→33pt 同步
+
 ## v1.12.51 (2026-08-04)
 
 ### Fixed
