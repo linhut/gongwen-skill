@@ -51,8 +51,6 @@ Licensed under the MIT License. See the LICENSE file for details.
 
 ## 使用示例
 
-![GongWen-skill 使用示例](docs/example.png)
-
 > 在 AI 对话中调用 gongwen-skill，输入自然语言指令，自动生成符合 GB/T 9704 国标格式的正式公文。
 
 ## 🚀 快速开始
@@ -513,10 +511,6 @@ Skill 定位为**工具层**，默认不依赖 LLM（确定性工作全自包含
 |:-----|:------|
 | 💬 **Discord** | [加入 Discord 服务器](https://discord.gg/4qT7TPdft) — 实时交流、问题讨论、版本更新通知 |
 | 💚 **QQ 群** | 扫码加入 QQ 群，与中文用户交流使用经验 |
-
-<p align="left">
-  <img src="./docs/QQ.png" alt="QQ 群二维码" width="240">
-</p>
 
 ---
 
