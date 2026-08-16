@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.12.60 (2026-08-16)
+
+### Fixed
+- **发布链路修复（全量审计）**：`pyproject.toml` 恢复合法的 `[tool.setuptools.packages.find]` include/exclude 键（非法 `packages` 键导致 `python -m build --wheel` 直接失败，PyPI 发布被阻断）
+- **wheel 内容缺失修复**：`rules/official/*.yaml`（25 个）+ `prompts/*.md` 经 package-data 打入 wheel（此前 pip 安装零规则文件，list-types/check 静默失效）
+- **`_load_style_prompt` 路径回归修复**：v1.12.57 拆包后 `__file__.parent` 指向 `gongwen/`，改为 `parent.parent` 回到仓库根 `prompts/`，风格提示词恢复加载
+- **`docx_to_image.py` tmp 路径同步**：临时 PDF 从 `engine/tmp`（安装目录可能只读）迁移到 `config.TMP_DIR`（B8 一致性）
+- **CI lint 门槛达标**：修复 101 处 pycodestyle 违规（26 个文件），CI lint job 不再误挂
+- **文种数量口径统一**：SKILL×3 frontmatter + README 从 22/25 统一为实际 24 类（list-types 实证）
+- **CHANGELOG 缺口补记**：补记 v1.12.54/v1.12.55 条目（此前 53→56 跳号）
+
 ## v1.12.59 (2026-08-16)
 
 ### Fixed (P0)
