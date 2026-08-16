@@ -14,10 +14,13 @@ REVIEWER_MAP 定义五种审校角色 → Word 批注作者名 + 颜色。
   ], "审稿版.docx")
 """
 from __future__ import annotations
+import logging
 from pathlib import Path
 from typing import List
 
 from core.document.annotator import GongwenAnnotator, CommentSuggestion
+
+_logger = logging.getLogger(__name__)
 
 # 六角色 → Word 批注作者名 + 颜色（A4 修复：统一 7 色方案，法规色提亮，新增事实核验员）
 REVIEWER_MAP = {
@@ -223,8 +226,8 @@ def _register_comments_infrastructure(doc_path: str | Path, comment_count: int) 
     except Exception:
         try:
             _os.unlink(tmp_path)
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.warning(f"临时文件清理失败: {e}")
         raise
 
 
@@ -369,6 +372,6 @@ def _register_persons_xml(doc_path: str | Path) -> None:
     except Exception:
         try:
             _os.unlink(tmp_path)
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.warning(f"临时文件清理失败: {e}")
         raise

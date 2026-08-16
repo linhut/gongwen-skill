@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.61"
+__version__ = "1.12.62"
 # 版本号应与 gongwen/__init__.py 保持一致，每次发版同步更新
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
@@ -46,8 +46,11 @@ __version__ = "1.12.61"
 """
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
+
+_logger = logging.getLogger(__name__)
 
 # 将 engine/ 加入模块搜索路径，使内部 `from core... / from utils... / from config`
 # 的绝对导入生效——这是独立运行的关键。
@@ -60,8 +63,8 @@ try:
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
     sys.stdin.reconfigure(encoding="utf-8")
-except Exception:
-    pass
+except Exception as e:
+    _logger.warning(f"控制台编码设置失败: {e}")
 
 # ---------------------------------------------------------------------------
 #  共享辅助
@@ -446,37 +449,24 @@ def cmd_md2docx(args):
     # 加载规则获取页边距等
     margins = rules.get("page_setup", {}).get("margins", {})
 
-    def _parse_margin(v):
-        s = str(v).strip()
-        if "cm" in s:
-            return float(s.replace("cm", "")) * 10
-        if "mm" in s:
-            return float(s.replace("mm", ""))
-        return float(s)
+    # 使用统一的解析工具（跨模块#3 修复：消除重复 _parse_margin/_parse_cm 实现）
+    from utils.parse import parse_mm, parse_pt
 
     # 构建 DocumentModel（改动1/10：页边距与页眉页脚距离取自 _common.yaml page_setup 配置）
     page_setup_cfg = rules.get("page_setup", {})
     hdr_dist = page_setup_cfg.get("header_distance", "1.5cm")
     ftr_dist = page_setup_cfg.get("footer_distance", "2.3cm")
 
-    def _parse_cm(v) -> float:
-        s = str(v).strip()
-        if "cm" in s:
-            return float(s.replace("cm", ""))
-        if "mm" in s:
-            return float(s.replace("mm", "")) / 10
-        return float(s)
-
     model = DocumentModel(
         metadata=DocumentMetadata(),
         page_setup=PageSetup(
             paper_width_mm=210, paper_height_mm=297,
-            margin_top_mm=_parse_margin(margins.get("top", "2.8cm")),
-            margin_bottom_mm=_parse_margin(margins.get("bottom", "2.8cm")),
-            margin_left_mm=_parse_margin(margins.get("left", "2.7cm")),
-            margin_right_mm=_parse_margin(margins.get("right", "2.7cm")),
-            header_distance_cm=_parse_cm(hdr_dist),
-            footer_distance_cm=_parse_cm(ftr_dist),
+            margin_top_mm=parse_mm(margins.get("top", "2.8cm")) or 28.0,
+            margin_bottom_mm=parse_mm(margins.get("bottom", "2.8cm")) or 28.0,
+            margin_left_mm=parse_mm(margins.get("left", "2.7cm")) or 27.0,
+            margin_right_mm=parse_mm(margins.get("right", "2.7cm")) or 27.0,
+            header_distance_cm=(parse_mm(hdr_dist) or 15.0) / 10,
+            footer_distance_cm=(parse_mm(ftr_dist) or 23.0) / 10,
         ),
     )
 
@@ -1929,8 +1919,8 @@ def cmd_optimize_content(args):
                 from core.document.parser import parse_docx
                 _m = parse_docx(str(args.input))
                 fc_para_texts = {i: p.text for i, p in enumerate(_m.paragraphs)}
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.warning(f"事实核验段落解析失败: {e}")
             for e in fc_report.doubtful + fc_report.unverified:
                 # B5 修复：Agent 已确认/已修正的实体不再生成"未经核验"批注
                 if e.entity_name in getattr(args, '_confirmed_entities', set()):
@@ -1971,8 +1961,8 @@ def cmd_optimize_content(args):
             try:
                 from core.document.parser import parse_docx
                 _m = parse_docx(str(args.input))
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.warning(f"文档结构解析失败: {e}")
         try:
             from structure_checker import check_structure
             from focus_checker import run_focus_checks
@@ -2046,8 +2036,8 @@ def cmd_optimize_content(args):
                 print(f"  ⚠️ 批注注入异常：预期{len(suggestions)}条，实际{_actual}条")
             else:
                 print(f"  ✅ 批注注入完整: {_actual} 条")
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.warning(f"批注完整性验证失败: {e}")
         # U2 修复：people/comments 扩展已内联进 inject_tracked_with_comments（S1-C+S4-A），
         # 移除残留的外部 _register_persons_xml/_register_comments_infrastructure import 与调用，仅保留验证
         try:
@@ -2080,8 +2070,8 @@ def cmd_optimize_content(args):
                     ok = has_comments
                     if len(tc_changes) > 0:
                         ok = ok and has_revision
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.warning(f"修订标记存在性校验失败: {e}")
         _t_elapsed = time.time() - _t_start
         _echo_progress(args, 6, 6, "生成文档", f"已保存 ({_t_elapsed:.1f}s)")
         print(f"✅ 修订+批注版文档已生成: {result}")

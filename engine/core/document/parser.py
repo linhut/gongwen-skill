@@ -215,8 +215,8 @@ def _safe_mm(value, default: float) -> float:
             mm = value.mm
             if 10 <= mm <= 1000:
                 return round(mm, 2)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"长度转毫米失败: {e}")
     return default
 
 
@@ -278,8 +278,8 @@ def _paragraph_has_page_field(para) -> bool:
             if instr_text.text and 'PAGE' in instr_text.text.upper():
                 return True
 
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"页码域检测失败: {e}")
     return False
 
 
@@ -715,16 +715,16 @@ def _apply_style_fallback(para, runs: list[Run], para_format: ParagraphFormat) -
         try:
             if style.font and style.font.size:
                 style_font_size = round(style.font.size.pt, 1)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"样式字号读取失败: {e}")
 
         # 读取样式的字体名称
         style_font_name = None
         try:
             if style.font and style.font.name:
                 style_font_name = style.font.name
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"样式字体读取失败: {e}")
 
         # 读取样式的行距
         style_line_spacing = None
@@ -744,8 +744,8 @@ def _apply_style_fallback(para, runs: list[Run], para_format: ParagraphFormat) -
                 else:
                     # 小于等于 3 视为倍数（如 1.5 倍行距），按正文 16pt 换算
                     style_line_spacing = round(float(sp) * 16, 2)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"样式行距读取失败: {e}")
 
         # 读取样式的对齐
         style_alignment = None
@@ -759,8 +759,8 @@ def _apply_style_fallback(para, runs: list[Run], para_format: ParagraphFormat) -
                     WD_ALIGN_PARAGRAPH.JUSTIFY: "justify",
                 }
                 style_alignment = _map.get(style.paragraph_format.alignment)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"样式对齐读取失败: {e}")
 
         # 读取样式的首行缩进
         style_indent = None
@@ -768,8 +768,8 @@ def _apply_style_fallback(para, runs: list[Run], para_format: ParagraphFormat) -
             if style.paragraph_format and style.paragraph_format.first_line_indent:
                 from docx.shared import Length as L
                 style_indent = round(L(style.paragraph_format.first_line_indent, 0).pt, 1)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"样式首行缩进读取失败: {e}")
 
         # 应用 fallback：run 没有直接格式时用样式值
         for run in runs:
@@ -786,8 +786,8 @@ def _apply_style_fallback(para, runs: list[Run], para_format: ParagraphFormat) -
         if para_format.first_line_indent_pt is None and style_indent:
             para_format.first_line_indent_pt = style_indent
 
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"样式回退应用失败: {e}")
 
 
 # 已迁移至 parser_format.py

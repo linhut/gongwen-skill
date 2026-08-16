@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gongwen-skill"
-version = "1.12.61"
+version = "1.12.62"
 description = "中文公文全流程处理工具 - GB/T 9704 格式检查/修复/内容优化/模板生成/版式注入"
 readme = "README.md"
 license = {text = "MIT"}
@@ -38,13 +38,13 @@ dependencies = [
 Homepage = "https://github.com/linhut/gongwen-skill"
 Repository = "https://github.com/linhut/gongwen-skill"
 "Bug Tracker" = "https://github.com/linhut/gongwen-skill/issues"
-Changelog = "https://github.com/linhut/gongwen-skill/blob/main/CHANGELOG.md"
+Changelog = "https://github.com/linhut/gongwen-skill/blob/master/CHANGELOG.md"
 
 [project.scripts]
 gongwen = "gongwen:main"
 
 [tool.setuptools.packages.find]
-include = ["engine*", "gongwen*", "rules*", "prompts*"]
+include = ["engine*", "gongwen*", "rules*", "prompts*", "etc*"]
 exclude = ["tests*"]
 
 [tool.setuptools.package-data]
@@ -52,3 +52,4 @@ rules = ["official/*.yaml"]
 prompts = ["*.md"]
 engine = ["py.typed", "templates/*.dotx"]
 gongwen = ["py.typed"]
+etc = ["*.json"]

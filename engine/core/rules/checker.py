@@ -252,8 +252,8 @@ def _check_heading_level(model, rule_id, severity, name, field_path, expected, m
                 expected_val = float(exp_str.replace("em", "").strip()) * EM_TO_PT
             else:
                 expected_val = float(exp_str.replace("pt", "").strip())
-        except (ValueError, TypeError):
-            pass
+        except (ValueError, TypeError) as e:
+            logger.warning(f"期望值解析失败: {e}")
 
     # 检查该级别的所有标题段落
     for title_para in headings:
@@ -526,8 +526,8 @@ def _check_paragraph_type_field(model, rule_id, severity, name, field_path, expe
                 expected_val = float(exp_str.replace("em", "").strip()) * EM_TO_PT
             else:
                 expected_val = float(exp_str.replace("pt", "").strip())
-        except (ValueError, TypeError):
-            pass
+        except (ValueError, TypeError) as e:
+            logger.warning(f"期望值解析失败: {e}")
 
     for para in paras:
         if sub_field == "align":

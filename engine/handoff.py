@@ -20,12 +20,15 @@ Schema 字段：
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import datetime
 from pathlib import Path
 
 # P2-29 修复：复用 config.HANDOFF_DIR，消除路径定义重复
 from config import HANDOFF_DIR
+
+_logger = logging.getLogger(__name__)
 
 SCHEMA_VERSION = "1.0"
 
@@ -154,8 +157,8 @@ def list_handoffs(limit: int = 50) -> list[dict]:
                 "handoff_type": data.get("handoff_type", "?"),
                 "file": str(f),
             })
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.warning(f"交接文档解析失败: {e}")
         if len(results) >= limit:
             break
     return results

@@ -26,6 +26,19 @@ from utils.logger import logger
 #  内部工具
 # ---------------------------------------------------------------------------
 
+def _get_line_spacing_pt() -> float:
+    """从规则体系获取正文行距（pt），失败时回退到 33pt。"""
+    try:
+        from core.rules.manager import load_rules_merged
+        rules = load_rules_merged("notice")
+        ls = rules.get("body", {}).get("line_spacing", "33pt")
+        from utils.parse import parse_pt
+        val = parse_pt(ls)
+        return val if val and val > 0 else 33.0
+    except Exception:
+        return 33.0
+
+
 def _insert_before(new_para, reference_p, body) -> None:
     """将段落插入到 reference_p 之前（若无参照则追加到末尾）。"""
     if reference_p is not None:
@@ -63,8 +76,8 @@ def _atomic_save(doc, output_path: str) -> None:
     except Exception:
         try:
             _os.unlink(tmp_path)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"临时文件清理失败: {e}")
         raise
 
 
@@ -109,14 +122,14 @@ def inject_header(output_path: str, header_config: dict) -> None:
         set_run_font(run_org, TITLE_FONT)
         run_org.font.size = Pt(30)
         run_org.font.color.rgb = RGBColor(0xE0, 0x00, 0x00)
-        p_org.paragraph_format.line_spacing = Pt(33)
+        p_org.paragraph_format.line_spacing = Pt(_get_line_spacing_pt())
         p_org.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
         _insert_before(p_org, first_p, body)
 
         # 2. 空二行（保持版头与发文字号之间的间距）
         for _ in range(2):
             p_empty = doc.add_paragraph()
-            p_empty.paragraph_format.line_spacing = Pt(33)
+            p_empty.paragraph_format.line_spacing = Pt(_get_line_spacing_pt())
             p_empty.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
             _insert_before(p_empty, first_p, body)
 
@@ -139,7 +152,7 @@ def inject_header(output_path: str, header_config: dict) -> None:
             p_num = doc.add_paragraph()
             p_num.alignment = WD_ALIGN_PARAGRAPH.LEFT
             pf = p_num.paragraph_format
-            pf.line_spacing = Pt(33)
+            pf.line_spacing = Pt(_get_line_spacing_pt())
             pf.line_spacing_rule = WD_LINE_SPACING.EXACTLY
 
             tabs_el = OxmlElement('w:tabs')
@@ -166,7 +179,7 @@ def inject_header(output_path: str, header_config: dict) -> None:
             run_num = p_num.add_run(doc_number)
             set_run_font(run_num, BODY_FONT)
             run_num.font.size = Pt(16)
-            p_num.paragraph_format.line_spacing = Pt(33)
+            p_num.paragraph_format.line_spacing = Pt(_get_line_spacing_pt())
             p_num.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
             _insert_before(p_num, first_p, body)
         elif signer:
@@ -176,7 +189,7 @@ def inject_header(output_path: str, header_config: dict) -> None:
             run_signer = p_signer.add_run(f'签发人：{signer}')
             set_run_font(run_signer, BODY_FONT)
             run_signer.font.size = Pt(16)
-            p_signer.paragraph_format.line_spacing = Pt(33)
+            p_signer.paragraph_format.line_spacing = Pt(_get_line_spacing_pt())
             p_signer.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
             _insert_before(p_signer, first_p, body)
 
@@ -311,7 +324,7 @@ def inject_footer(output_path: str, footer_config: dict) -> None:
             run_cc = p_cc.add_run(f'抄送：{cc}。')
             set_run_font(run_cc, BODY_FONT)
             run_cc.font.size = Pt(16)
-            p_cc.paragraph_format.line_spacing = Pt(33)
+            p_cc.paragraph_format.line_spacing = Pt(_get_line_spacing_pt())
             p_cc.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
             pPr_cc = p_cc._element.get_or_add_pPr()
             ind_cc = OxmlElement('w:ind')
@@ -561,8 +574,8 @@ def _inject_even_page_footer_direct(output_path: str, fmt: str, font_name: str, 
     except Exception:
         try:
             _os.unlink(tmp_path)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"临时文件清理失败: {e}")
         raise
     logger.info("偶数页页脚已注入（直接 ZIP 方式）")
 

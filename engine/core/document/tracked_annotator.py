@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from lxml import etree
+from utils.logger import logger
 
 W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
@@ -337,10 +338,9 @@ def _anchor_comment(p, cid: int) -> bool:
             or any(dt.text for dt in r.findall(f'{{{W}}}delText'))]
     if not runs:
         try:
-            from utils.logger import logger
             logger.warning(f"批注 #{cid} 锚定失败：段落无文本 run（可能 para_index 与文档结构不匹配）")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"记录批注锚定失败日志出错: {e}")
         return False
 
     # FIX-A002 关键修复：向上追溯，找到 run 在 w:p 直接子元素中的锚定点
@@ -625,10 +625,9 @@ def inject_tracked_with_comments(
                 alt_node = content_map.get(alt_idx)
                 if alt_node is not None and _anchor_comment(alt_node, id_offset + i):
                     try:
-                        from utils.logger import logger
                         logger.warning(f"批注 #{id_offset + i} 保底锚定到相邻段落 {alt_idx}（原 {sug.para_index}）")
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"记录相邻段落锚定日志出错: {e}")
                     break
 
     # S6 修复：AI 声明在第一次序列化前追加（消除 document.xml 二次序列化）
@@ -678,8 +677,8 @@ def inject_tracked_with_comments(
                 rsidRoot.set(f'{{{W}}}val', rsid)
             entries[settings_key] = etree.tostring(
                 sroot, xml_declaration=True, encoding='UTF-8', standalone=True)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"settings.xml 解析失败: {e}")
 
     # S1-C + S4-A：people.xml + comments 扩展注册内联进一次 ZIP（消除外部二次打开覆盖 comments.xml）
     try:

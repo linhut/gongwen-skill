@@ -39,12 +39,21 @@ class RuleEngine:
 
         P3-9 修复：缓存感知规则文件变更——若规则文件 mtime 已变化则自动重载，
         无需手动调用 clear_cache。
+        P2-10 修复：mtime 扫描扩展到 official + custom + user 三层目录。
         DSH 配置覆盖在 YAML 合并之后应用（优先级最高）。
         """
+        newest = 0.0
         try:
-            from config import RULES_DIR
-            newest = max((p.stat().st_mtime for p in RULES_DIR.glob("*.yaml")
-                          if p.stat().st_size > 0), default=0.0)
+            from config import RULES_DIR, CUSTOM_RULES_DIR, USER_RULES_DIR
+            for d in (RULES_DIR, CUSTOM_RULES_DIR, USER_RULES_DIR):
+                try:
+                    for p in d.glob("*.yaml"):
+                        if p.stat().st_size > 0:
+                            m = p.stat().st_mtime
+                            if m > newest:
+                                newest = m
+                except Exception as e:
+                    logger.warning(f"规则文件扫描失败: {e}")
         except Exception:
             newest = 0.0
         if doc_type not in self._rules_cache or self._rules_mtime.get(doc_type, -1) < newest:

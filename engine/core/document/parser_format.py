@@ -6,6 +6,7 @@ Part of the core/document/parse pipeline.
 """
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from docx.shared import Pt, Length
@@ -14,6 +15,8 @@ from docx.oxml.ns import qn
 
 from core.document.models import ParagraphFormat, RunFormat, Run
 from core.document.font_utils import get_effective_font
+
+_logger = logging.getLogger(__name__)
 
 
 def parse_paragraph_format(para) -> ParagraphFormat:
@@ -61,8 +64,8 @@ def parse_paragraph_format(para) -> ParagraphFormat:
                 # 尝试直接取 pt
                 line_spacing_pt = round(pf.line_spacing.pt, 2)
                 line_spacing_rule = "exact"
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.warning(f"行距解析失败: {e}")
 
     # 首行缩进
     first_line_indent_pt = _safe_pt2(pf.first_line_indent)
@@ -77,8 +80,8 @@ def parse_paragraph_format(para) -> ParagraphFormat:
                     chars_val = ind.get(qn('w:firstLineChars'))
                     if chars_val:
                         first_line_indent_pt = round(float(chars_val) / 100 * 16, 2)
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.warning(f"首行缩进解析失败: {e}")
 
     left_indent_pt = _safe_pt2(pf.left_indent)
     right_indent_pt = _safe_pt2(pf.right_indent)
@@ -103,8 +106,8 @@ def parse_run(run, index: int) -> Run:
     if font.size:
         try:
             font_size_pt = round(font.size.pt, 1)
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.warning(f"字号解析失败: {e}")
 
     effective_font = get_effective_font(run)
 

@@ -540,8 +540,8 @@ def _build_paragraph_index(doc: Document) -> dict[int, Any]:
     try:
         import weakref
         weakref.finalize(doc, _paragraph_index_cache.pop, cache_key, None)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"弱引用清理注册失败: {e}")
     return idx
 
 
@@ -1100,5 +1100,5 @@ def _apply_run_format(run, run_model: Run):
                 g = int(rgb_str[2:4], 16)
                 b = int(rgb_str[4:6], 16)
                 run.font.color.rgb = RGBColor(r, g, b)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"颜色值解析失败: {e}")

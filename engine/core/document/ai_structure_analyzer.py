@@ -103,8 +103,8 @@ def classify_with_ai(model: DocumentModel, provider_name: str = "openai") -> boo
         try:
             import asyncio
             asyncio.get_event_loop().run_until_complete(provider.close())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"关闭 AI provider 失败: {e}")
         return False
 
     # 构建提示词
@@ -146,8 +146,8 @@ def classify_with_ai(model: DocumentModel, provider_name: str = "openai") -> boo
         try:
             import asyncio as _asyncio
             _run_async(provider.close())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"关闭 AI provider 失败: {e}")
 
     # 解析AI返回的JSON
     classifications = _parse_ai_response(raw_response)
@@ -179,8 +179,8 @@ def _parse_ai_response(raw: str) -> list[dict] | None:
         data = json.loads(raw.strip())
         if isinstance(data, list):
             return data
-    except json.JSONDecodeError:
-        pass
+    except json.JSONDecodeError as e:
+        logger.warning(f"JSON 解析失败: {e}")
 
     # 策略2: 提取```json```代码块
     code_block = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', raw, re.DOTALL)
@@ -189,8 +189,8 @@ def _parse_ai_response(raw: str) -> list[dict] | None:
             data = json.loads(code_block.group(1).strip())
             if isinstance(data, list):
                 return data
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            logger.warning(f"JSON 解析失败: {e}")
 
     # 策略3: 提取[...]数组
     array_match = re.search(r'\[.*\]', raw, re.DOTALL)
@@ -204,8 +204,8 @@ def _parse_ai_response(raw: str) -> list[dict] | None:
             data = json.loads(text)
             if isinstance(data, list):
                 return data
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            logger.warning(f"JSON 解析失败: {e}")
 
     # 策略5: 逐行提取 {"id": N, "type": "..."} 对象
     objects = re.findall(r'\{[^{}]*"id"\s*:\s*\d+[^{}]*"type"\s*:\s*"[^"]+"[^{}]*\}', raw)

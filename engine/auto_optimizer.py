@@ -321,6 +321,6 @@ def auto_generate_changes(input_path: str, doc_type: str,
                     "style": "庄重严谨",
                     "reference": f"{doc_type}规范 structure",
                 })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"结构检查失败: {e}")
     return changes

@@ -12,6 +12,7 @@ docx 转图片可视化验证（借鉴 docx-skill 的文档转图片思路）。
   python docx_to_image.py <document.docx> --outdir <dir> [--dpi 150] [--format jpeg|png] [--pages 1-3]
 """
 from __future__ import annotations
+import logging
 import shutil
 import subprocess
 import sys
@@ -21,6 +22,8 @@ from typing import Optional
 # 临时 PDF 写入数据目录（config.TMP_DIR，B8 修复：安装目录可能只读，engine/tmp 不再使用）
 from config import TMP_DIR as _TMP_DIR
 _TMP_PDF = _TMP_DIR / "_render_tmp.pdf"
+
+_logger = logging.getLogger(__name__)
 
 
 def _find_command(*names) -> Optional[str]:
@@ -41,8 +44,8 @@ def _convert_with_soffice(docx_path: Path, pdf_path: Path, soffice: str) -> bool
         if produced.exists():
             produced.rename(pdf_path)
             return True
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.warning(f"LibreOffice 转 PDF 失败: {e}")
     return False
 
 
@@ -68,16 +71,16 @@ def _render_pdf_to_images(pdf_path: Path, outdir: Path, dpi: int, fmt: str, page
             try:
                 start, end = pages.split("-", 1)
                 cmd += ["-f", str(int(start)), "-l", str(int(end))]
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.warning(f"页码参数解析失败: {e}")
         cmd += [str(pdf_path), str(prefix)]
         try:
             subprocess.run(cmd, capture_output=True, timeout=120, encoding='utf-8')  # FIX-C002：统一 encoding
             images = sorted(outdir.glob(f"page-*.{fmt}"))
             if images:
                 return images
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.warning(f"pdftoppm 渲染失败: {e}")
 
     # 降级：PyMuPDF 渲染
     try:
@@ -88,15 +91,15 @@ def _render_pdf_to_images(pdf_path: Path, outdir: Path, dpi: int, fmt: str, page
             try:
                 start, end = pages.split("-", 1)
                 page_nums = list(range(int(start) - 1, min(int(end), len(doc))))
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.warning(f"页码参数解析失败: {e}")
         for i in page_nums:
             pix = doc[i].get_pixmap(dpi=dpi)
             out = outdir / f"page-{i + 1}.{fmt}"
             pix.save(str(out))
             images.append(out)
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.warning(f"PyMuPDF 渲染失败: {e}")
 
     return images
 
@@ -131,8 +134,8 @@ def docx_to_image(docx_path: str | Path, outdir: str | Path,
     images = _render_pdf_to_images(pdf_path, outdir, dpi, fmt, pages)
     try:
         pdf_path.unlink(missing_ok=True)
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.warning(f"临时 PDF 清理失败: {e}")
     return images
 
 

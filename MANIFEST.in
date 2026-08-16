@@ -10,3 +10,4 @@ recursive-include prompts/ *.md
 recursive-include gongwen/ *.py
 recursive-include gongwen/ py.typed
 recursive-include .dsh/ **
+recursive-include etc/ *.json

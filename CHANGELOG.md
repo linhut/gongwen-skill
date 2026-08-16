@@ -1,5 +1,34 @@
 # Changelog
 
+## v1.12.61 (2026-08-17)
+
+### Added
+- **DSH 插件配置化排版参数**：支持通过 `~/.gongwen-skill/dsh-config.json` 管理页边距、行距、字体、字号、默认模板版本等排版参数，Agent 调用时自动注入
+- **`--config-overrides` CLI 参数**：`template`/`check`/`optimize`/`md2docx` 四命令支持通用规则覆盖 JSON
+- **`RuleEngine.set_config_overrides()`**：规则引擎支持运行时配置覆盖，优先级最高（official < custom < user < DSH config < CLI）
+- **`apply_config_overrides()`**：`engine/core/rules/manager.py` 新增深度合并函数
+- **DSH 插件 AI 工作指引**：`dsh/index.js` 的 `setup()` 注入 systemPrompt section
+- **DSH 插件 `config` 命令**：支持 `init/show/get/set/reset` 五种操作管理配置
+- **`etc/dsh-config-defaults.json`**：默认配置模板
+- **`tests/test_config.py`**：17 用例测试配置覆盖功能
+- **`engine/__init__.py`**：使 `engine/` 成为合法 Python 包，修复 setuptools 打包发现
+
+### Fixed
+- **`inject.py` 硬编码 `Pt(33)` 行距**：6 处改为从规则体系动态读取 `_get_line_spacing_pt()`，与配置化设计一致
+- **`pyproject.toml` Changelog URL**：`main` → `master`（实际主分支）
+- **`pyproject.toml` package-data**：添加 `etc = ["*.json"]`，修复 pip 安装后 `dsh-config-defaults.json` 缺失
+- **`pyproject.toml` packages.find**：添加 `etc*` 到 include 列表
+- **`MANIFEST.in`**：添加 `recursive-include etc/ *.json`
+- **`RuleEngine._rules_mtime`**：mtime 扫描扩展到 official + custom + user 三层目录
+- **`_legacy.py` md2docx 重复解析函数**：`_parse_margin`/`_parse_cm` 改为委托 `engine/utils/parse.py` 统一实现
+- **40 处 `except: pass` 吞异常**：全部改为 `logger.warning` + 降级路径
+
+### Removed
+- **`setup.py`**：冗余文件，`pyproject.toml` 已完全覆盖
+- **`skills/` 空目录**：与 `.dsh/skills/` 并行的空残留
+- **`dist/` 旧构建产物**：v1.12.60 的 .whl 和 .tar.gz
+- **`engine/sessions/` 残留文件**：27 个开发时会话 JSON
+
 ## v1.12.60 (2026-08-16)
 
 ### Fixed

@@ -9,6 +9,7 @@ ZIP 读写、原子写入、Content-Type / 关系注册逻辑。
   from utils.zip_utils import read_zip_entries, atomic_write_zip, register_content_type, register_relationship
 """
 from __future__ import annotations
+import logging
 import os
 import tempfile
 import zipfile
@@ -16,6 +17,8 @@ from pathlib import Path
 from typing import Callable, Dict, Optional
 
 from lxml import etree
+
+_logger = logging.getLogger(__name__)
 
 CT = 'http://schemas.openxmlformats.org/package/2006/content-types'
 PC = 'http://schemas.openxmlformats.org/package/2006/relationships'
@@ -52,8 +55,8 @@ def atomic_write_zip(target: str | Path, entries: Dict[str, bytes],
     except Exception:
         try:
             os.unlink(tmp_path)
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.warning(f"临时文件清理失败: {e}")
         raise
 
 

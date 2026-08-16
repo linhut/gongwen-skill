@@ -390,8 +390,8 @@ class GongwenAnnotator:
             if rid.startswith('rId'):
                 try:
                     rid_num = max(rid_num, int(rid[3:]))
-                except ValueError:
-                    pass
+                except ValueError as e:
+                    logger.warning(f"关系 ID 解析失败: {e}")
 
         rel = etree.SubElement(root, f'{{{PC}}}Relationship')
         rel.set('Id', f'rId{rid_num + 1}')

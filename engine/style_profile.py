@@ -18,6 +18,7 @@
   yaml_text = build_user_rule_yaml(profile, "单位红头规范")
 """
 from __future__ import annotations
+import logging
 import re
 import zipfile
 import yaml
@@ -26,6 +27,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from lxml import etree
+
+_logger = logging.getLogger(__name__)
 
 W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 NSMAP = {'w': W}
@@ -108,8 +111,8 @@ def _extract_run_style(rPr) -> Dict[str, Any]:
     if sz is not None:
         try:
             style['size_pt'] = int(sz.get(f'{{{W}}}val', '0')) / 2.0
-        except (ValueError, TypeError):
-            pass
+        except (ValueError, TypeError) as e:
+            _logger.warning(f"字号解析失败: {e}")
 
     if rPr.find(f'{{{W}}}b') is not None:
         style['bold'] = True
