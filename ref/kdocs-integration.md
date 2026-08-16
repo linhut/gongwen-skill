@@ -50,8 +50,8 @@ kdocs-cli upgrade -y
 1. kdocs-cli pdf inspect --file 扫描件.pdf        # 检查是否可读
 2. kdocs-cli pdf convert --file 扫描件.pdf -o 提取稿.docx   # 提取文字
    # 或提取为 markdown: -o 提取稿.md
-3. python gongwen.py check 提取稿.docx -t notice  # gongwen 正常处理
-4. python gongwen.py optimize 提取稿.docx -o 成品.docx --apply
+3. python -m gongwen check 提取稿.docx -t notice  # gongwen 正常处理
+4. python -m gongwen optimize 提取稿.docx -o 成品.docx --apply
 ```
 
 ### 场景 2：金山云文档 → gongwen 处理
@@ -62,7 +62,7 @@ kdocs-cli upgrade -y
 1. kdocs-cli drive search-files keyword=标题          # 定位 file_id
    # 或直接从链接解析 file_id
 2. kdocs-cli drive read_file file_id=xxx -o 本地稿.docx   # 导出为本地文件
-3. python gongwen.py optimize-content 本地稿.docx --changes changes.json --apply
+3. python -m gongwen optimize-content 本地稿.docx --changes changes.json --apply
 4. 交付差异对比文档
 ```
 
@@ -70,7 +70,7 @@ kdocs-cli upgrade -y
 
 ```
 步骤：
-1. python gongwen.py optimize 原稿.docx -o 成品.docx --apply   # gongwen 生成成品
+1. python -m gongwen optimize 原稿.docx -o 成品.docx --apply   # gongwen 生成成品
 2. kdocs-cli drive create_file_with_content file_name=成品.docx content_base64=<base64> format=docx
    # 或 kdocs-cli drive upload_file path=成品.docx
 3. 向用户展示返回的 link_url 分享链接
@@ -81,7 +81,7 @@ kdocs-cli upgrade -y
 ### 场景 4：成品转 PDF
 
 ```
-python gongwen.py optimize 原稿.docx -o 成品.docx --apply
+python -m gongwen optimize 原稿.docx -o 成品.docx --apply
 kdocs-cli pdf convert --file 成品.docx -o 成品.pdf
 ```
 

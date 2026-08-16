@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.12.59 (2026-08-16)
+
+### Fixed (P0)
+- **DSH 插件桥接真实 bug**：`dsh/index.js` 调用入口从 `python gongwen.py`（已不存在的旧入口）改为 `python -m gongwen`（v1.12.57 重构后的正确入口）
+- **DSH 插件桥接安全/健壮性**：用 `node:child_process.spawn` 数组参数替代 `execSync` 字符串拼接，避免 shell 引号注入；加 `PYTHONIOENCODING=utf-8`/`PYTHONUTF8=1` 防 Windows GBK 乱码；尊重 `ctx.cwd` 让 DSH Agent 调用走当前工作目录
+
+### Changed
+- **package.json 配置修复**：版本号同步 1.12.57→1.12.59；`files` 数组从失效的 `skills/` 改为 `.dsh/` + `engine/` + `gongwen/` + `rules/` + `prompts/` + `pyproject.toml` + `requirements.txt`；`keywords` 新增 `skill` 和 `cordis`
+- **README/SKILL.md/usage-prompts.md/kdocs-integration.md 全量 CLI 入口同步**：18+47+47+47+22+22 = 203 处 `python gongwen.py` → `python -m gongwen`，消除 v1.12.57 重构遗留的文档失效
+
+### Added
+- **README DSH 集成章节重大补全**：参考 dsh-archive-manager 项目风格，加入四种 DSH 安装方式（方式零：纯 CLI；方式一：Skill 文件系统；方式二：npm Cordis 插件 bundle；方式三：本地 link 开发模式）
+- 明确告知 DSH Cordis 模块化架构与 `~/.dsh/profiles/web/package.json` 中 `dsh.profile.bundles` 配置点
+- 给出"DSH Web Profile 一键安装命令" `dsh plugin --profile web add -w gongwen-skill`
+- 新增"适用场景对照表"帮助用户按需求选择安装方式
+- README `DSH 兼容性自查表`：补 `Cordis 插件包` 和 `PyPI 上架` 一行，并把过时的 `CLI: python gongwen.py` 修正为 `python -m gongwen`
+
 ## v1.12.58 (2026-08-16)
 
 ### Fixed (P0)

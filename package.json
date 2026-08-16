@@ -1,6 +1,6 @@
 {
   "name": "gongwen-skill",
-  "version": "1.12.57",
+  "version": "1.12.59",
   "description": "中文公文全流程处理工具 - GB/T 9704 格式检查/修复/内容优化/模板生成/版式注入",
   "type": "module",
   "main": "dsh/index.js",
@@ -11,9 +11,15 @@
   },
   "files": [
     "dsh/",
-    "skills/",
+    ".dsh/",
+    "engine/",
+    "gongwen/",
+    "rules/",
+    "prompts/",
     "cordis.patch.yml",
     "SKILL.md",
+    "pyproject.toml",
+    "requirements.txt",
     "README.md",
     "LICENSE"
   ],
@@ -31,7 +37,9 @@
     "docx",
     "official-document",
     "dsh",
-    "deepseek-harness"
+    "deepseek-harness",
+    "skill",
+    "cordis"
   ],
   "author": "Jose AI",
   "license": "MIT",

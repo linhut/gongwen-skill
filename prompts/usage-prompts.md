@@ -11,13 +11,13 @@
 
 ```
 # 1️⃣ 用户说"帮我看看/检查这个文件" → 🔍 只读，不改文件，绝对安全
-python gongwen.py check 文件.docx
+python -m gongwen check 文件.docx
 
 # 2️⃣ 用户说"修改一下内容" → ✏️ 只改内容，不改格式
-python gongwen.py optimize-content 原文.docx --changes 修订内容.json --apply
+python -m gongwen optimize-content 原文.docx --changes 修订内容.json --apply
 
 # 3️⃣ 用户确认要改格式 → 🔧 先 check 展示问题，用户确认后再执行
-python gongwen.py optimize 文件.docx -o 优化版.docx
+python -m gongwen optimize 文件.docx -o 优化版.docx
 ```
 
 **不记得参数也没关系**，系统会自动推断文档类型和输出文件名。
@@ -312,42 +312,42 @@ Agent 输出：
 
 ```bash
 # 查看版本
-python gongwen.py --version
+python -m gongwen --version
 
 # 列出所有类型（🔍 只读）
-python gongwen.py list-types
+python -m gongwen list-types
 
 # 检查格式（🔍 只读，推荐先执行）
-python gongwen.py check 文件.docx -t notice
+python -m gongwen check 文件.docx -t notice
 
 # 只看严重问题（🔍 只读）
-python gongwen.py check 文件.docx -t notice -s P0 --json
+python -m gongwen check 文件.docx -t notice -s P0 --json
 
 # 一键优化（🔧 会修改字体/行距/边距等格式！默认交互确认）
-python gongwen.py optimize 文件.docx -o 文件_优化版.docx -t notice
+python -m gongwen optimize 文件.docx -o 文件_优化版.docx -t notice
 
 # 跳过确认（🔧 已知问题后快速修复格式）
-python gongwen.py optimize 文件.docx -o 文件_优化版.docx -t notice -y
+python -m gongwen optimize 文件.docx -o 文件_优化版.docx -t notice -y
 
 # 选择性修复（🔧 仅修改指定规则）
-python gongwen.py optimize 文件.docx -o 文件_优化版.docx --selected-rules FIX-N001,FIX-N002
+python -m gongwen optimize 文件.docx -o 文件_优化版.docx --selected-rules FIX-N001,FIX-N002
 
 # 仅保留格式、不做任何修复（🔧 跳过格式规则）
-python gongwen.py optimize 文件.docx -o 文件_优化版.docx --content-only
+python -m gongwen optimize 文件.docx -o 文件_优化版.docx --content-only
 
 # 内容修订对比（✏️ 只改内容不改格式！）
 # 先准备 修订内容.json（格式见 SKILL.md 路径B 变更JSON格式章节）
-python gongwen.py optimize-content 原文.docx --changes 修订内容.json --apply -o 修订对比.docx
+python -m gongwen optimize-content 原文.docx --changes 修订内容.json --apply -o 修订对比.docx
 
 # 生成模板（🔧 生成新文件，含标准排版）
-python gongwen.py template notice -o 通知模板.docx
+python -m gongwen template notice -o 通知模板.docx
 
 # Markdown 转公文（✏️ 只改内容不改格式）
-python gongwen.py md2docx 草稿.md -o 公文.docx -t report --signer "XX局" --date "2026年7月24日"
+python -m gongwen md2docx 草稿.md -o 公文.docx -t report --signer "XX局" --date "2026年7月24日"
 
 # 规则管理（🔍 只读）
-python gongwen.py rule-list
-python gongwen.py rule-export notice -o notice_rules.yaml
+python -m gongwen rule-list
+python -m gongwen rule-export notice -o notice_rules.yaml
 ```
 
 ---
@@ -372,7 +372,7 @@ python gongwen.py rule-export notice -o notice_rules.yaml
 🟢 P2（建议项）：2 项
 
 是否要自动修复以上所有问题？[Y/n]
-（或输入 python gongwen.py optimize 文件.docx --selected-rules FIX-xxx 选择性修复）
+（或输入 python -m gongwen optimize 文件.docx --selected-rules FIX-xxx 选择性修复）
 ```
 
 ---

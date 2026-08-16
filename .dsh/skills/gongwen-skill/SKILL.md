@@ -40,7 +40,7 @@ Licensed under the MIT License. See the LICENSE file for details.
 
 | 环境 | 行为要求 |
 |------|---------|
-| **CLI 直接调用** | 必须执行完整命令（`python gongwen.py check/optimize/optimize-content`），展示命令和输出 |
+| **CLI 直接调用** | 必须执行完整命令（`python -m gongwen check/optimize/optimize-content`），展示命令和输出 |
 | **computer-use** | 必须先确认操作路径，明确告知用户将要执行什么命令、产出什么文件 |
 | **browser:control-in-app-browser** | 不支持直接执行 python 命令，应将命令展示给用户让其自行执行，或引导至 CLI 环境 |
 
@@ -84,7 +84,7 @@ Licensed under the MIT License. See the LICENSE file for details.
 
 | 方式 | 说明 |
 |------|------|
-| **本地 CLI** | 克隆仓库 → `pip install -r requirements.txt` → `python gongwen.py <命令>` |
+| **本地 CLI** | 克隆仓库 → `pip install -r requirements.txt` → `python -m gongwen <命令>` |
 | **AI Agent 内嵌** | 将仓库路径加入 Agent 的 skills 目录，Agent 自动读取 SKILL.md 并调用 CLI 命令 |
 
 ### 六、版本自检（Agent 必须在技能加载后执行）
@@ -94,7 +94,7 @@ Licensed under the MIT License. See the LICENSE file for details.
 3. **多渠道比对远程最新 tag**（不能只用本地 `git describe`——它只读本地可达 tag，未 fetch 时会误判本地即最新；也不能只查单一远程——某仓库不可达/网络抖动会导致误判）：
    ```bash
    # 首选：CLI 内置多渠道自检命令（自动查询 GitHub/GitCode/AtomGit 三仓库，取最高版本）
-   python gongwen.py check-update
+   python -m gongwen check-update
 
    # 手动回退：逐一查询三个镜像仓库，取最高版本
    for url in \
@@ -159,16 +159,16 @@ write_handoff(
 ```
 
 **新会话开始时（强制检查）**：
-1. 先执行 `python gongwen.py handoff --list` 查看是否有未完成任务
-2. 若有，读取最新一条：`python gongwen.py handoff --latest --summary`（Markdown 摘要）
+1. 先执行 `python -m gongwen handoff --list` 查看是否有未完成任务
+2. 若有，读取最新一条：`python -m gongwen handoff --latest --summary`（Markdown 摘要）
 3. 向用户确认："检测到上次未完成的交接文档《{session_id}》，是否继续该任务？"
 4. 用户确认后，按 `context` / `completed` / `blocked_on` / `next_steps` / `pitfalls` 恢复上下文继续
 
 **命令速查**：
 ```bash
-python gongwen.py handoff --list             # 列出所有交接文档
-python gongwen.py handoff --latest           # 最新交接文档（JSON）
-python gongwen.py handoff --latest --summary # 最新交接文档（Markdown 摘要）
+python -m gongwen handoff --list             # 列出所有交接文档
+python -m gongwen handoff --latest           # 最新交接文档（JSON）
+python -m gongwen handoff --latest --summary # 最新交接文档（Markdown 摘要）
 ```
 
 **注意事项**：
@@ -375,10 +375,10 @@ python gongwen.py handoff --latest --summary # 最新交接文档（Markdown 摘
 
 #### 规则 5：Agent 协作模式（V1/V4）
 - **Agent 环境中优先用 `--output-tasks` / `--input-tasks` 协作，不依赖 `GONGWEN_LLM_API`**：
-  1. `python gongwen.py optimize-content 文档.docx --changes changes.json --output-tasks tasks.json --apply --mode tracked -t news`
+  1. `python -m gongwen optimize-content 文档.docx --changes changes.json --output-tasks tasks.json --apply --mode tracked -t news`
      → Skill 输出待核验实体 + 风格增强请求到 tasks.json，同时生成基础版文档（内容修订+结构/焦点检查批注）
   2. Agent 用自身 LLM+搜索能力处理 tasks.json（核验人事信息、生成风格建议），输出 tasks_result.json
-  3. `python gongwen.py optimize-content 文档.docx --changes changes.json --input-tasks tasks_result.json --apply --mode tracked -t news`
+  3. `python -m gongwen optimize-content 文档.docx --changes changes.json --input-tasks tasks_result.json --apply --mode tracked -t news`
      → Skill 读入回填结果（事实核验修正 status=error+auto_fix / 风格建议），合并到 changes 后执行
 - `--output-tasks` 与 `--input-tasks` 互斥，不能同时指定
 - `GONGWEN_LLM_API` 保留为**降级通道**：CLI 独立使用且配置了 API 时，Skill 内部自行调用（自动优化/风格增强/LLM 实体提取）；未配置则跳过这些环节，不影响确定性工作
@@ -765,9 +765,9 @@ Skill 版本: 填写当前版本号（运行 gongwen.py --version）
 
 ```bash
 # 三步走
-python gongwen.py check 文件.docx -t <类型>         # 第1步：检查问题（只读）
-python gongwen.py optimize 文件.docx -o 成品.docx -t <类型> -y  # 第2步：修复（-y 跳过确认）
-python gongwen.py check 成品.docx -t <类型> --json    # 第3步：验证
+python -m gongwen check 文件.docx -t <类型>         # 第1步：检查问题（只读）
+python -m gongwen optimize 文件.docx -o 成品.docx -t <类型> -y  # 第2步：修复（-y 跳过确认）
+python -m gongwen check 成品.docx -t <类型> --json    # 第3步：验证
 ```
 
 ### 检查结果分级
@@ -782,12 +782,12 @@ python gongwen.py check 成品.docx -t <类型> --json    # 第3步：验证
 
 ```bash
 # 注入版头版记页码
-python gongwen.py optimize 文件.docx -o 成品.docx --layout 版式.json
+python -m gongwen optimize 文件.docx -o 成品.docx --layout 版式.json
 
 # 单独补版式要素
-python gongwen.py header 文件.docx --org-name 单位全称 --doc-number "发文编号"
-python gongwen.py footer 文件.docx --cc 抄送单位 --printer 印发单位 --print-date 印发日期
-python gongwen.py pagenum 文件.docx --alignment center
+python -m gongwen header 文件.docx --org-name 单位全称 --doc-number "发文编号"
+python -m gongwen footer 文件.docx --cc 抄送单位 --printer 印发单位 --print-date 印发日期
+python -m gongwen pagenum 文件.docx --alignment center
 ```
 
 ---
@@ -805,7 +805,7 @@ python gongwen.py pagenum 文件.docx --alignment center
 ### 命令
 
 ```bash
-python gongwen.py fix-common 文件.docx -o 成品.docx
+python -m gongwen fix-common 文件.docx -o 成品.docx
 ```
 
 7 步修复流程（内部自动执行）：
@@ -885,13 +885,13 @@ python gongwen.py fix-common 文件.docx -o 成品.docx
       `--perspective "..."`（优化视角/风格方向，如"务实客观，数据驱动，避免主观评价和万能结论"）
 
 第1步：LLM 逐段分析 → 确认修订后的文本内容
-第2步：python gongwen.py optimize-content 原文.docx -o 修订版.docx -f 修订后.md --background ".temp/background.txt" --perspective "..."
+第2步：python -m gongwen optimize-content 原文.docx -o 修订版.docx -f 修订后.md --background ".temp/background.txt" --perspective "..."
       → 行内修订文档（自动继承原文档格式 + 红色标注 + 删除线 + 楷体修改说明）
 
 第3步：产出验证（P3，强制步骤，严禁跳过）
       **必须**对产出文件执行格式合规验证：
       ```bash
-      python gongwen.py check "产出文件.docx" -t <doc_type> --json
+      python -m gongwen check "产出文件.docx" -t <doc_type> --json
       ```
       - check 含 ERROR 级别问题 → 交付时向用户报告
       - check 含 WARNING 级别问题 → 交付时附注提醒
@@ -1032,7 +1032,7 @@ Agent: 📋 审稿汇总报告
 将优化建议以 **Word 原生批注** 写入，用户在 Word 中可通过「审阅 → 接受/拒绝」逐条处理，而非行内标记：
 
 ```bash
-python gongwen.py optimize-content 原文.docx --changes changes.json --apply --comment-mode
+python -m gongwen optimize-content 原文.docx --changes changes.json --apply --comment-mode
 ```
 
 - 批注按字符范围锚定（可精确定位到被修改文字）
@@ -1044,7 +1044,7 @@ python gongwen.py optimize-content 原文.docx --changes changes.json --apply --
 将修改以 Word 原生修订标记（`<w:ins>`/`<w:del>`）写入，用户可在「审阅 → 修订」面板逐条接受/拒绝：
 
 ```bash
-python gongwen.py optimize-content 原文.docx --changes changes.json --apply --tracked-change
+python -m gongwen optimize-content 原文.docx --changes changes.json --apply --tracked-change
 ```
 
 - 修订 ID 全局唯一、RSID 无冲突
@@ -1055,7 +1055,7 @@ python gongwen.py optimize-content 原文.docx --changes changes.json --apply --
 一条命令完成「格式修复（路径 A）→ 内容优化（路径 B）→ 批注输出」：
 
 ```bash
-python gongwen.py full-review 原文.docx --changes changes.json -o 审校版.docx
+python -m gongwen full-review 原文.docx --changes changes.json -o 审校版.docx
 ```
 
 #### 样式学习（style-learn / style-list）
@@ -1063,9 +1063,9 @@ python gongwen.py full-review 原文.docx --changes changes.json -o 审校版.do
 上传标准文档，学习其排版样式（含字间距等细微属性），生成自定义命名模板：
 
 ```bash
-python gongwen.py style-learn 单位定稿红头.docx -n 民委红头规范   # 学习并注册模板
-python gongwen.py style-list                                     # 列出已学习模板
-python gongwen.py optimize 文档.docx -t 民委红头规范 --apply      # 套用模板
+python -m gongwen style-learn 单位定稿红头.docx -n 民委红头规范   # 学习并注册模板
+python -m gongwen style-list                                     # 列出已学习模板
+python -m gongwen optimize 文档.docx -t 民委红头规范 --apply      # 套用模板
 ```
 
 模板存储于 `~/.gongwen-skill/user_rules/`（仓库之外），**git pull 更新 skill 不会丢失**。
@@ -1075,7 +1075,7 @@ python gongwen.py optimize 文档.docx -t 民委红头规范 --apply      # 套�
 对文档处理链进行系统级审计，输出问题清单（含严重级别与位置）：
 
 ```bash
-python gongwen.py audit 原文.docx -t notice
+python -m gongwen audit 原文.docx -t notice
 ```
 
 - **检查维度**（与实现一致）：格式合规（删除线 val=false 伏笔、bold-first 整段加粗误判、AI 声明残留、修订标记残留）+ 结构统计（段落/run 数）
@@ -1099,13 +1099,13 @@ python gongwen.py audit 原文.docx -t notice
 
 ```bash
 # 完整版（5 角色审稿，默认）
-python gongwen.py optimize-content 原文.docx --changes changes.json --mode tracked --apply
+python -m gongwen optimize-content 原文.docx --changes changes.json --mode tracked --apply
 
 # 精简版（3 角色）
-python gongwen.py optimize-content 原文.docx --changes changes.json --mode tracked --reviewers 3 --apply
+python -m gongwen optimize-content 原文.docx --changes changes.json --mode tracked --reviewers 3 --apply
 
 # 带事实核验（--background 背景资料，对存疑人事信息追加核验批注）
-python gongwen.py optimize-content 原文.docx --changes changes.json --mode tracked \
+python -m gongwen optimize-content 原文.docx --changes changes.json --mode tracked \
   --background "背景资料1.pdf" --background "资料2.docx" --apply
 ```
 
@@ -1636,10 +1636,10 @@ Agent 在路径 B 交付产品前，必须逐项审计以下五点并汇报结�
 
 ```bash
 # 自动命名：{原文档名}+{内容风格}+{日期}+v1.docx（如 工作报告+庄重严谨+20260725+v1.docx）
-python gongwen.py optimize-content 原文档.docx --changes 修订内容
+python -m gongwen optimize-content 原文档.docx --changes 修订内容
 
 # 也可显式指定输出文件名
-python gongwen.py optimize-content 原文档.docx -o 对比文档.docx --changes 修订内容
+python -m gongwen optimize-content 原文档.docx -o 对比文档.docx --changes 修订内容
 ```
 
 **标记规则**：
@@ -1653,10 +1653,10 @@ python gongwen.py optimize-content 原文档.docx -o 对比文档.docx --changes
 
 ```bash
 # 覆盖默认声明
-python gongwen.py optimize-content 原文.docx --changes 修订内容 --disclaimer "（本稿经GongWen-skill-AI辅助生成，请人工复核）"
+python -m gongwen optimize-content 原文.docx --changes 修订内容 --disclaimer "（本稿经GongWen-skill-AI辅助生成，请人工复核）"
 
 # 不使用声明
-python gongwen.py optimize-content 原文.docx --changes 修订内容 --disclaimer ""
+python -m gongwen optimize-content 原文.docx --changes 修订内容 --disclaimer ""
 ```
 
 ### 路径 B / 如需格式修复：走路径 A
@@ -1779,10 +1779,10 @@ LLM 根据用户背景和要求，参考下方段落结构模板和惯用语库�
 
 **桌签同步生成规则（会议类文档专用）**：
 处理**会议通知、纪要、会议方案、会议议题材料**等涉及**参会人员/列席人员**的文档时，Agent **必须**在完成主文档后主动询问用户：
-> 是否需要同步生成会议桌签？可用名单通过 `python gongwen.py table-signs` 批量生成（A5横版、黑体130pt、双面打印）。
+> 是否需要同步生成会议桌签？可用名单通过 `python -m gongwen table-signs` 批量生成（A5横版、黑体130pt、双面打印）。
 
 具体执行规则：
-- 若用户有参会人员名单（或用户能在文档中提供）→ 直接执行 `python gongwen.py table-signs 名单.txt -o ./桌签/` 生成每人一份独立桌签
+- 若用户有参会人员名单（或用户能在文档中提供）→ 直接执行 `python -m gongwen table-signs 名单.txt -o ./桌签/` 生成每人一份独立桌签
 - 若用户无名单但有具体人数 → 提示用户给出人员姓名清单
 - 若用户既无名单也不知参会人员 → 跳过桌签生成，不追问
 - **仅询问一次**，用户明确说"不需要"后不再重复追问
@@ -1792,10 +1792,10 @@ LLM 根据用户背景和要求，参考下方段落结构模板和惯用语库�
 
 **第二步：md2docx 转换（管线内步骤）**
 
-执行 `python gongwen.py md2docx 草稿.md -t <类型>`，输出为管线内临时文件（如 `_temp_draft.docx`），**不单独作为产物交付**。
+执行 `python -m gongwen md2docx 草稿.md -t <类型>`，输出为管线内临时文件（如 `_temp_draft.docx`），**不单独作为产物交付**。
 
 ```bash
-python gongwen.py md2docx 草稿.md -o _temp_draft.docx -t <类型> --signer 落款单位 --date 日期
+python -m gongwen md2docx 草稿.md -o _temp_draft.docx -t <类型> --signer 落款单位 --date 日期
 ```
 
 **第三步（可选）：正文段落首句加粗**
@@ -1803,22 +1803,22 @@ python gongwen.py md2docx 草稿.md -o _temp_draft.docx -t <类型> --signer 落
 若需要按公文规范将正文段落的首句加粗，在 optimize 之前执行 `bold-first`：
 
 ```bash
-python gongwen.py bold-first _temp_draft.docx -o _temp_draft.docx
+python -m gongwen bold-first _temp_draft.docx -o _temp_draft.docx
 ```
 
 > **注意**：`bold-first` 必须在 `optimize` 之前执行，以便 optimize 内的 `fix_bold_range` 规则能正确处理边界情况。若先 optimize 再 bold-first，会导致整段加粗问题。
 
 **第四步：调用路径 A 的 optimize 套国标格式生成成品**
 
-对第二步/第三步的临时文件执行 `python gongwen.py optimize _temp_draft.docx -t <类型>`，套用 GB/T 9704 国标格式（版头、版记、页码、字体、字号、行距等）。这一步是纯格式处理，不改文字内容。
+对第二步/第三步的临时文件执行 `python -m gongwen optimize _temp_draft.docx -t <类型>`，套用 GB/T 9704 国标格式（版头、版记、页码、字体、字号、行距等）。这一步是纯格式处理，不改文字内容。
 
 ```bash
-python gongwen.py optimize _temp_draft.docx -o 成品.docx -t <类型>
+python -m gongwen optimize _temp_draft.docx -o 成品.docx -t <类型>
 ```
 
 **第五步：验证产物并交付**
 
-执行 `python gongwen.py check 成品.docx -t <类型> --json` 进行格式合规检查。向用户报告格式合规情况和最终产物路径，提醒用户确认 `[]` 占位符处的内容。
+执行 `python -m gongwen check 成品.docx -t <类型> --json` 进行格式合规检查。向用户报告格式合规情况和最终产物路径，提醒用户确认 `[]` 占位符处的内容。
 
 **审稿流转（路径 C 交付附加流程）**：
 
@@ -1832,16 +1832,16 @@ python gongwen.py optimize _temp_draft.docx -o 成品.docx -t <类型>
 
 ```bash
 # 完整版（默认）
-python gongwen.py review 通知 -o 审稿流转单-通知.docx --title "关于XXX的通知"
+python -m gongwen review 通知 -o 审稿流转单-通知.docx --title "关于XXX的通知"
 
 # 精简版
-python gongwen.py review 请示 --scheme compact -o 审稿流转单-请示.docx --title "关于XXX的请示"
+python -m gongwen review 请示 --scheme compact -o 审稿流转单-请示.docx --title "关于XXX的请示"
 ```
 
 生成后的审稿流转单包含：审稿角色表格（含意见栏/签名栏）、流转记录表、使用说明。用户打印后即可随文稿实物流转。**仅询问一次**，用户明确说"不需要"后不再重复追问。
 
 ```bash
-python gongwen.py check 成品.docx -t <类型> --json
+python -m gongwen check 成品.docx -t <类型> --json
 ```
 
 第二步至第四步使用同一 `-t` 类型。
@@ -1904,7 +1904,7 @@ python gongwen.py check 成品.docx -t <类型> --json
 
 ### 路径 C / 公文类型选择
 
-不确定类型先 `python gongwen.py list-types`。用户描述模糊时，按以下映射引导：
+不确定类型先 `python -m gongwen list-types`。用户描述模糊时，按以下映射引导：
 
 | 用户意图 | 推荐类型 | `-t` 值 |
 |----------|----------|---------|
@@ -2778,7 +2778,7 @@ XX处                                                 ← 华文楷体 16pt 居�
 
 > **news（新闻稿/简报）特殊规则**（提质方案 v2.1 问题一）：标题为**事件陈述式**（≤35 字，含时间/地点/事件三要素，不做精简），非法定公文"事由+文种式"（≤20 字）。标题支持两种模式：专题会议式（`{部门/工作}+{会议类型}+在{地点}+召开`）与常规会议式（`{机构}+{部门}+第{序次}次+{会议类型}+召开`）。不检查主送机关/落款/附件说明等法定要素；必检：人名/职务/机构名准确性、时间一致性、逻辑闭环（听取→指出→强调→要求）、稿源/编辑信息。
 
-不确定类型先 `python gongwen.py list-types`。
+不确定类型先 `python -m gongwen list-types`。
 
 ---
 

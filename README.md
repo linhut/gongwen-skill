@@ -63,34 +63,34 @@ cd gongwen-skill
 pip install -r requirements.txt
 
 # 生成一份标准通知模板
-python gongwen.py template notice -o 通知模板.docx
+python -m gongwen template notice -o 通知模板.docx
 
 # 检查公文格式（只读）
-python gongwen.py check 公文.docx -t notice --json
+python -m gongwen check 公文.docx -t notice --json
 
 # 自动修复格式（--apply 确认执行，默认预览）
-python gongwen.py optimize 公文.docx -o 成品.docx -t notice --apply
+python -m gongwen optimize 公文.docx -o 成品.docx -t notice --apply
 
 # 一步到位：检查 + 修复 + 版头/版记/页码全注入（--layout 指向 JSON 配置）
-python gongwen.py optimize 公文.docx -o 成品.docx --layout 版式.json
+python -m gongwen optimize 公文.docx -o 成品.docx --layout 版式.json
 
 # Markdown 草稿 → 正式公文（支持管道输入和 Front Matter 元数据）
-python gongwen.py md2docx 草稿.md -o 正式公文.docx -t report --signer "XX单位" --date "2026年8月1日"
+python -m gongwen md2docx 草稿.md -o 正式公文.docx -t report --signer "XX单位" --date "2026年8月1日"
 
 # 内容优化（默认 tracked 模式：Word 原生修订+批注，审阅面板逐条接受/拒绝）
-python gongwen.py optimize-content 原文.docx --changes 修订内容.json --apply --mode tracked -t news
+python -m gongwen optimize-content 原文.docx --changes 修订内容.json --apply --mode tracked -t news
 
 # 注入版头（发文机关标志 + 发文字号 + 签发人 + 红色反线）
-python gongwen.py header 公文.docx -o 红头公文.docx --org-name "XX单位" --doc-number "〔2026〕1号"
+python -m gongwen header 公文.docx -o 红头公文.docx --org-name "XX单位" --doc-number "〔2026〕1号"
 
 # 注入版记（抄送 + 印发机关 + 印发日期）
-python gongwen.py footer 红头公文.docx --cc "各单位" --printer "XX办公室" --print-date "2026年8月1日"
+python -m gongwen footer 红头公文.docx --cc "各单位" --printer "XX办公室" --print-date "2026年8月1日"
 
 # 注入页码（Word PAGE 域动态页码）
-python gongwen.py pagenum 红头公文.docx --alignment right
+python -m gongwen pagenum 红头公文.docx --alignment right
 
 # 多渠道版本自检
-python gongwen.py check-update
+python -m gongwen check-update
 ```
 
 ## ✍️ 内容优化（路径 B）核心能力
@@ -131,13 +131,13 @@ Skill 定位为**工具层**——确定性工作自己做，需 LLM/搜索判�
 
 ```bash
 # 1. Skill 输出待处理任务（待核验实体 + 风格增强请求），同时生成基础版文档
-python gongwen.py optimize-content 新闻稿.docx --changes changes.json \
+python -m gongwen optimize-content 新闻稿.docx --changes changes.json \
   --output-tasks tasks.json --apply --mode tracked -t news
 
 # 2. Agent 用自身 LLM+搜索能力处理 tasks.json（核验人事信息、生成风格建议），输出 tasks_result.json
 
 # 3. Skill 读入回填结果，合并到 changes 后执行（去重/已确认过滤/独立修订作者）
-python gongwen.py optimize-content 新闻稿.docx --changes changes.json \
+python -m gongwen optimize-content 新闻稿.docx --changes changes.json \
   --input-tasks tasks_result.json --apply --mode tracked -t news
 ```
 
@@ -201,9 +201,9 @@ python gongwen.py optimize-content 新闻稿.docx --changes changes.json \
 - 用户覆盖：`~/.gongwen-skill/user_rules/*.yaml`（同名字段覆盖官方）
 
 ```bash
-python gongwen.py rule-export notice -o notice_rules.yaml
-python gongwen.py rule-import my_company -f 公司规范.yaml
-python gongwen.py rule-list notice
+python -m gongwen rule-export notice -o notice_rules.yaml
+python -m gongwen rule-import my_company -f 公司规范.yaml
+python -m gongwen rule-list notice
 ```
 
 ## ⚠️ 使用红线
@@ -226,7 +226,7 @@ python gongwen.py rule-list notice
 
 Agent 加载 skill 后**必须执行版本追新自检**，确保使用最新版本：
 
-1. **多渠道远程自检**（首选）：`python gongwen.py check-update`——自动查询 GitHub/GitCode/AtomGit 三仓库最新 tag，取最高版本比对本地；任一渠道可达即不遗漏，全部不可达时明确告知"版本自检跳过"
+1. **多渠道远程自检**（首选）：`python -m gongwen check-update`——自动查询 GitHub/GitCode/AtomGit 三仓库最新 tag，取最高版本比对本地；任一渠道可达即不遗漏，全部不可达时明确告知"版本自检跳过"
 2. **本地 git tag 对比**（补充）：对 skill 安装目录执行 `git -C "<skill安装目录>" describe --tags --abbrev=0`；若安装目录不在 git 管理下，应告知用户"无法执行版本对比，建议手动检查 GitHub 更新"
 3. **落后则警告**：发现本地版本落后于最新 tag 时，**必须在执行前警告用户**并提示更新（`cd <gongwen-skill目录> && git pull && git fetch --tags`），不得静默使用旧版本
 
@@ -236,11 +236,22 @@ Agent 加载 skill 后**必须执行版本追新自检**，确保使用最新版
 
 ## 🚀 DeepSeek Harness (DSH) 集成
 
-本 Skill 完全兼容 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) 技能系统，可被 DSH Agent 自动发现并加载。
+本 Skill 同时支持 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) 的**两种集成方式**——文件系统 **Skill**（轻量、跟随项目）与 **Cordis 插件 bundle**（包入 npm 通道、让 Web UI Toolkit 可调用），按你的部署需求选择。
 
-### 技能发现方式
+DSH 采用 **Cordis 模块化微内核架构**：技能体系基于本地文件系统（无中心化技能市场），插件体系基于 npm 包 + `~/.dsh/profiles/<preset>/package.json` 中的 `dsh.profile.bundles` 声明挂载。
 
-DSH 自动扫描以下目录中的技能，优先级从高到低：
+### 方式零：仅作为 Python CLI 使用（最轻量）
+
+```bash
+git clone https://github.com/linhut/gongwen-skill.git
+cd gongwen-skill
+pip install -r requirements.txt   # 或 pip install gongwen-skill（已上 PyPI）
+python -m gongwen --version       # 检验：gongwen-skill v1.12.59
+```
+
+### 方式一：作为 DSH Skill 注册（基于本地文件系统）
+
+DSH Agent 启动时自动扫描下表目录中的技能（优先级从高到低）：
 
 | 优先级 | 目录 | 说明 |
 |:------:|:-----|:------|
@@ -249,38 +260,112 @@ DSH 自动扫描以下目录中的技能，优先级从高到低：
 | 400 | `~/.dsh/skills/` | 用户级 DSH 技能目录 |
 | 500 | `~/.agents/skills/` | 用户级 Agent 技能目录 |
 
-### 快速安装
+**安装方式**（二选一）：
 
 ```bash
-# 方式一：注册到项目级（推荐，跟随项目）
-git clone https://github.com/linhut/gongwen-skill.git
-cd gongwen-skill
-pip install -r requirements.txt
-# DSH 自动发现项目根目录下的 .dsh/skills/ 目录
+# A. 项目级：克隆到工程目录（跟随项目，推荐）
+git clone https://github.com/linhut/gongwen-skill.git ./third_party/gongwen-skill
+ln -s ./third_party/gongwen-skill/.dsh/skills/gongwen-skill  ./.dsh/skills/gongwen-skill
 
-# 方式二：注册到用户级（全局可用）
-git clone https://github.com/linhut/gongwen-skill.git
-cd gongwen-skill
-mkdir -p ~/.dsh/skills/gongwen-skill
-cp SKILL.md ~/.dsh/skills/gongwen-skill/SKILL.md
+# B. 用户级：全局可用，所有 DSH 会话都能发现
+git clone https://github.com/linhut/gongwen-skill.git ~/skills/gongwen-skill
+mkdir -p ~/.dsh/skills/
+ln -s ~/skills/gongwen-skill/.dsh/skills/gongwen-skill  ~/.dsh/skills/gongwen-skill
 ```
 
-### DSH 技能市场说明
+> 两种方式都会让 DSH Agent 在启动时自动发现并加载本技能；本仓库自带 `.dsh/skills/gongwen-skill/` 双格式（目录技能 + 单文件技能）兼容。
 
-> **DSH 技能体系基于本地文件系统**，没有中心化的技能市场/商店。
-> 技能通过 GitHub 仓库分发，克隆到 DSH 的技能目录即可使用。
-> 本仓库地址：https://github.com/linhut/gongwen-skill
+### 方式二：作为 DSH Cordis 插件安装（注册到 Web Profile）
 
-### DSH 兼容性
+把本仓库当作 npm 包安装到 DSH Web Profile，让 DSH 的 Web UI 通过 `gongwen-skill` 调用桥接器执行 Python CLI。
+
+```bash
+# 1️⃣ 用 DSH 官方 CLI 一键挂载（推荐：自动改 package.json + 重建 bundle）
+dsh plugin --profile web add -w gongwen-skill
+# -w = workspace，按 preset 自动写入 ~/.dsh/profiles/web/package.json
+```
+
+```bash
+# 2️⃣ 或在 Web Profile 目录下手动 npm/pnpm 安装
+cd ~/.dsh/profiles/web
+npm i gongwen-skill -w
+# 或：
+pnpm add -w gongwen-skill
+```
+
+安装后请确认 `~/.dsh/profiles/web/package.json` 中的 `dsh.profile.bundles` 数组已包含 `gongwen-skill`：
+
+```jsonc
+{
+  "name": "dsh-profile-web",
+  "private": true,
+  "dependencies": {
+    "@deepseek-ai/dsh-base": "...",
+    "@deepseek-ai/dsh-web-app": "...",
+    "gongwen-skill": "^1.12.59"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-web-app",
+        "gongwen-skill"
+      ]
+    }
+  }
+}
+```
+
+> **注意**：若 `add` 启动报错提示子包重复声明，请检查 `dsh.profile.bundles` 数组中**仅包含根包 `gongwen-skill`**，避免同时列入 `engine` 或 `gongwen` 等子目录。
+
+### 方式三：本地源码链接（用于插件开发）
+
+如果你在本地开发 gongwen-skill 插件，可以用 link 方式让 DSH 直接加载仓库源码：
+
+```bash
+# 把本地仓库以 link 方式挂到 DSH Web Profile
+dsh plugin --profile web add -w "link:/path/to/gongwen-skill"
+
+# 同样：检查 ~/.dsh/profiles/web/package.json
+#  - dependencies 出现 "gongwen-skill": "link:/path/to/gongwen-skill"
+#  - dsh.profile.bundles 包含 "gongwen-skill"
+```
+
+### 🚀 启动 DSH Web 服务
+
+```bash
+# 让 gongwen-skill 桥接可用：先在仓库根安装 Python 依赖
+cd /path/to/gongwen-skill
+pip install -r requirements.txt   # 或 pip install gongwen-skill
+
+# 启 DSH
+dsh --profile web
+# 或：dsh web
+```
+
+浏览器访问 [http://127.0.0.1:3080/](http://127.0.0.1:3080/)，在新建会话时即可让 DSH Agent 自动加载 gongwen-skill 调用 Web UI 工具流。
+
+### DSH 兼容性自查
 
 | 检查项 | 状态 |
 |:-------|:----:|
-| SKILL.md YAML frontmatter (name + description) | ✅ |
-| 技能名称规范 (gongwen-skill) | ✅ |
-| 目录技能格式 (.dsh/skills/gongwen-skill/SKILL.md) | ✅ |
-| 单文件技能格式 (.dsh/skills/gongwen-skill.md) | ✅ 双格式兼容 |
-| CLI 独立可执行 | ✅ python gongwen.py |
-| 零外部依赖 | ✅ 仅需 pip install |
+| Skill 体系：`SKILL.md` YAML frontmatter (`name + description + whenToUse`) | ✅ |
+| 技能名称规范 (`gongwen-skill`，长度 ≤ 30 字符) | ✅ |
+| 目录技能格式 (`.dsh/skills/gongwen-skill/SKILL.md`) | ✅ |
+| 单文件技能格式 (`.dsh/skills/gongwen-skill.md`) | ✅ 双格式兼容 |
+| Cordis 插件包：`package.json` + `dsh/` + `cordis.patch.yml` | ✅ |
+| CLI 独立可执行（`python -m gongwen <命令>`） | ✅ |
+| PyPI 上架（`pip install gongwen-skill`） | ✅ |
+| 零外部运行时依赖（仅 python-docx/pydantic/pyyaml） | ✅ |
+
+### 适用场景对照
+
+| 你的场景 | 推荐方式 |
+|:---|:---|
+| 只想在终端用 gongwen-skill 命令 | 方式零 |
+| 想让 DSH Agent 调用本技能，无需 Web UI | 方式一（Skill 文件系统） |
+| 想让 DSH Web UI 工具面板直接调用 | 方式二（npm 插件 bundle） |
+| 二开插件本身，本地反复编辑 | 方式三（link 模式） |
 
 ## 🤖 通过 Agent 调用
 
@@ -304,7 +389,7 @@ git clone https://github.com/linhut/gongwen-skill.git ~/.claude/skills/gongwen-s
 git clone https://github.com/linhut/gongwen-skill.git
 cd gongwen-skill
 pip install -r requirements.txt
-# 之后 Agent 可直接调用 python gongwen.py <命令>
+# 之后 Agent 可直接调用 python -m gongwen <命令>
 ```
 
 ### 对话中使用示例
@@ -328,7 +413,7 @@ Agent：📋 合规自检报告
 Skill 版本: v1.12.55（多渠道自检已确认最新）
 路径判定: B（内容优化）
 依据: 用户指定了已有文档，且要求"优化措辞"
-命令调用: 1. python gongwen.py optimize-content 会议通知.docx --changes changes.json --apply --paragraphs "5-8"
+命令调用: 1. python -m gongwen optimize-content 会议通知.docx --changes changes.json --apply --paragraphs "5-8"
 是否绕过: 否
 交付物: 会议通知+庄重严谨+2026-08-01+v1.docx（Word 原生修订+批注版）
 质量验证: check 通过
