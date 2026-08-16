@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.12.63 (2026-08-17)
+
+### Added
+- **字体管理 `font` 命令**：`python -m gongwen font install/check/list`，安装公文标准字体
+- **字体文件内置**：`assets/fonts/` 包含 3 个 TTF 字体文件，git clone 用户直接可用
+- **GitHub 下载 fallback**：pip install 用户自动从远程仓库下载字体
+- **跨平台字体安装**：Windows/macOS/Linux 三平台支持
+- **9 个新测试文件**：+143 用例（164→307），覆盖率 24%→33%
+
+## v1.12.62 (2026-08-17)
+
+### Fixed
+- P1-2: inject.py 6处硬编码 Pt(33) 改为从规则读取
+- P1-3: pyproject.toml package-data 加 etc/*.json
+- P2-1: 16个文件 52处 except:pass 改为 logger.warning
+- P2-2: 统一解析函数到 utils/parse.py
+- P2-3~6: 删除 skills/ + setup.py + dist/ + engine/sessions/
+- P2-7: Changelog URL main→master
+- P2-8: MANIFEST.in 加 etc/*.json
+- P2-10: RuleEngine mtime 扩展到三层目录
+- P2-12: engine/__init__.py 修复包发现
+- 清理 12 个非必要文件（审计报告/发布计划/社区规范/截图/Makefile）
+
 ## v1.12.61 (2026-08-17)
 
 ### Added

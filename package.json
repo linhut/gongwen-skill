@@ -1,6 +1,6 @@
 {
   "name": "gongwen-skill",
-  "version": "1.12.62",
+  "version": "1.12.63",
   "description": "中文公文全流程处理工具 - GB/T 9704 格式检查/修复/内容优化/模板生成/版式注入",
   "type": "module",
   "main": "dsh/index.js",

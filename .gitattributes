@@ -2,3 +2,7 @@
 # 使下载导入的 skill 包保持精简（仅含运行必需的代码/规则/文档）。
 logo/ export-ignore
 .gitattributes export-ignore
+
+# 字体文件（11MB）不从 git archive 导出，通过 `python -m gongwen font install` 安装。
+# PyPI wheel/sdist 也不包含字体（太大），用户克隆仓库后可安装。
+assets/ export-ignore
