@@ -46,8 +46,6 @@ jobs:
     needs: [test, lint]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write  # OIDC trusted publishing (PEP 539 / 740)
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -58,6 +56,8 @@ jobs:
           python -m build
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        # OIDC trusted publishing: 不再使用 PYPI_API_TOKEN
-        # 需在 https://pypi.org/manage/account/publishing/ 配置 GitHub trusted publisher:
-        #   owner: linhut, repo: gongwen-skill, workflow: ci.yml, env: (空)
+        # API token 模式：使用 GitHub Actions secret（PYPI_API_TOKEN，已迁移自 variable）
+        # OIDC trusted publishing 需在 PyPI 项目级页面配置 publisher，暂未启用：
+        #   https://pypi.org/manage/project/gongwen-skill/settings/publishing/
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
