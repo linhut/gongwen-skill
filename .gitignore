@@ -16,6 +16,9 @@ env/
 /tmp/
 *.tmp
 engine/tmp.py
+.coverage
+htmlcov/
+.coverage.*
 
 # 运行时生成的会话文件（gongwen.py 模块级会话追踪）
 engine/session.py

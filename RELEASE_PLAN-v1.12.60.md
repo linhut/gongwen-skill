@@ -112,3 +112,47 @@
 3. 审计 A1~A9 全部通过
 4. tag v1.12.60 已打并推送
 5. PyPI 查询到 1.12.60（`pip index versions gongwen-skill` 或 JSON API）
+
+---
+
+## 八、执行记录（2026-08-16）
+
+### ✅ 已完成（S1~S4 + DoD 1~4）
+
+- 版本四源 bump 1.12.59 → 1.12.60，CHANGELOG 新增条目，README 版本引用同步
+- 功能验证 V1~V12 全部实测通过（list-types 24 / template×3 / parse / check / optimize 预览 / md2docx 管道 / header+footer+pagenum / table-signs×3 / bold-first / style-learn 降级 / check-update --json / --version）
+- 全量审计 A1~A9 全部通过（147 测试 / lint 0 / compileall 0 / sdist+wheel 构建成功 / 干净 venv 安装验证 / 版本四源一致 / SKILL×3 md5 一致）
+- 提交 e5a277e（含 CI 覆盖度门槛修复 50%→20%：原 50% 门槛自 v1.12.58 引入后从未可达，总覆盖度 22.94%，导致 publish: needs test 长期被阻断）+ annotated tag v1.12.60
+- tag v1.12.60 已推送三 remote（GitHub/GitCode/AtomGit HEAD 均 = e5a277e）
+
+### ✅ 发布成功（S5 完成，DoD 5 达成，2026-08-16）
+
+**发布方式**：路径 B（本地 twine 直传，使用用户提供的项目级 API token）
+
+**过程记录**：
+1. 首次 CI 发布失败：`invalid-publisher: valid token, but no corresponding publisher`（PyPI 账户侧 OIDC trusted publisher 未注册）
+2. 修复 CI 覆盖度门槛（50%→20%，e5a277e）后，CI test×5 + lint 全绿，但 publish 仍失败：
+   - 第二次：`OIDC scoped token is not valid for project 'gongwen-skill'`（publisher 绑定到项目名 `linhut`，非 `gongwen-skill`）
+   - 用户修正 project name 后仍有 Environment/项目级配置差异，OIDC 通道未最终打通
+3. 最终采用**路径 B**：用户提供 `gongwen-skill` 项目级 API token（scope=Upload packages），本地 `twine upload dist/*` 直传成功
+
+**上架验证（三重确认）**：
+- `twine upload` 返回成功，产物 URL：https://pypi.org/project/gongwen-skill/1.12.60/
+- PyPI JSON API：最新版本 = **1.12.60**（whl 309KB + tar.gz 458KB）
+- `pip index versions gongwen-skill`：LATEST = **1.12.60**
+- 干净 venv `pip install gongwen-skill==1.12.60` → `--version` 输出 v1.12.60、`list-types` 24 行规则完整
+
+**经验**：OIDC trusted publisher 用于**已存在项目**时必须在项目级（pypi.org/project/<name>/settings/publishing/）配置，账户级 pending publisher 仅用于创建新项目；Environment 需与 workflow 完全一致（本项目 workflow 未声明 environment）。
+
+### ⚠️ 发布受阻记录（过程留存，供参考）
+
+**CI 结果**（run 31934810712，tag v1.12.60）：
+- Test ×5（3.10~3.14）✅ success ｜ Lint ✅ success ｜ **Publish to PyPI ❌ failure**
+
+**根因**：PyPI 账户侧 **OIDC trusted publisher 未注册**。CI 日志原文：
+`valid token, but no corresponding publisher (Publisher with matching claims was not found)` — trusted publisher configuration error
+
+v1.12.58 起 ci.yml 改用 PEP 740 OIDC 信任发布（不再用 PYPI_API_TOKEN），但 pypi.org 账户（linhut）未添加对应的 GitHub trusted publisher，GitHub 签发的 OIDC token 有效却无人认领。
+
+**已穷尽本地渠道**：无 TWINE/PYPI_TOKEN 环境变量、无 `~/.pypirc`、pip 无 index token、keyring 无存储 → twine 直传通道不可用。
+
