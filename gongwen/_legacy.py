@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.60"
+__version__ = "1.12.61"
 # 版本号应与 gongwen/__init__.py 保持一致，每次发版同步更新
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
@@ -156,6 +156,31 @@ def _build_output_name(input_path: "str | Path", convention: str, style: str | N
 #  子命令实现
 # ---------------------------------------------------------------------------
 
+def _parse_config_overrides(raw: str) -> dict | None:
+    """解析 --config-overrides 参数值为 dict，空或无效时返回 None。"""
+    if not raw or not raw.strip():
+        return None
+    try:
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            return data
+        print(f"警告: --config-overrides 不是有效 JSON 对象，已忽略", file=sys.stderr)
+        return None
+    except json.JSONDecodeError as e:
+        print(f"警告: --config-overrides JSON 解析失败 ({e})，已忽略", file=sys.stderr)
+        return None
+
+
+def _load_rules_with_overrides(doc_type: str, overrides_raw: str) -> dict:
+    """加载合并规则并应用 DSH 配置覆盖（优先级最高）。"""
+    from core.rules.manager import load_rules_merged, apply_config_overrides
+    rules = load_rules_merged(doc_type)
+    overrides = _parse_config_overrides(overrides_raw)
+    if overrides:
+        apply_config_overrides(rules, overrides)
+    return rules
+
+
 def cmd_list_types(args):
     """列出所有支持的公文类型。"""
     from core.rules.loader import list_available_types
@@ -170,12 +195,11 @@ def cmd_list_types(args):
 def cmd_template(args):
     """生成标准公文模板。"""
     from datetime import date as _dt
-    from core.rules.manager import load_rules_merged
     from core.document.generator import generate_docx
     from template_builder import create_template_document
 
     doc_type = args.type
-    rules = load_rules_merged(doc_type)
+    rules = _load_rules_with_overrides(doc_type, getattr(args, "config_overrides", ""))
     model = create_template_document(doc_type, rules)
 
     if args.output:
@@ -207,6 +231,9 @@ def cmd_check(args):
     from core.rules.engine import RuleEngine
 
     engine = RuleEngine()
+    overrides = _parse_config_overrides(getattr(args, "config_overrides", ""))
+    if overrides:
+        engine.set_config_overrides(overrides)
     model = parse_docx(args.input)
     issues = engine.check(model, args.doc_type)
 
@@ -242,6 +269,10 @@ def cmd_optimize(args):
     from core.rules.engine import RuleEngine
 
     engine = RuleEngine()
+    # 应用 DSH 配置覆盖到规则引擎
+    overrides = _parse_config_overrides(getattr(args, "config_overrides", ""))
+    if overrides:
+        engine.set_config_overrides(overrides)
     input_path = Path(args.input)
     out = Path(args.output) if args.output else input_path.parent / _build_output_name(input_path, "A")
 
@@ -364,7 +395,9 @@ def cmd_md2docx(args):
         Paragraph, ParagraphFormat, Run, RunFormat,
     )
     from core.document.modifier import convert_markdown
-    from core.rules.manager import load_rules_merged
+
+    # 加载规则（含 DSH 配置覆盖）
+    rules = _load_rules_with_overrides(doc_type, getattr(args, "config_overrides", ""))
 
     # 读取输入（FIX-C001：utf-8-sig 自动剥离 BOM——BOM 字符使 Markdown # 号标题正则失配，
     # BOM 和 # 被原样写入 docx；无 BOM 时 utf-8-sig 与 utf-8 完全一致）
@@ -411,7 +444,6 @@ def cmd_md2docx(args):
             attachments = front_matter.get("attachments", attachments)
 
     # 加载规则获取页边距等
-    rules = load_rules_merged(doc_type)
     margins = rules.get("page_setup", {}).get("margins", {})
 
     def _parse_margin(v):
@@ -2596,6 +2628,8 @@ def main():
     p = sub.add_parser("template", help="生成标准公文模板")
     p.add_argument("type", help="公文类型（见 list-types）")
     p.add_argument("-o", "--output", help="输出文件路径")
+    p.add_argument("--config-overrides", default="",
+                   help="规则覆盖 JSON（DSH 插件注入，如 '{\"body\":{\"line_spacing\":\"28pt\"}}'）")
     p.set_defaults(func=cmd_template)
 
     p = sub.add_parser("parse", help="解析文档为结构化 JSON")
@@ -2608,6 +2642,8 @@ def main():
     p.add_argument("-t", "--doc-type", default="notice", help="公文类型（默认 notice）")
     p.add_argument("-s", "--severity", choices=["P0", "P1", "P2"], help="仅显示指定级别")
     p.add_argument("--json", action="store_true", help="JSON 输出")
+    p.add_argument("--config-overrides", default="",
+                   help="规则覆盖 JSON（DSH 插件注入）")
     p.set_defaults(func=cmd_check)
 
     p = sub.add_parser("optimize", help="检查 + 修复 + 生成（预览模式默认，--apply 执行）")
@@ -2619,6 +2655,8 @@ def main():
     p.add_argument("--apply", action="store_true", help="确认执行修复（默认预览）")
     p.add_argument("--remove-ai-declaration", action="store_true",
                    help="P1: 生成文档不追加 AI 声明段（默认追加）")
+    p.add_argument("--config-overrides", default="",
+                   help="规则覆盖 JSON（DSH 插件注入）")
     p.set_defaults(func=cmd_optimize)
 
     p = sub.add_parser("generate", help="从 DocumentModel JSON 生成 .docx")
@@ -2664,6 +2702,8 @@ def main():
     p.add_argument("--attachments", nargs="*", help="附件列表")
     p.add_argument("--no-ai-declaration", action="store_true",
                    help="P1: 生成文档不追加 AI 声明段（默认追加）")
+    p.add_argument("--config-overrides", default="",
+                   help="规则覆盖 JSON（DSH 插件注入）")
     p.set_defaults(func=cmd_md2docx)
 
     p = sub.add_parser("optimize-content", help="内容优化差异对比：原文灰色+删除线，修改后红色高亮，每段附修改说明与依据")

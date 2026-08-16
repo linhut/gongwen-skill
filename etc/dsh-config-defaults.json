@@ -1,0 +1,59 @@
+{
+  "_comment": "gongwen-skill DSH 插件默认配置。复制到 ~/.gongwen-skill/dsh-config.json 后修改生效。",
+  "_doc": "此文件是默认模板，不要直接修改。运行 `python -m gongwen config --init` 可创建用户配置。",
+  "default_doc_type": "notice",
+  "page_setup": {
+    "margins": {
+      "top": "2.8cm",
+      "bottom": "2.8cm",
+      "left": "2.7cm",
+      "right": "2.7cm"
+    },
+    "header_distance": "1.5cm",
+    "footer_distance": "2.3cm"
+  },
+  "body": {
+    "font": "仿宋_GB2312",
+    "font_fallback": "FangSong",
+    "size": "16pt",
+    "line_spacing": "33pt",
+    "first_line_indent": "2em",
+    "align": "justify"
+  },
+  "doc_title": {
+    "font": "方正小标宋简体",
+    "font_fallback": "SimSun",
+    "size": "22pt",
+    "align": "center",
+    "bold": false,
+    "line_spacing": "33pt"
+  },
+  "heading_1": {
+    "font": "黑体",
+    "font_fallback": "SimHei",
+    "size": "16pt",
+    "line_spacing": "33pt",
+    "first_line_indent": "2em"
+  },
+  "heading_2": {
+    "font": "楷体_GB2312",
+    "font_fallback": "KaiTi",
+    "size": "16pt",
+    "line_spacing": "33pt",
+    "first_line_indent": "2em"
+  },
+  "heading_3": {
+    "font": "仿宋_GB2312",
+    "font_fallback": "FangSong",
+    "size": "16pt",
+    "bold": true,
+    "line_spacing": "33pt",
+    "first_line_indent": "2em"
+  },
+  "signature": {
+    "font": "仿宋_GB2312",
+    "font_fallback": "FangSong",
+    "size": "18pt",
+    "align": "center"
+  }
+}

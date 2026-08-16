@@ -10,7 +10,7 @@ from typing import Any
 import copy
 
 from core.document.models import DocumentModel
-from core.rules.manager import load_rules_merged
+from core.rules.manager import load_rules_merged, apply_config_overrides
 from core.rules.checker import check_document, CheckIssue
 from core.rules.fixer import apply_fixes
 from utils.logger import logger
@@ -25,6 +25,13 @@ class RuleEngine:
         self._rules_cache: dict[str, dict[str, Any]] = {}
         # P3-9：记录每个 doc_type 加载时的规则文件 mtime，文件变更后自动重载
         self._rules_mtime: dict[str, float] = {}
+        # DSH 配置覆盖（优先级最高，在 YAML 三层合并之后应用）
+        self._config_overrides: dict[str, Any] | None = None
+
+    def set_config_overrides(self, overrides: dict[str, Any] | None) -> None:
+        """设置 DSH 配置覆盖，会清空规则缓存以使下次 load_rules 时生效。"""
+        self._config_overrides = overrides if isinstance(overrides, dict) else None
+        self.clear_cache()
 
     def load_rules(self, doc_type: str) -> dict[str, Any]:
         """
@@ -32,6 +39,7 @@ class RuleEngine:
 
         P3-9 修复：缓存感知规则文件变更——若规则文件 mtime 已变化则自动重载，
         无需手动调用 clear_cache。
+        DSH 配置覆盖在 YAML 合并之后应用（优先级最高）。
         """
         try:
             from config import RULES_DIR
@@ -40,9 +48,13 @@ class RuleEngine:
         except Exception:
             newest = 0.0
         if doc_type not in self._rules_cache or self._rules_mtime.get(doc_type, -1) < newest:
-            self._rules_cache[doc_type] = load_rules_merged(doc_type)
+            rules = load_rules_merged(doc_type)
+            if self._config_overrides:
+                apply_config_overrides(rules, self._config_overrides)
+            self._rules_cache[doc_type] = rules
             self._rules_mtime[doc_type] = newest
-            logger.info(f"Loaded and cached rules for type: {doc_type}")
+            logger.info(f"Loaded and cached rules for type: {doc_type}"
+                        f"{' (with config overrides)' if self._config_overrides else ''}")
         return self._rules_cache[doc_type]
 
     def clear_cache(self):

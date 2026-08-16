@@ -308,6 +308,28 @@ def validate_rule(rule: dict) -> None:
             raise ValueError(f"'{field}' must be a list")
 
 
+def apply_config_overrides(rules: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+    """将 DSH 配置覆盖深度合并到已加载的规则字典上。
+
+    优先级：official < custom < user < DSH config overrides（最高）。
+    overrides 中只覆盖出现的键，不删除已有的 check_rules/fix_rules 列表。
+    对 check_rules 和 fix_rules 列表中的条目，按 field/target+action 去重覆盖。
+
+    Args:
+        rules: 已通过 load_rules_merged 加载的规则字典（会被修改）。
+        overrides: 配置覆盖字典，如
+            {"page_setup": {"margins": {"top": "3.0cm"}},
+             "body": {"line_spacing": "28pt"}}
+
+    Returns:
+        合并后的 rules（与传入的是同一对象）。
+    """
+    if not overrides or not isinstance(overrides, dict):
+        return rules
+    _deep_merge(rules, copy.deepcopy(overrides))
+    return rules
+
+
 def override_priority(source_type: str) -> int:
     """Return override priority: higher value = higher priority."""
     return {"official": 0, "custom": 1, "user": 2}.get(source_type, -1)

@@ -12,7 +12,7 @@ Licensed under the MIT License. See the LICENSE file for details.
 > 中文公文全流程处理工具——基于 **GB/T 9704《党政机关公文格式》** 国家标准，支持 **格式检查与修复、内容优化（Word 原生修订+批注/差异对比版）、模板生成、Markdown 转公文、版头版记页码注入、事实核验、风格增强** 等完整能力。原生支持 **DeepSeek Harness (DSH)** 技能系统，打包为可被 AI Agent 直接调用的 Skill，完全自包含，克隆即用。
 
 [![CI](https://img.shields.io/badge/CI-Passing-brightgreen)](https://github.com/linhut/gongwen-skill/actions)
-[![PyPI](https://img.shields.io/badge/PyPI-v1.12.60-blue)](https://pypi.org/project/gongwen-skill/)
+[![PyPI](https://img.shields.io/badge/PyPI-v1.12.61-blue)](https://pypi.org/project/gongwen-skill/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)
 ![GB/T 9704](https://img.shields.io/badge/standard-GB%2FT%209704-red.svg)
@@ -246,7 +246,7 @@ DSH 采用 **Cordis 模块化微内核架构**：技能体系基于本地文件�
 git clone https://github.com/linhut/gongwen-skill.git
 cd gongwen-skill
 pip install -r requirements.txt   # 或 pip install gongwen-skill（已上 PyPI）
-python -m gongwen --version       # 检验：gongwen-skill v1.12.60
+python -m gongwen --version       # 检验：gongwen-skill v1.12.61
 ```
 
 ### 方式一：作为 DSH Skill 注册（基于本地文件系统）
@@ -357,6 +357,76 @@ dsh --profile web
 | CLI 独立可执行（`python -m gongwen <命令>`） | ✅ |
 | PyPI 上架（`pip install gongwen-skill`） | ✅ |
 | 零外部运行时依赖（仅 python-docx/pydantic/pyyaml） | ✅ |
+| DSH 配置化排版参数（页边距/行距/字体/默认模板版本） | ✅ v1.12.61+ |
+
+### DSH 插件配置化（v1.12.61+）
+
+DSH 插件支持通过配置文件管理排版参数，Agent 调用时自动注入，纯 CLI 用户不受影响。
+
+**配置文件**：`~/.gongwen-skill/dsh-config.json`
+
+**初始化配置**（从默认模板创建）：
+
+```bash
+# 通过 DSH 插件调用
+node -e "import('./dsh/index.js').then(async m => { console.log(await m.call({}, {command: 'config', action: 'init'})) })"
+
+# 或直接复制默认模板
+cp etc/dsh-config-defaults.json ~/.gongwen-skill/dsh-config.json
+```
+
+**配置项说明**：
+
+| 配置路径 | 说明 | 默认值 |
+|:---------|:-----|:-------|
+| `default_doc_type` | 默认公文类型 | `notice` |
+| `page_setup.margins.top/bottom` | 上下页边距 | `2.8cm` |
+| `page_setup.margins.left/right` | 左右页边距 | `2.7cm` |
+| `page_setup.header_distance` | 页眉距边界 | `1.5cm` |
+| `page_setup.footer_distance` | 页脚距边界 | `2.3cm` |
+| `body.font` | 正文字体 | `仿宋_GB2312` |
+| `body.size` | 正文字号 | `16pt` |
+| `body.line_spacing` | 正文行距 | `33pt` |
+| `body.first_line_indent` | 首行缩进 | `2em` |
+| `doc_title.font` | 大标题字体 | `方正小标宋简体` |
+| `doc_title.size` | 大标题字号 | `22pt` |
+| `heading_1.font` | 一级标题字体 | `黑体` |
+| `heading_2.font` | 二级标题字体 | `楷体_GB2312` |
+
+**修改配置**（DSH 插件调用）：
+
+```javascript
+// 设置单个配置项
+await call({}, {command: 'config', action: 'set', key: 'page_setup.margins.top', value: '3.0cm'})
+
+// 读取配置项
+await call({}, {command: 'config', action: 'get', key: 'body.line_spacing'})
+
+// 查看完整配置
+await call({}, {command: 'config', action: 'show'})
+
+// 重置为默认值
+await call({}, {command: 'config', action: 'reset'})
+```
+
+**纯 CLI 使用 `--config-overrides`**：
+
+```bash
+# 临时覆盖行距为 28 磅
+python -m gongwen template notice -o 通知.docx \
+  --config-overrides '{"body":{"line_spacing":"28pt"}}'
+
+# 临时覆盖页边距
+python -m gongwen optimize input.docx -o output.docx --apply \
+  --config-overrides '{"page_setup":{"margins":{"top":"3.0cm"}}}'
+```
+
+**设计说明**：
+
+- **分层架构**：Python CLI（纯工具层）只接受 `--config-overrides` 通用参数；DSH 插件（配置管理者）读写配置文件并自动注入
+- **优先级**：official YAML < custom YAML < user YAML < DSH config overrides < 命令行 `--config-overrides`
+- **热更新**：每次调用读取配置文件，修改后立即生效，无需重启
+- **纯 CLI 不受影响**：不使用 DSH 插件时不会读取 `dsh-config.json`
 
 ### 适用场景对照
 
@@ -410,7 +480,7 @@ pip install -r requirements.txt
 用户：帮我优化这份会议通知的第二章节措辞
 
 Agent：📋 合规自检报告
-Skill 版本: v1.12.60（多渠道自检已确认最新）
+Skill 版本: v1.12.61（多渠道自检已确认最新）
 路径判定: B（内容优化）
 依据: 用户指定了已有文档，且要求"优化措辞"
 命令调用: 1. python -m gongwen optimize-content 会议通知.docx --changes changes.json --apply --paragraphs "5-8"
