@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.12.64 (2026-08-17)
+
+### Added
+- **ARCH-03 修复**：`gongwen/_bootstrap.py` 统一管理 sys.path hack，消除 3 处重复
+- **md2docx bug 修复**：`doc_type` 变量在规则加载前被引用导致 UnboundLocalError
+- **第二轮测试补强**（+150 用例，307→457）：
+  - test_optimizer.py(11): 优化器纯函数测试
+  - test_fact_check.py(18): 实体提取/核验测试
+  - test_tracked_annotator.py(14): 修订标注测试
+  - test_editor.py(15): 内容修订引擎测试
+  - test_auto_optimizer.py(18): 自动优化器测试
+  - test_docx_to_image.py(4): 模块导入测试
+  - test_cli_integration.py(19): CLI 子进程集成测试
+  - test_cli_integration2.py(12): CLI 第二轮集成测试
+  - test_legacy_api.py(28): _legacy.py 直接 API 调用测试
+
+### Changed
+- 覆盖率 24% → 41%（_legacy.py: 5% → 12%）
+- `live_edit.py` 消除 sys.path.insert（已通过 _bootstrap 统一管理）
+- `conftest.py` 消除 sys.path.insert
+- 测试用例仅本地保留，不推送 pip/GitHub
+
 ## v1.12.63 (2026-08-17)
 
 ### Added

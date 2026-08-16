@@ -29,10 +29,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, List, Optional
 
-# 将 engine/ 的父目录加入 sys.path，使内部 `from core...` 导入生效
-_ENGINE_DIR = Path(__file__).resolve().parent
-if str(_ENGINE_DIR) not in sys.path:
-    sys.path.insert(0, str(_ENGINE_DIR))
+# ARCH-03 修复：engine/ 自身就是搜索路径根，模块内 from core... import 已生效
+# 不再需要 sys.path.insert（engine/ 已通过 _bootstrap 或 __init__.py 正确注册）
 
 
 class LiveEditSession:

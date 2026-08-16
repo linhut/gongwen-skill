@@ -10,7 +10,7 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.63"
+__version__ = "1.12.64"
 # 版本号应与 gongwen/__init__.py 保持一致，每次发版同步更新
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
@@ -53,19 +53,9 @@ from pathlib import Path
 
 _logger = logging.getLogger(__name__)
 
-# 将 engine/ 加入模块搜索路径，使内部 `from core... / from utils... / from config`
-# 的绝对导入生效——这是独立运行的关键。
-_ENGINE_DIR = Path(__file__).resolve().parent.parent / "engine"
-sys.path.insert(0, str(_ENGINE_DIR))
-
-# Windows 控制台中文输出保护（借鉴 docx-skill 强制 UTF-8 策略）
-# 同时覆盖 stdout/stderr/stdin，确保中文路径、管道输入均无编码问题
-try:
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
-    sys.stdin.reconfigure(encoding="utf-8")
-except Exception as e:
-    _logger.warning(f"控制台编码设置失败: {e}")
+# ARCH-03 修复：通过 _bootstrap 统一管理 engine/ 路径和编码设置
+# 消除各入口点重复的 sys.path.insert hack
+from gongwen._bootstrap import _ENGINE_DIR  # noqa: F401, E402
 
 # ---------------------------------------------------------------------------
 #  共享辅助
@@ -400,6 +390,9 @@ def cmd_md2docx(args):
     )
     from core.document.modifier import convert_markdown
 
+    # 解析参数
+    doc_type = args.doc_type or "notice"
+
     # 加载规则（含 DSH 配置覆盖）
     rules = _load_rules_with_overrides(doc_type, getattr(args, "config_overrides", ""))
 
@@ -417,7 +410,6 @@ def cmd_md2docx(args):
         source_desc = input_src
 
     # 解析 Front Matter
-    doc_type = args.doc_type or "notice"
     recipients = args.recipients or []
     signer = args.signer or ""
     doc_date = args.date or ""

@@ -2,17 +2,15 @@
 """
 pytest 共享配置（P3-34：统一 sys.path 管理与共享 fixture）。
 
-将 engine/ 加入模块搜索路径，使测试中的 `from core... / from utils... /
-from config` 绝对导入生效，避免各测试文件重复 sys.path.insert。
+通过 gongwen._bootstrap 统一管理 engine/ 路径，消除测试文件中的重复 sys.path.insert。
 """
 import sys
 from pathlib import Path
 
 import pytest
 
-_ENGINE_DIR = Path(__file__).resolve().parent.parent / "engine"
-if str(_ENGINE_DIR) not in sys.path:
-    sys.path.insert(0, str(_ENGINE_DIR))
+# ARCH-03 修复：通过 _bootstrap 统一管理路径，不再重复 sys.path.insert
+from gongwen._bootstrap import _ENGINE_DIR  # noqa: F401
 
 # 确保规则目录可写（config 导入时会自动创建，此处仅做一次显式导入验证）
 import config  # noqa: F401

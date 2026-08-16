@@ -12,7 +12,7 @@ Licensed under the MIT License. See the LICENSE file for details.
 > 中文公文全流程处理工具——基于 **GB/T 9704《党政机关公文格式》** 国家标准，支持 **格式检查与修复、内容优化（Word 原生修订+批注/差异对比版）、模板生成、Markdown 转公文、版头版记页码注入、事实核验、风格增强** 等完整能力。原生支持 **DeepSeek Harness (DSH)** 技能系统，打包为可被 AI Agent 直接调用的 Skill，完全自包含，克隆即用。
 
 [![CI](https://img.shields.io/badge/CI-Passing-brightgreen)](https://github.com/linhut/gongwen-skill/actions)
-[![PyPI](https://img.shields.io/badge/PyPI-v1.12.63-blue)](https://pypi.org/project/gongwen-skill/)
+[![PyPI](https://img.shields.io/badge/PyPI-v1.12.64-blue)](https://pypi.org/project/gongwen-skill/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)
 ![GB/T 9704](https://img.shields.io/badge/standard-GB%2FT%209704-red.svg)
@@ -268,7 +268,7 @@ DSH 采用 **Cordis 模块化微内核架构**：技能体系基于本地文件�
 git clone https://github.com/linhut/gongwen-skill.git
 cd gongwen-skill
 pip install -r requirements.txt   # 或 pip install gongwen-skill（已上 PyPI）
-python -m gongwen --version       # 检验：gongwen-skill v1.12.63
+python -m gongwen --version       # 检验：gongwen-skill v1.12.64
 ```
 
 ### 方式一：作为 DSH Skill 注册（基于本地文件系统）
@@ -502,7 +502,7 @@ pip install -r requirements.txt
 用户：帮我优化这份会议通知的第二章节措辞
 
 Agent：📋 合规自检报告
-Skill 版本: v1.12.63（多渠道自检已确认最新）
+Skill 版本: v1.12.64（多渠道自检已确认最新）
 路径判定: B（内容优化）
 依据: 用户指定了已有文档，且要求"优化措辞"
 命令调用: 1. python -m gongwen optimize-content 会议通知.docx --changes changes.json --apply --paragraphs "5-8"
