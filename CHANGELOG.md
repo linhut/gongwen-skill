@@ -67,6 +67,23 @@
   - 提供 DSH 技能发现方式说明、快速安装指南、兼容性检查表
   - 明确说明 DSH 技能市场基于本地文件系统，无中心化商店
 
+## v1.12.55 (2026-08-07)
+
+### Changed
+- 表格虚线边框优化（dashed 表线，便于裁剪打印）
+  - `generator._add_table` 显式写入 `tblBorders`（`w:val=dashed`，六边），直接格式覆盖 Table Grid 实线样式
+  - 移除残留 `tblBorders`，避免实线叠加
+
+## v1.12.54 (2026-08-05)
+
+### Fixed
+- 0 处批注时验证逻辑短路（FIX-V153-01），optimize-content tracked + full-review 两路径不再误报
+- 结语检查按文种差异化（FIX-V153-02）：`_ENDING_TAIL_SIZE`（批复/函收窄为 3 段）、排除落款/日期/批注段、`original_text` 可为空
+
+### Added
+- 新增 `ending.check` 结语检查（`_check_ending` + `_infer_doc_type_from_rule`，5 文种映射，修复 CHK-RPT/CHK-RP 前缀误判）
+- 新增 CHANGELOG.md（v1.12.50~v1.12.53 变更记录，FIX-V153-03）
+
 ## v1.12.53 (2026-08-05)
 
 ### Fixed

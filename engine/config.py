@@ -18,6 +18,9 @@
 ``GONGWEN_DATA_DIR`` 覆盖。这样无论从何处克隆、以何身份运行，
 自定义规则与日志都能落到一个稳定、可写的位置。
 """
+import shutil
+import atexit
+import logging
 import os
 from pathlib import Path
 
@@ -73,7 +76,6 @@ TMP_DIR = APP_DATA_DIR / "tmp"   # 移到数据目录（安装目录可能只读
 # ---------------------------------------------------------------------------
 #  自动创建可写目录
 # ---------------------------------------------------------------------------
-import logging
 
 _log = logging.getLogger(__name__)
 
@@ -87,8 +89,6 @@ for _d in (APP_DATA_DIR, CUSTOM_RULES_DIR, USER_RULES_DIR, LOG_DIR, HANDOFF_DIR,
 # ---------------------------------------------------------------------------
 #  进程退出时自动清理临时目录（替代旧 engine/tmp.py 的 register_cleanup）
 # ---------------------------------------------------------------------------
-import atexit
-import shutil
 
 
 def _cleanup_tmp_dir() -> None:

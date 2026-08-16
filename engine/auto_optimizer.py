@@ -224,7 +224,8 @@ def _build_style_enhance_prompt(paragraphs: list, style_prompt: str,
 1. 仅提出风格级优化建议（用词正式化、去除口语化/网络化表述、消除主观评价修饰词、标点规范等）
 2. 不要重复已有变更的内容
 3. 每条建议必须精确对应原文中的一个连续文本片段
-4. 输出JSON格式：{{"style_changes": [{{"paragraph_index": int, "original_text": str, "optimized_text": str, "reason": str, "category": "用语优化"}}]}}
+4. 输出JSON格式：{{"style_changes": [{{"paragraph_index": int, "original_text": str,
+   "optimized_text": str, "reason": str, "category": "用语优化"}}]}}
 5. category 固定为"用语优化"（风格建议归属用语审校角色）
 6. 如果没有风格优化建议，返回空列表"""
 

@@ -44,8 +44,11 @@ Changelog = "https://github.com/linhut/gongwen-skill/blob/main/CHANGELOG.md"
 gongwen = "gongwen:main"
 
 [tool.setuptools.packages.find]
-packages = ["engine*", "gongwen*"]
+include = ["engine*", "gongwen*", "rules*", "prompts*"]
+exclude = ["tests*"]
 
 [tool.setuptools.package-data]
-engine = ["py.typed"]
+rules = ["official/*.yaml"]
+prompts = ["*.md"]
+engine = ["py.typed", "templates/*.dotx"]
 gongwen = ["py.typed"]

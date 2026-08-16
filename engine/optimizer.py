@@ -431,7 +431,8 @@ def create_diff_document(
       领导汇报记录/省情背景），应在生成 changes 前拦截并拒绝该 change，而非交由本函数渲染。
     """
     # 防御性审计：记录本次 changes 中包含的整段删除操作
-    _full_deletions = [c for c in changes if c.get("original_text", "").strip() and not c.get("optimized_text", "").strip()]
+    _full_deletions = [c for c in changes if c.get(
+        "original_text", "").strip() and not c.get("optimized_text", "").strip()]
     if _full_deletions:
         logger.warning(
             f"检测到 {len(_full_deletions)} 处整段删除操作（paragraph_index: "
@@ -452,6 +453,7 @@ def create_diff_document(
 
     # 遍历段落，有变更的做 diff 标注
     new_paragraphs: list[Paragraph] = []
+
     def _get_para_font(para: Paragraph) -> tuple[str, float]:
         """从段落中提取代表中文字体名和字号，跳过仅含 ASCII 的 run。"""
         font = "仿宋_GB2312"

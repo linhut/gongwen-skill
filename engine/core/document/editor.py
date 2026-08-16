@@ -113,7 +113,8 @@ def _build_revision_note(original: str, revised: str, context: str = "") -> str:
                 normalized.append(("replace", text, merged[i + 1][1]))
                 i += 2
                 continue
-            if i + 2 < len(merged) and merged[i + 1][0] == "equal" and len(merged[i + 1][1]) <= 4 and merged[i + 2][0] == "insert":
+            if (i + 2 < len(merged) and merged[i + 1][0] == "equal"
+                    and len(merged[i + 1][1]) <= 4 and merged[i + 2][0] == "insert"):
                 # 保留中间 context 用于合并判断
                 normalized.append(("replace", text + merged[i + 1][1] + merged[i + 2][1], None))
                 i += 3
@@ -189,6 +190,8 @@ def _build_revision_note(original: str, revised: str, context: str = "") -> str:
         return f"{len(parts)} 处措辞优化（如 {'；'.join(parts[:3])} 等）"
 
     return "；".join(parts)
+
+
 def compare_paragraphs(
     original_texts: list[tuple[str, str]],  # [(role, text), ...]
     revised_texts: list[tuple[str, str]],
@@ -204,12 +207,12 @@ def compare_paragraphs(
         修订节列表
     """
     sections: list[RevisionSection] = []
-    
+
     # 使用 difflib 做段落级匹配
     orig_lines = [t for _, t in original_texts]
     rev_lines = [t for _, t in revised_texts]
     matcher = difflib.SequenceMatcher(None, orig_lines, rev_lines)
-    
+
     block_idx = 0
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
         if tag == "equal":
@@ -231,7 +234,7 @@ def compare_paragraphs(
                 orig = orig_lines[o_k] if o_k < len(orig_lines) else ""
                 rev = rev_lines[r_k] if r_k < len(rev_lines) else ""
                 o_role = original_texts[o_k][0] if o_k < len(original_texts) else "body"
-                
+
                 if orig == rev:
                     diff_item = TextDiff("same", original=orig, revised=rev, note="无修改")
                 else:
@@ -336,7 +339,7 @@ def make_revision_model(
                     if tag in ("same",):
                         pass  # 保持 fmt_kw 不变（无 color/strikethrough）
                     inline_runs.append(Run(index=len(inline_runs), text=text,
-                        format=RunFormat(**fmt_kw)))
+                                           format=RunFormat(**fmt_kw)))
 
                 full_text = "".join(r.text for r in inline_runs)
                 if matched_idx < len(result.paragraphs):
@@ -367,8 +370,8 @@ def make_revision_model(
                     continue
                 fmt = orig_para.runs[0].format if orig_para.runs else RunFormat()
                 del_run = Run(index=0, text=diff.original,
-                    format=RunFormat(font_name=fmt.font_name, font_size_pt=fmt.font_size_pt,
-                                     color="999999", strikethrough=True))
+                              format=RunFormat(font_name=fmt.font_name, font_size_pt=fmt.font_size_pt,
+                                               color="999999", strikethrough=True))
                 if matched_idx < len(result.paragraphs):
                     result.paragraphs[matched_idx] = Paragraph(
                         index=matched_idx, text=diff.original, role="annotation",
@@ -378,7 +381,7 @@ def make_revision_model(
 
             elif diff.type == "added":
                 add_run = Run(index=0, text=diff.revised,
-                    format=RunFormat(font_name="仿宋_GB2312", font_size_pt=16.0, color="E00000"))
+                              format=RunFormat(font_name="仿宋_GB2312", font_size_pt=16.0, color="E00000"))
                 result.paragraphs.append(Paragraph(
                     index=len(result.paragraphs), text=diff.revised, role="body",
                     runs=[add_run], format=ParagraphFormat(alignment="justify"),
@@ -407,9 +410,6 @@ def _find_para_by_text(paragraphs: list, text: str, excluded: set[int]) -> int |
         if p.text and p.text.strip() == text.strip():
             return i
     return None
-
-
-
 
 
 def _get_bold_prefix(text: str) -> str:

@@ -12,7 +12,7 @@ Licensed under the MIT License. See the LICENSE file for details.
 > 中文公文全流程处理工具——基于 **GB/T 9704《党政机关公文格式》** 国家标准，支持 **格式检查与修复、内容优化（Word 原生修订+批注/差异对比版）、模板生成、Markdown 转公文、版头版记页码注入、事实核验、风格增强** 等完整能力。原生支持 **DeepSeek Harness (DSH)** 技能系统，打包为可被 AI Agent 直接调用的 Skill，完全自包含，克隆即用。
 
 [![CI](https://img.shields.io/badge/CI-Passing-brightgreen)](https://github.com/linhut/gongwen-skill/actions)
-[![PyPI](https://img.shields.io/badge/PyPI-v1.12.57-blue)](https://pypi.org/project/gongwen-skill/)
+[![PyPI](https://img.shields.io/badge/PyPI-v1.12.59-blue)](https://pypi.org/project/gongwen-skill/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)
 ![GB/T 9704](https://img.shields.io/badge/standard-GB%2FT%209704-red.svg)
@@ -27,7 +27,7 @@ Licensed under the MIT License. See the LICENSE file for details.
 
 | 能力 | 命令 | 说明 |
 |------|------|------|
-| 📋 列类型 | `list-types` | 列出 25 种支持的公文类型（含新闻稿/讲话稿主持词） |
+| 📋 列类型 | `list-types` | 列出 24 种支持的公文类型（含新闻稿/讲话稿主持词） |
 | 🏗️ 模板生成 | `template` | 按类型生成 GB/T 9704 标准空白模板 |
 | 🔍 解析 | `parse` | `.docx` → 结构化 DocumentModel |
 | ✅ 格式检查 | `check` | 按国标检查，分级 P0/P1/P2（只读） |
@@ -187,9 +187,9 @@ python -m gongwen optimize-content 新闻稿.docx --changes changes.json \
 
 标题方正小标宋简体 24pt 居中、主持人信息/日期楷体_GB2312 18pt 居中、正文仿宋_GB2312 18pt 加粗、正文行距 33pt exact、标题行距 35pt；跳过版头/版记/发文字号/密级检查。
 
-## 📚 支持的 25 种公文类型
+## 📚 支持的 24 种公文类型
 
-通知 · 请示 · 报告 · 函 · 会议纪要 · 纪要 · 决定 · 通告 · 公告 · 命令 · 通报 · 议案 · 批复 · 指示 · 制度 · 公报 · 意见 · 总结 · 方案/计划 · 桌签 · 技术方案 · 决议 · **新闻稿/简报** · **讲话稿/主持词** · 其他
+通知 · 请示 · 报告 · 函 · 会议纪要 · 纪要 · 决定 · 通告 · 公告 · 命令 · 通报 · 议案 · 批复 · 指示 · 制度 · 公报 · 意见 · 总结 · 方案/计划 · 桌签 · 技术方案 · 决议 · **新闻稿/简报** · **讲话稿/主持词**
 
 > 每种类型对应 `rules/official/*.yaml`，含格式规则 + 内容层定义（structure/focus_checks/title 等），驱动 check/optimize/optimize-content 全链路。
 
@@ -410,7 +410,7 @@ pip install -r requirements.txt
 用户：帮我优化这份会议通知的第二章节措辞
 
 Agent：📋 合规自检报告
-Skill 版本: v1.12.55（多渠道自检已确认最新）
+Skill 版本: v1.12.59（多渠道自检已确认最新）
 路径判定: B（内容优化）
 依据: 用户指定了已有文档，且要求"优化措辞"
 命令调用: 1. python -m gongwen optimize-content 会议通知.docx --changes changes.json --apply --paragraphs "5-8"

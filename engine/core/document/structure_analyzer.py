@@ -77,8 +77,8 @@ class DocumentStructureAnalyzer:
             "body_end": None,       # 正文结束索引
             "signature": None,      # 落款段落索引
             "date": None,          # 日期段落索引
-            "special_sections": {}, # 特殊部分（会议纪要用）
-            "structure_type": None, # 文档结构类型
+            "special_sections": {},  # 特殊部分（会议纪要用）
+            "structure_type": None,  # 文档结构类型
         }
 
         paragraphs = model.paragraphs
@@ -193,8 +193,8 @@ class DocumentStructureAnalyzer:
         return signature_idx, date_idx
 
     def _find_body_range(self, paragraphs: List[Paragraph],
-                        recipient_idx: Optional[int],
-                        signature_idx: Optional[int]) -> Tuple[Optional[int], Optional[int]]:
+                         recipient_idx: Optional[int],
+                         signature_idx: Optional[int]) -> Tuple[Optional[int], Optional[int]]:
         """查找正文范围"""
         total = len(paragraphs)
         if total == 0:

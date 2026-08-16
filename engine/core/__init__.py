@@ -9,6 +9,8 @@ P3-4：补充模块导出，便于外部按包导入核心入口。
 from __future__ import annotations
 
 # 核心文档处理入口（惰性导入，避免循环依赖）
+
+
 def get_generator() -> object:
     """延迟导入并返回 document generator 模块。"""
     from core.document import generator

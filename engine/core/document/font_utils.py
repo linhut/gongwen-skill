@@ -168,7 +168,7 @@ def set_run_font(run, font_name: str, latin_font: str | None = None) -> None:
     # 4. 设置四个关键字体属性
     rFonts.set(qn('w:ascii'), latin)              # 西文 ASCII
     rFonts.set(qn('w:hAnsi'), latin)              # 高位 ANSI
-    rFonts.set(qn('w:eastAsia'), east_asian_font) # 东亚文字（核心！）
+    rFonts.set(qn('w:eastAsia'), east_asian_font)  # 东亚文字（核心！）
     # S11 修复：cs（复杂脚本，阿拉伯文/泰文等）应使用拉丁字体，而非中文字体名
     rFonts.set(qn('w:cs'), latin)
 
@@ -209,7 +209,7 @@ def set_paragraph_font(paragraph, font_name: str, latin_font: str | None = None)
 
 
 def apply_paragraph_style_font(paragraph, font_name: str, font_size_pt: float,
-                                bold: bool = False, latin_font: str | None = None) -> None:
+                               bold: bool = False, latin_font: str | None = None) -> None:
     """
     为段落中的所有 run 应用统一的字体格式。
     这是一个便捷的综合设置函数。

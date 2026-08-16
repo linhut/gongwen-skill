@@ -65,7 +65,8 @@ class RuleEngine:
         logger.info(f"Fixes applied for type: {doc_type}")
         return fixed_model
 
-    def check_and_fix(self, model: DocumentModel, doc_type: str, selected_rule_ids: list[str] | None = None) -> tuple[list[CheckIssue], DocumentModel]:
+    def check_and_fix(self, model: DocumentModel, doc_type: str,
+                      selected_rule_ids: list[str] | None = None) -> tuple[list[CheckIssue], DocumentModel]:
         rules = self.load_rules(doc_type)
         # B-01（方案二）：注入 _doc_type 供 checker 文种感知
         rules = dict(rules)

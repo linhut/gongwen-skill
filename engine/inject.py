@@ -40,7 +40,9 @@ def _atomic_save(doc, output_path: str) -> None:
     FIX-A001：os.replace 在 Windows 上可能因文件锁失败（与打开阶段同理），
     增加重试（3次，0.3s间隔）。
     """
-    import os as _os, tempfile as _tempfile, time as _time
+    import os as _os
+    import tempfile as _tempfile
+    import time as _time
     output_path = str(output_path)
     out_dir = _os.path.dirname(_os.path.abspath(output_path))
     tmp_fd, tmp_path = _tempfile.mkstemp(dir=out_dir, suffix='.tmp', prefix='.gongwen_')
@@ -471,7 +473,8 @@ def _apply_page_number_elements(para_elem, elements: list) -> None:
 
 def _inject_even_page_footer_direct(output_path: str, fmt: str, font_name: str, size_pt: int) -> None:
     """直接操作 ZIP，添加偶数页页脚和 evenAndOddHeaders（单双页奇偶排版）。"""
-    import zipfile, io
+    import zipfile
+    import io
     from lxml import etree
 
     even_ftr_xml = (
@@ -519,7 +522,7 @@ def _inject_even_page_footer_direct(output_path: str, fmt: str, font_name: str, 
                                 sp.insert(i + 1, even_fr)
                                 break
                     zout.writestr(item.filename,
-                        etree.tostring(root, xml_declaration=True, encoding='UTF-8', standalone=True))
+                                  etree.tostring(root, xml_declaration=True, encoding='UTF-8', standalone=True))
                 elif item.filename == 'word/settings.xml':
                     root = etree.fromstring(data)
                     ns_w = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
@@ -528,7 +531,7 @@ def _inject_even_page_footer_direct(output_path: str, fmt: str, font_name: str, 
                         eo = etree.SubElement(root, '{%s}evenAndOddHeaders' % ns_w)
                         root.insert(0, eo)
                     zout.writestr(item.filename,
-                        etree.tostring(root, xml_declaration=True, encoding='UTF-8', standalone=True))
+                                  etree.tostring(root, xml_declaration=True, encoding='UTF-8', standalone=True))
                 elif item.filename == 'word/_rels/document.xml.rels':
                     # I15 修复：结构化 XML 编辑（替代纯文本替换，避免破坏结构）
                     rel_root = etree.fromstring(data)
@@ -540,14 +543,15 @@ def _inject_even_page_footer_direct(output_path: str, fmt: str, font_name: str, 
                         rel.set('Type', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer')
                         rel.set('Target', 'footer2.xml')
                     zout.writestr(item.filename,
-                        etree.tostring(rel_root, xml_declaration=True, encoding='UTF-8', standalone=True))
+                                  etree.tostring(rel_root, xml_declaration=True, encoding='UTF-8', standalone=True))
                 else:
                     zout.writestr(item.filename, data)
             zout.writestr('word/footer2.xml',
-                etree.tostring(even_ftr, xml_declaration=True, encoding='UTF-8', standalone=True))
+                          etree.tostring(even_ftr, xml_declaration=True, encoding='UTF-8', standalone=True))
 
     # I10 修复：原子写入（先写临时文件再 os.replace，崩溃不产生半写文件）
-    import tempfile, os as _os
+    import tempfile
+    import os as _os
     tmp_fd, tmp_path = tempfile.mkstemp(dir=_os.path.dirname(_os.path.abspath(output_path)),
                                         suffix='.tmp', prefix='.gongwen_')
     try:

@@ -272,7 +272,7 @@ def remove_extra_spaces(model: DocumentModel) -> None:
 
 
 def remove_extra_blank_lines(model: DocumentModel, mode: str = 'delete_single',
-                               protected_roles: set | None = None) -> None:
+                             protected_roles: set | None = None) -> None:
     """处理空行（支持三种模式）。
 
     Args:
@@ -1155,22 +1155,22 @@ def convert_markdown(model: DocumentModel) -> int:
                 para.heading_level = 0
                 para.role = 'title'
                 _apply_heading_format(para, content,
-                    font='方正小标宋简体', size=22, align='center', bold=False)
+                                      font='方正小标宋简体', size=22, align='center', bold=False)
             elif level == 2:
                 para.is_heading = True
                 para.heading_level = 1
                 _apply_heading_format(para, content,
-                    font='黑体', size=16, align='left', bold=False)
+                                      font='黑体', size=16, align='left', bold=False)
             elif level == 3:
                 para.is_heading = True
                 para.heading_level = 2
                 _apply_heading_format(para, content,
-                    font='楷体_GB2312', size=16, align='left', bold=False)
+                                      font='楷体_GB2312', size=16, align='left', bold=False)
             elif level >= 4:
                 para.is_heading = True
                 para.heading_level = 3
                 _apply_heading_format(para, content,
-                    font='仿宋_GB2312', size=16, align='left', bold=True)
+                                      font='仿宋_GB2312', size=16, align='left', bold=True)
 
             changes += 1
 
@@ -1412,7 +1412,7 @@ def _detect_md_table_regions(paragraphs: list) -> list[dict]:
 
 
 def _apply_heading_format(para, text: str, font: str, size: int,
-                           align: str, bold: bool) -> None:
+                          align: str, bold: bool) -> None:
     """给段落应用标题格式。"""
     para.text = text
     para.format.alignment = align
@@ -1428,7 +1428,7 @@ def _apply_heading_format(para, text: str, font: str, size: int,
 
 
 def set_paragraph_format_attr(model: DocumentModel, para_index: int,
-                               attr: str, value: Any) -> None:
+                              attr: str, value: Any) -> None:
     """设置指定段落格式属性。"""
     if 0 <= para_index < len(model.paragraphs):
         para = model.paragraphs[para_index]

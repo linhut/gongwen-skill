@@ -736,18 +736,18 @@ def inject_tracked_with_comments(
             ct_root = etree.fromstring(entries[ct_key])
             for part, ctype in (
                 ('/word/people.xml', 'application/vnd.openxmlformats-officedocument.wordprocessingml.people+xml'),
-                ('/word/commentsExtended.xml', 'application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml'),
-                ('/word/commentsIds.xml', 'application/vnd.openxmlformats-officedocument.wordprocessingml.commentsIds+xml'),
-                ('/word/commentsExtensible.xml', 'application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtensible+xml'),
+                ('/word/commentsExtended.xml', 'application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml'),  # noqa: E501
+                ('/word/commentsIds.xml', 'application/vnd.openxmlformats-officedocument.wordprocessingml.commentsIds+xml'),  # noqa: E501
+                ('/word/commentsExtensible.xml', 'application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtensible+xml'),  # noqa: E501
             ):
                 entries[ct_key] = register_content_type(entries[ct_key], part, ctype)
         # 关系注册（people + comments 扩展）
         if rels_key in entries:
             for rel_type, target in (
                 ('http://schemas.openxmlformats.org/officeDocument/2006/relationships/people', 'people.xml'),
-                ('http://schemas.openxmlformats.org/officeDocument/2006/relationships/commentsExtended', 'commentsExtended.xml'),
+                ('http://schemas.openxmlformats.org/officeDocument/2006/relationships/commentsExtended', 'commentsExtended.xml'),  # noqa: E501
                 ('http://schemas.openxmlformats.org/officeDocument/2006/relationships/commentsIds', 'commentsIds.xml'),
-                ('http://schemas.openxmlformats.org/officeDocument/2006/relationships/commentsExtensible', 'commentsExtensible.xml'),
+                ('http://schemas.openxmlformats.org/officeDocument/2006/relationships/commentsExtensible', 'commentsExtensible.xml'),  # noqa: E501
             ):
                 entries[rels_key] = register_relationship(entries[rels_key], rel_type, target)
     except Exception as e:

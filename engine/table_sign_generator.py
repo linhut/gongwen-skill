@@ -26,6 +26,8 @@ from utils.logger import logger
 # ---------------------------------------------------------------------------
 #  桌签模板路径（方案六 P2-2：内置默认模板；调用者可用 template_path 覆盖）
 # ---------------------------------------------------------------------------
+
+
 def _get_default_template():
     """返回内置默认模板路径；不存在则构建（table_sign_template.py）。"""
     from table_sign_template import ensure_default_template
@@ -194,8 +196,8 @@ def _duplicate_body_for_combined(xml_bytes: bytes, names: List[str], placeholder
 
 
 def _prepare_docx_from_template(names: List[str], output_path: Path,
-                                  template_path: Path, combined: bool = False,
-                                  placeholder: str = "Jose AI") -> Path:
+                                template_path: Path, combined: bool = False,
+                                placeholder: str = "Jose AI") -> Path:
     """
     核心函数：从模板生成桌签。
 

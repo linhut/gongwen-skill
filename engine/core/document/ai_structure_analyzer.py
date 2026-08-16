@@ -69,7 +69,7 @@ def classify_with_ai(model: DocumentModel, provider_name: str = "openai") -> boo
         try:
             config = db.query(AIConfig).filter(
                 AIConfig.provider == provider_name,
-                AIConfig.is_active == True
+                AIConfig.is_active.is_(True)
             ).first()
             if not config:
                 logger.info(f"No active AI config for {provider_name}, skipping AI structure analysis")

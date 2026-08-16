@@ -10,7 +10,8 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
-__version__ = "1.12.57"
+__version__ = "1.12.59"
+# 版本号应与 gongwen/__init__.py 保持一致，每次发版同步更新
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
@@ -34,14 +35,14 @@ __version__ = "1.12.57"
   rule-import <key> -f <file>  导入/保存自定义规则 YAML
 
 示例：
-  python gongwen.py list-types
-  python gongwen.py template notice -o 通知模板.docx
-  python gongwen.py check input.docx -t notice --json
-  python gongwen.py optimize input.docx -o output.docx -t report
-  cat input.md | python gongwen.py md2docx - -o 公文.docx    # 管道输入
-  python gongwen.py header in.docx --org-name 国家民委办公厅 --doc-number "民委办发〔2026〕1号"
-  python gongwen.py footer in.docx --cc 各省民委 --printer 国家民委办公厅 --print-date 2026年7月23日
-  python gongwen.py pagenum in.docx --alignment right
+  python -m gongwen list-types
+  python -m gongwen template notice -o 通知模板.docx
+  python -m gongwen check input.docx -t notice --json
+  python -m gongwen optimize input.docx -o output.docx -t report
+  cat input.md | python -m gongwen md2docx - -o 公文.docx    # 管道输入
+  python -m gongwen header in.docx --org-name 国家民委办公厅 --doc-number "民委办发〔2026〕1号"
+  python -m gongwen footer in.docx --cc 各省民委 --printer 国家民委办公厅 --print-date 2026年7月23日
+  python -m gongwen pagenum in.docx --alignment right
 """
 import argparse
 import json
@@ -278,8 +279,8 @@ def cmd_optimize(args):
         print("以上是本次将要修复的内容预览。")
         print("加 --apply 执行修复，或指定 -t 切换公文类型。")
         print("示例:")
-        print(f"  python gongwen.py optimize {args.input} -t notice --apply")
-        print(f"  python gongwen.py optimize {args.input} -o 成品.docx --apply --layout 版式.json")
+        print(f"  python -m gongwen optimize {args.input} -t notice --apply")
+        print(f"  python -m gongwen optimize {args.input} -o 成品.docx --apply --layout 版式.json")
         return
 
     # === 执行模式 ===
@@ -415,8 +416,10 @@ def cmd_md2docx(args):
 
     def _parse_margin(v):
         s = str(v).strip()
-        if "cm" in s: return float(s.replace("cm", "")) * 10
-        if "mm" in s: return float(s.replace("mm", ""))
+        if "cm" in s:
+            return float(s.replace("cm", "")) * 10
+        if "mm" in s:
+            return float(s.replace("mm", ""))
         return float(s)
 
     # 构建 DocumentModel（改动1/10：页边距与页眉页脚距离取自 _common.yaml page_setup 配置）
@@ -1038,7 +1041,10 @@ def _load_style_prompt(style_name: str) -> str:
     Returns:
         风格提示词文本（找到时）；空字符串（文件缺失/未找到）
     """
-    prompts_path = Path(__file__).resolve().parent / "prompts" / "style-prompts.md"
+    # 提示词仓库位于仓库根目录 prompts/（gongwen/ 的上一级）：
+    # 单文件时代 gongwen.py 在根目录，__file__.parent 即根目录；
+    # v1.12.57 拆包后 __file__ 位于 gongwen/ 下，需 parent.parent 回到根目录。
+    prompts_path = Path(__file__).resolve().parent.parent / "prompts" / "style-prompts.md"
     if not prompts_path.exists():
         return ""
     content = prompts_path.read_text(encoding="utf-8")
@@ -1070,7 +1076,9 @@ def safe_backup_input(input_path: Path) -> Path:
 
     全部操作基于备份文件（而非原文件），输出成功后清理，失败时保留作为恢复点。
     """
-    import tempfile, datetime as _dt, shutil  # B28 修复：补 import shutil（下方使用 copy2）
+    import tempfile
+    import datetime as _dt
+    import shutil  # B28 修复：补 import shutil（下方使用 copy2）
     backup_dir = Path(tempfile.gettempdir()) / "gongwen_backup"
     backup_dir.mkdir(parents=True, exist_ok=True)
     ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1136,6 +1144,32 @@ REPO_MIRRORS = {
     "AtomGit": "https://atomgit.com/linhut/gongwen-skill.git",
 }
 
+# PyPI JSON API（无需 git，pip 用户首选渠道）
+PYPI_API = "https://pypi.org/pypi/gongwen-skill/json"
+
+
+def _latest_version_from_pypi(timeout: int = 10) -> tuple[bool, str]:
+    """从 PyPI JSON API 查询最新发布版本。
+
+    Returns:
+        (是否成功, 最新版本号或错误信息)
+    """
+    import json
+    import urllib.request
+    try:
+        req = urllib.request.Request(PYPI_API, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        # info.version 是 PyPI 上的最新发布版本
+        version = data.get("info", {}).get("version", "")
+        if version:
+            if not version.startswith("v"):
+                version = f"v{version}"
+            return True, version
+        return False, "PyPI API 返回无版本号"
+    except Exception as e:
+        return False, str(e)[:120]
+
 
 def _parse_version(v: str) -> list[int]:
     """解析版本号字符串为可比较的整数列表（兼容 'v1.12.24' 与 '1.12.24' 两种格式）。"""
@@ -1177,56 +1211,106 @@ def _latest_tag_from_remote(remote_url: str, timeout: int = 15) -> tuple[bool, s
 
 
 def cmd_check_update(args):
-    """多渠道版本自检：查询 GitHub/GitCode/AtomGit 三仓库最新 tag，取最高版本比对本地。
+    """多渠道版本自检：查询 PyPI/GitHub/GitCode/AtomGit 四渠道最新版本，取最高版本比对本地。
 
-    解决 SKILL.md 单渠道自检失效问题：单一仓库不可达/网络抖动时误判本地即最新。
+    渠道优先级：PyPI（pip 用户首选）> GitHub > GitCode > AtomGit
+    全部不可达时明确告知并返回退出码 2。
+    支持 --json 输出结构化结果，便于 Agent 解析。
     """
     import time
+    import json as _json
     t0 = time.time()
 
-    print(f"🔍 版本自检（多渠道，本地 v{__version__}）")
-    print(f"{'─' * 50}")
+    use_json = getattr(args, 'json', False)
+    local_ver = __version__
+
+    if not use_json:
+        print(f"🔍 版本自检（多渠道，本地 v{local_ver}）")
+        print(f"{'─' * 50}")
 
     results: dict[str, str] = {}
     ok_count = 0
+
+    # 渠道1：PyPI（无需 git，pip 用户首选）
+    ok, val = _latest_version_from_pypi()
+    if ok:
+        results["PyPI"] = val
+        ok_count += 1
+        if not use_json:
+            print(f"  ✅ PyPI     最新: {val}")
+    else:
+        results["PyPI"] = ""
+        if not use_json:
+            print(f"  ⚠️  PyPI     不可达: {val}")
+
+    # 渠道2-4：Git 仓库
     for name, url in REPO_MIRRORS.items():
         ok, val = _latest_tag_from_remote(url)
         if ok:
             results[name] = val
             ok_count += 1
-            print(f"  ✅ {name:<8} 最新: {val}")
+            if not use_json:
+                print(f"  ✅ {name:<8} 最新: {val}")
         else:
             results[name] = ""
-            print(f"  ⚠️  {name:<8} 不可达: {val}")
+            if not use_json:
+                print(f"  ⚠️  {name:<8} 不可达: {val}")
 
-    print(f"{'─' * 50}")
+    if not use_json:
+        print(f"{'─' * 50}")
 
     if ok_count == 0:
-        print("❌ 全部仓库均不可达（无 git 或网络受限）")
-        print("   ⚠️ 版本自检因无法访问远程而跳过，本地版本可能不是最新")
-        print("   💡 拉取地址：")
-        for name, url in REPO_MIRRORS.items():
-            print(f"      - {name}: {url}")
+        if not use_json:
+            print("❌ 全部渠道均不可达（无 git 或网络受限）")
+            print("   ⚠️ 版本自检因无法访问远程而跳过，本地版本可能不是最新")
+            print("   💡 拉取地址：")
+            print(f"      - PyPI:  pip install --upgrade gongwen-skill")
+            for name, url in REPO_MIRRORS.items():
+                print(f"      - {name}: {url}")
         return 2
 
     # 取多渠道中的最高版本
     valid = [v for v in results.values() if v]
     latest = max(valid, key=_parse_version)
 
-    # 版本比较
-    if _parse_version(latest) > _parse_version(__version__):
-        print(f"📢 有更新可用：最新版 {latest}，当前 v{__version__}")
+    # 判断安装方式（用于给出对应的更新命令）
+    # pip 安装的用户应使用 pip install --upgrade，git clone 的用户应使用 git pull
+    pypi_ok = bool(results.get("PyPI"))
+    git_ok = any(results.get(name) for name in REPO_MIRRORS)
+
+    has_update = _parse_version(latest) > _parse_version(local_ver)
+
+    if use_json:
+        # 结构化输出
+        output = {
+            "local_version": local_ver,
+            "latest_version": latest.lstrip("v"),
+            "has_update": has_update,
+            "channels": {
+                name: {"reachable": bool(v), "version": v.lstrip("v") if v else None}
+                for name, v in results.items()
+            },
+            "reachable_channels": ok_count,
+            "elapsed_seconds": round(time.time() - t0, 1),
+        }
+        print(_json.dumps(output, ensure_ascii=False, indent=2))
+        return 0 if not has_update else 1
+
+    # 人类可读输出
+    if has_update:
+        print(f"📢 有更新可用：最新版 {latest}，当前 v{local_ver}")
         print("   更新命令：")
-        print("     cd <gongwen-skill目录> && git pull && git fetch --tags")
-    elif _parse_version(latest) == _parse_version(__version__):
-        print(f"✅ 已是最新版本：v{__version__}（多渠道一致）")
+        if pypi_ok:
+            print("     pip install --upgrade gongwen-skill")
+        if git_ok:
+            print("     cd <gongwen-skill目录> && git pull && git fetch --tags")
+    elif _parse_version(latest) == _parse_version(local_ver):
+        print(f"✅ 已是最新版本：v{local_ver}（多渠道一致）")
     else:
-        print(f"ℹ️  本地版本 v{__version__} 高于远程 {latest}（本地领先或渠道不同步）")
+        print(f"ℹ️  本地版本 v{local_ver} 高于远程 {latest}（本地领先或渠道不同步）")
 
     print(f"⏱️  自检耗时 {time.time() - t0:.1f}s")
     return 0
-
-
 
 
 def cmd_optimize_content(args):
@@ -1287,7 +1371,7 @@ def cmd_optimize_content(args):
         # B27 修复：既未指定 --changes 也未启用 --auto-generate 时友好提示，而非 FileNotFoundError
         if not args.changes:
             print("❌ 未指定 --changes 且未启用 --auto-generate，无法加载变更", file=sys.stderr)
-            print("   用法：python gongwen.py optimize-content 原文.docx --changes changes.json [--apply]")
+            print("   用法：python -m gongwen optimize-content 原文.docx --changes changes.json [--apply]")
             return 2
         changes = load_changes_from_json(args.changes)
     _echo_progress(args, 1, 6, "加载变更", f"{len(changes)} 处变更已加载")
@@ -1366,7 +1450,8 @@ def cmd_optimize_content(args):
                             fix = r["auto_fix"]
                             key = (fix.get("paragraph_index", 0), fix.get("original_text", ""))
                             if key in seen_keys or _is_covered_by_existing(fix):
-                                print(f"  ℹ️ --input-tasks: 跳过重复修正 {fix.get('original_text','')[:20]}…", file=sys.stderr)
+                                print(
+                                    f"  ℹ️ --input-tasks: 跳过重复修正 {fix.get('original_text', '')[:20]}…", file=sys.stderr)
                                 continue
                             changes.append({
                                 "paragraph_index": fix.get("paragraph_index", 0),
@@ -1414,7 +1499,7 @@ def cmd_optimize_content(args):
                         if merged:
                             continue
                         if key in seen_keys or _is_covered_by_existing(sc):
-                            print(f"  ℹ️ --input-tasks: 跳过重复风格建议 {sc.get('original_text','')[:20]}…", file=sys.stderr)
+                            print(f"  ℹ️ --input-tasks: 跳过重复风格建议 {sc.get('original_text', '')[:20]}…", file=sys.stderr)
                             continue
                         changes.append({
                             "paragraph_index": sc_pi,
@@ -1493,7 +1578,7 @@ def cmd_optimize_content(args):
         print("以上是变更内容预览。")
         print("加 --apply 生成差异对比文档。")
         print(f"示例:")
-        print(f"  python gongwen.py optimize-content {args.input} --changes {args.changes} --apply")
+        print(f"  python -m gongwen optimize-content {args.input} --changes {args.changes} --apply")
         return
 
     # 执行模式
@@ -1779,14 +1864,17 @@ def cmd_optimize_content(args):
                                 "3. 参考 content_rules_summary 中的文档类型规范做针对性调整\n"
                                 "4. 参考 focus_check_issues 中的已有违规项做风格修复\n"
                                 "5. 基于 style_prompt 的语义要求判断段落与目标风格的偏差方向\n"
-                                "6. 若你的风格建议修复了某条 structure_issues，请在回填结果中标注 fixes_issue_id（如\"导语段:要素缺失\"），Skill 将自动跳过该问题的重复批注"  # E3
+                                "6. 若你的风格建议修复了某条 structure_issues，请在回填结果中标注 fixes_issue_id"
+                                "（如\"导语段:要素缺失\"），Skill 将自动跳过该问题的重复批注"  # E3
                             ),
                         },
                     ],
                 }
                 Path(args.output_tasks).write_text(
                     _json.dumps(tasks_data, ensure_ascii=False, indent=2), encoding="utf-8")
-                print(f"📤 --output-tasks: 已输出 {len(entity_tasks)} 个待核验实体 + 风格增强请求（含段落角色/规则摘要/结构焦点问题/风格评分）→ {args.output_tasks}")
+                print(
+                    f"📤 --output-tasks: 已输出 {len(entity_tasks)} 个待核验实体 + 风格增强请求"
+                    f"（含段落角色/规则摘要/结构焦点问题/风格评分）→ {args.output_tasks}")
                 print("   （基础版文档仍生成：含内容修订+结构/焦点检查批注，不含事实核验与风格建议）")
             except Exception as e:
                 print(f"  ⚠️ --output-tasks 输出失败（{e}），继续默认流程", file=sys.stderr)
@@ -1825,11 +1913,11 @@ def cmd_optimize_content(args):
                 suggestions.append(CommentSuggestion(
                     para_index=e.paragraph_index,
                     start_offset=s_off,
-                end_offset=e_off,
-                comment_text=f"【事实核验⚠️】{e.entity_name}：{e.note}",
-                category="事实核验",
-                author=fc_author,
-            ))
+                    end_offset=e_off,
+                    comment_text=f"【事实核验⚠️】{e.entity_name}：{e.note}",
+                    category="事实核验",
+                    author=fc_author,
+                ))
         # P7 修复：已确认实体默认不生成批注（避免噪音），仅 --show-confirmed 时可选生成
         if getattr(args, 'show_confirmed', False):
             for e in fc_report.confirmed:
@@ -1908,7 +1996,8 @@ def cmd_optimize_content(args):
         # N3 修复：所有批注（内容优化 + 事实核验）统一经 tracked 路径一次注入
         # S1-A 修复：注入前打印批注构成，注入后验证实际批注数（防止批注静默丢失）
         n_fc = len(fc_report.doubtful) + len(fc_report.unverified)
-        print(f"  批注列表: {len(suggestions)} 条（内容优化{len(changes)} + 事实核验{n_fc} + 结构/焦点{len(suggestions) - len(changes) - n_fc}）")
+        print(f"  批注列表: {len(suggestions)} 条（内容优化{len(changes)} + 事实核验{n_fc} + "
+              f"结构/焦点{len(suggestions) - len(changes) - n_fc}）")
         result = safe_write_output(Path(out_name), lambda p: inject_tracked_with_comments(
             args.input, tc_changes, suggestions, p,
             author=REVISION_AUTHOR,
@@ -2440,8 +2529,8 @@ def cmd_style_learn(args):
     print(f"✅ 自定义模板已生成: {out_path}")
     print(f"  模板名: {template_name}")
     print(f"  已注册到用户规则层（user_rules），后续可用:")
-    print(f"    python gongwen.py optimize 文档.docx -t {template_name} --apply")
-    print(f"    python gongwen.py check 文档.docx -t {template_name}")
+    print(f"    python -m gongwen optimize 文档.docx -t {template_name} --apply")
+    print(f"    python -m gongwen check 文档.docx -t {template_name}")
     print()
     print(f"💾 持久化说明：模板存储在 {USER_RULES_DIR}（仓库之外），")
     print(f"    git pull 更新 skill 不会丢失。若需迁移/备份，")
@@ -2457,7 +2546,7 @@ def cmd_style_list(args):
     files = sorted(USER_RULES_DIR.glob("*.yaml"))
     if not files:
         print("暂无自定义样式模板。用以下命令学习一份标准文档：")
-        print("  python gongwen.py style-learn 标准公文.docx -n 模板名")
+        print("  python -m gongwen style-learn 标准公文.docx -n 模板名")
         return
     print(f"📚 自定义样式模板（{len(files)} 个）:")
     for f in files:
@@ -2581,7 +2670,8 @@ def main():
     p.add_argument("input", help="输入 .docx 路径")
     p.add_argument("-o", "--output", help="输出 .docx 路径（默认按规范自动命名：{原文档名}+{内容风格}+{日期}+v1.docx）")
     p.add_argument("--changes", required=False, default="",
-                   help="变更 JSON 文件路径（含 paragraph_index/original_text/optimized_text/reason/reference）；不提供且加 --auto-generate 时基于内置规则自动生成")
+                   help="变更 JSON 文件路径（含 paragraph_index/original_text/optimized_text/reason/reference）；"
+                        "不提供且加 --auto-generate 时基于内置规则自动生成")
     p.add_argument("--optimize-format", action="store_true", help="同时优化格式（默认仅做差异标注，不改格式）")
     p.add_argument("--apply", action="store_true", help="确认生成差异对比文档（默认预览）")
     p.add_argument("--disclaimer", default=None, help="文档末尾 AI 声明文字（默认：内容由GongWen-skill-AI生成，仅供参考）")
@@ -2684,8 +2774,10 @@ def main():
     p = sub.add_parser("style-list", help="列出所有通过 style-learn 学习的自定义样式模板")
     p.set_defaults(func=cmd_style_list)
 
-    # ---- 多渠道版本自检（GitHub/GitCode/AtomGit 比对取最新） ----
-    p = sub.add_parser("check-update", help="多渠道版本自检：查询 GitHub/GitCode/AtomGit 三仓库最新 tag，取最高版本比对本地")
+    # ---- 多渠道版本自检（PyPI/GitHub/GitCode/AtomGit 比对取最新） ----
+    p = sub.add_parser("check-update", help="多渠道版本自检：查询 PyPI/GitHub/GitCode/AtomGit 四渠道最新版本，取最高版本比对本地")
+    p.add_argument("--json", action="store_true",
+                   help="输出 JSON 格式结果（便于 Agent 解析）")
     p.set_defaults(func=cmd_check_update)
 
     # ---- 文档审计 ----

@@ -17,6 +17,11 @@ LiveEdit —— 内存级 DocumentModel 编辑会话。
 Agent 交互式编辑场景的预留 API；若计划删除需先评估"无 CLI 入口"的语义。
 """
 from __future__ import annotations
+from utils.logger import logger
+from core.document.modifier import replace_paragraph_text
+from core.document.generator import generate_docx
+from core.document.parser import parse_docx
+from core.document.models import DocumentModel
 import copy
 import json
 import sys
@@ -28,13 +33,6 @@ from typing import Any, List, Optional
 _ENGINE_DIR = Path(__file__).resolve().parent
 if str(_ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(_ENGINE_DIR))
-
-from core.document.models import DocumentModel
-from core.document.parser import parse_docx
-from core.document.generator import generate_docx
-from core.document.modifier import replace_paragraph_text
-
-from utils.logger import logger
 
 
 class LiveEditSession:
@@ -157,7 +155,8 @@ class LiveEditSession:
         # 从记录中移除
         idx = len(self.changes) - 1 - self.changes[::-1].index(last)
         reverted = self.changes.pop(idx)
-        logger.info(f"  → 段落 {para_index} 已回滚: {reverted['optimized_text'][:20]!r} → {reverted['original_text'][:20]!r}")
+        logger.info(
+            f"  → 段落 {para_index} 已回滚: {reverted['optimized_text'][:20]!r} → {reverted['original_text'][:20]!r}")
         return True
 
     def save_snapshot(self, description: str = "") -> int:
@@ -213,7 +212,8 @@ class LiveEditSession:
             self.changes = copy.deepcopy(target["changes"])
             # NI11 修复：只丢弃目标之后的快照，保留目标本身及其之前——回退后仍可继续回退
             self._snapshots = self._snapshots[:target_idx + 1]
-            logger.info(f"  ↩️  已回退 {steps} 步到快照: {target.get('description', '未命名')}（剩余 {len(self._snapshots)} 个快照可继续回退）")
+            logger.info(
+                f"  ↩️  已回退 {steps} 步到快照: {target.get('description', '未命名')}（剩余 {len(self._snapshots)} 个快照可继续回退）")
             return True
 
         if steps == 1 and self.original_model is not None:
@@ -296,7 +296,7 @@ class LiveEditSession:
         return result
 
     def finalize_both(self, output_base: str | Path, style: str = "庄重严谨",
-                       version: int = 1) -> tuple[Path, Path | None]:
+                      version: int = 1) -> tuple[Path, Path | None]:
         """
         用户确认无更多优化后，同时输出两份文档，文件名遵循 SKILL.md 命名规范：
 

@@ -1,10 +1,5 @@
 # -*- coding: utf-8 -*-
 """角色解析与批注语义类别过滤的单元测试（v1.12.26 优化方案 M5/P2 验证）。"""
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "engine"))
-
 from core.document.reviewer_comments import (
     REVIEWER_MAP,
     CATEGORY_ROLE_MAP,
@@ -13,6 +8,10 @@ from core.document.reviewer_comments import (
     resolve_role,
     get_author,
 )
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "engine"))
 
 
 class TestResolveRole:

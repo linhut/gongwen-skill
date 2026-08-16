@@ -68,8 +68,8 @@ def _add_styled_cell(row, text: str, bold: bool = False, width_mm: float = None,
 
 
 def _add_styled_cell_by_index(table, row_idx: int, col_idx: int, text: str,
-                               bold: bool = False, width_mm: float = None,
-                               shading: str = None, alignment: str = 'left') -> None:
+                              bold: bool = False, width_mm: float = None,
+                              shading: str = None, alignment: str = 'left') -> None:
     """按行列索引填充已有单元格样式。"""
     cell = table.cell(row_idx, col_idx)
     if width_mm:

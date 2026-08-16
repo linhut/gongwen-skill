@@ -57,7 +57,8 @@ class TestValidateRule:
     def test_valid_rule(self):
         rule = {
             "title": {"font": "黑体", "size": 16},
-            "check_rules": [{"id": "C1", "severity": "P0", "field": "title.font", "expected": "黑体", "name": "check", "message": "msg"}],
+            "check_rules": [{"id": "C1", "severity": "P0", "field": "title.font",
+                             "expected": "黑体", "name": "check", "message": "msg"}],
             "fix_rules": [{"id": "F1", "action": "set_font", "target": "title", "value": "黑体"}],
         }
         # should not raise

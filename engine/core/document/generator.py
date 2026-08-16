@@ -717,7 +717,8 @@ def _update_table_content(table, table_model: TableModel):
                     # 智能对齐
                     is_header = cell_model.row == 0
                     align = _smart_align_cell(cell_model.text, is_header, cell_model.col, total_cols)
-                    para.alignment = {'left': WD_ALIGN_PARAGRAPH.LEFT, 'center': WD_ALIGN_PARAGRAPH.CENTER, 'right': WD_ALIGN_PARAGRAPH.RIGHT}.get(align, WD_ALIGN_PARAGRAPH.LEFT)
+                    para.alignment = {'left': WD_ALIGN_PARAGRAPH.LEFT, 'center': WD_ALIGN_PARAGRAPH.CENTER,
+                                      'right': WD_ALIGN_PARAGRAPH.RIGHT}.get(align, WD_ALIGN_PARAGRAPH.LEFT)
         except Exception as e:
             logger.warning(f"Failed to update table cell ({cell_model.row},{cell_model.col}): {e}")
 
@@ -791,7 +792,8 @@ def _add_table(doc: Document, table_model: TableModel):
                     is_header = cell_model.row == 0
                     cell_text = cell_model.text or (cell_model.paragraphs[0].text if cell_model.paragraphs else '')
                     align = _smart_align_cell(cell_text, is_header, cell_model.col, total_cols)
-                    align_map = {'left': WD_ALIGN_PARAGRAPH.LEFT, 'center': WD_ALIGN_PARAGRAPH.CENTER, 'right': WD_ALIGN_PARAGRAPH.RIGHT}
+                    align_map = {'left': WD_ALIGN_PARAGRAPH.LEFT,
+                                 'center': WD_ALIGN_PARAGRAPH.CENTER, 'right': WD_ALIGN_PARAGRAPH.RIGHT}
                     for para in cell.paragraphs:
                         para.alignment = align_map.get(align, WD_ALIGN_PARAGRAPH.LEFT)
                     if is_header:
@@ -805,7 +807,8 @@ def _add_table(doc: Document, table_model: TableModel):
                         # 智能对齐
                         is_header = cell_model.row == 0
                         align = _smart_align_cell(cell_model.text, is_header, cell_model.col, total_cols)
-                        align_map = {'left': WD_ALIGN_PARAGRAPH.LEFT, 'center': WD_ALIGN_PARAGRAPH.CENTER, 'right': WD_ALIGN_PARAGRAPH.RIGHT}
+                        align_map = {'left': WD_ALIGN_PARAGRAPH.LEFT,
+                                     'center': WD_ALIGN_PARAGRAPH.CENTER, 'right': WD_ALIGN_PARAGRAPH.RIGHT}
                         cell.paragraphs[0].alignment = align_map.get(align, WD_ALIGN_PARAGRAPH.LEFT)
                         if is_header:
                             run.bold = True
@@ -880,7 +883,7 @@ def _add_page_number_field(para, para_model: Paragraph) -> None:
     """
     在段落中写入 Word 页码域代码（{ PAGE } / { NUMPAGES }）。
     使用 Word XML 域代码实现动态页码，而非静态文本。
-    
+
     支持格式：
     - "{PAGE}" → 当前页码
     - "{NUMPAGES}" → 总页数
@@ -900,12 +903,12 @@ def _add_page_number_field(para, para_model: Paragraph) -> None:
             if remaining.strip():
                 parts.append(('text', remaining))
             break
-        
+
         # 前置文本
         prefix = remaining[:m.start()]
         if prefix.strip():
             parts.append(('text', prefix))
-        
+
         # 域代码
         parts.append(('field', m.group()))
         remaining = remaining[m.end():]

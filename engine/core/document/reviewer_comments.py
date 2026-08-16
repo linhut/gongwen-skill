@@ -173,12 +173,13 @@ def _register_comments_infrastructure(doc_path: str | Path, comment_count: int) 
     if ct_key in entries:
         ct_root = etree.fromstring(entries[ct_key])
         for part, ctype in (
-            ('/word/commentsExtended.xml', 'application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml'),
+            ('/word/commentsExtended.xml', 'application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml'),  # noqa: E501
             ('/word/commentsIds.xml', 'application/vnd.openxmlformats-officedocument.wordprocessingml.commentsIds+xml'),
-            ('/word/commentsExtensible.xml', 'application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtensible+xml'),
+            ('/word/commentsExtensible.xml', 'application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtensible+xml'),  # noqa: E501
         ):
             if not any(ov.get('PartName') == part for ov in ct_root):
-                ov = etree.SubElement(ct_root, '{%s}Override' % 'http://schemas.openxmlformats.org/package/2006/content-types')
+                ov = etree.SubElement(ct_root, '{%s}Override' %
+                                      'http://schemas.openxmlformats.org/package/2006/content-types')
                 ov.set('PartName', part)
                 ov.set('ContentType', ctype)
         entries[ct_key] = etree.tostring(ct_root, xml_declaration=True, encoding='UTF-8', standalone=True)
@@ -207,7 +208,8 @@ def _register_comments_infrastructure(doc_path: str | Path, comment_count: int) 
     entries['word/commentsExtended.xml'] = ext_bytes
     entries['word/commentsIds.xml'] = ids_bytes
     entries['word/commentsExtensible.xml'] = ext2_bytes
-    import tempfile, os as _os
+    import tempfile
+    import os as _os
     tmp_fd, tmp_path = tempfile.mkstemp(dir=str(p.parent), suffix='.tmp', prefix='.gongwen_cmt_')
     _os.close(tmp_fd)
     try:
@@ -332,7 +334,9 @@ def _register_persons_xml(doc_path: str | Path) -> None:
 
     # 写入 people.xml 并回写 ZIP（NI6 修复：原子写入；M1 修复：权限失败重试+降级）
     entries['word/people.xml'] = persons_bytes
-    import tempfile, os as _os, time as _time
+    import tempfile
+    import os as _os
+    import time as _time
     tmp_fd, tmp_path = tempfile.mkstemp(dir=str(p.parent), suffix='.tmp', prefix='.gongwen_people_')
     _os.close(tmp_fd)
     try:

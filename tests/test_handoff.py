@@ -1,4 +1,5 @@
 """Tests for the handoff (会话交接文档) system — write/read/list/summarize."""
+import handoff
 import json
 import sys
 from pathlib import Path
@@ -6,8 +7,6 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "engine"))
-
-import handoff
 
 
 @pytest.fixture(autouse=True)
@@ -153,6 +152,7 @@ class TestConcurrency:
         import threading
 
         results = []
+
         def _write(i):
             try:
                 p = handoff.write_handoff(

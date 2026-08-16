@@ -40,15 +40,20 @@ _ACTION_MAP = {
     "set_line_spacing_multiple": lambda model, target, value, _rules: modify_line_spacing(
         model, target, _parse_pt_value(value), spacing_rule="multiple"
     ),
-    "set_first_line_indent": lambda model, target, value, _rules: modify_first_line_indent(model, target, _parse_indent_value(value)),
-    "set_indent": lambda model, target, value, _rules: modify_first_line_indent(model, target, _parse_indent_value(value)),
+    "set_first_line_indent": lambda model, target, value, _rules: modify_first_line_indent(
+        model, target, _parse_indent_value(value)
+    ),
+    "set_indent": lambda model, target, value, _rules: modify_first_line_indent(
+        model, target, _parse_indent_value(value)
+    ),
     "set_margins": lambda model, target, value, _rules: modify_margins(model, value),
     "set_page_margins": lambda model, target, value, _rules: modify_margins(model, value),
     "remove_extra_spaces": lambda model, target, value, _rules: remove_extra_spaces(model),
     "remove_extra_blank_lines": lambda model, target, value, _rules: remove_extra_blank_lines(
         model,
         mode=value.get("mode", "delete_single") if isinstance(value, dict) else "delete_single",
-        protected_roles=set(value.get("protected_roles", [])) if isinstance(value, dict) and value.get("protected_roles") else None,
+        protected_roles=set(value.get("protected_roles", [])) if isinstance(
+            value, dict) and value.get("protected_roles") else None,
     ),
     "strip_markdown": lambda model, target, value, _rules: convert_markdown(model),
     "convert_markdown": lambda model, target, value, _rules: convert_markdown(model),
@@ -133,7 +138,9 @@ def apply_fixes(model: DocumentModel, rules: dict[str, Any], selected_rule_ids: 
     if selected_rule_ids is not None:
         selected_set = set(selected_rule_ids)
         fix_rules = [r for r in fix_rules if r.get("id") in selected_set]
-        logger.info(f"Applying {len(fix_rules)} of {len(rules.get('fix_rules', []))} fix rules (selected: {len(selected_set)} IDs)")
+        logger.info(
+            f"Applying {len(fix_rules)} of {len(rules.get('fix_rules', []))} fix rules "
+            f"(selected: {len(selected_set)} IDs)")
     else:
         logger.info(f"Applying {len(fix_rules)} fix rules")
 
@@ -179,7 +186,7 @@ def apply_fixes(model: DocumentModel, rules: dict[str, Any], selected_rule_ids: 
 def _apply_page_number(model: DocumentModel, target: str, value: dict) -> None:
     """
     Apply page number formatting to the document footer.
-    
+
     value format:
         {
             "font": "宋体",

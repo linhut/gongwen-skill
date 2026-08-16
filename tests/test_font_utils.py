@@ -1,4 +1,8 @@
 """Tests for font_utils — core font handling (P3-24/P3-32 补充测试)."""
+from core.document.font_utils import (
+    set_run_font, get_effective_font, validate_font_name,
+    get_font_fallback, _contains_cjk, BODY_FONT, LATIN_FONT,
+)
 import sys
 from pathlib import Path
 
@@ -7,11 +11,6 @@ from docx import Document
 from docx.shared import Pt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "engine"))
-
-from core.document.font_utils import (
-    set_run_font, get_effective_font, validate_font_name,
-    get_font_fallback, _contains_cjk, BODY_FONT, LATIN_FONT,
-)
 
 
 class TestContainsCjk:
