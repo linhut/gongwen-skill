@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.12.66 (2026-08-17)
+
+### Changed — 覆盖率从 41% → 55%
+- **test_main_function.py**（21用例）：main() 直接调用测试，覆盖所有子命令入口
+- **test_optimize_content_main.py**（6用例）：cmd_optimize_content 的 tracked/inline/comment-mode/默认/错误模式测试
+- **test_zero_coverage_modules.py**（14用例）：tracked_changes/structure_analyzer/ai_structure_analyzer/ooxml_workflow/chat_review 模块导入和纯函数测试
+- **_legacy.py 覆盖率 4% → 34%**
+- 总用例 457 → 498
+
 ## v1.12.65 (2026-08-17)
 
 ### Changed — 阶梯2：_legacy.py 大规模拆分
