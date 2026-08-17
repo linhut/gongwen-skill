@@ -8,13 +8,13 @@ from typing import Optional
 import difflib
 import re
 
-from core.document.models import (
+from engine.core.document.models import (
     DocumentModel, DocumentMetadata, PageSetup,
     Paragraph, ParagraphFormat, Run, RunFormat,
 )
-from core.document.generator import generate_docx
+from engine.core.document.generator import generate_docx
 # B-02（方案一）：与 modifier.py 共用统一首句边界正则（句号/叹号/问号/冒号）
-from core.document.modifier import FIRST_SENTENCE_DELIMITERS
+from engine.core.document.modifier import FIRST_SENTENCE_DELIMITERS
 
 
 # ---------------------------------------------------------------------------
@@ -446,7 +446,7 @@ def bold_first_sentence(paragraph: Paragraph, min_len: int = 1) -> Paragraph:
     - 前缀至少 min_len 个字符才加粗
     - 本函数应在所有内容修订完成后最后一步执行
     """
-    from core.document.modifier import should_bold_first_sentence as _should_bold
+    from engine.core.document.modifier import should_bold_first_sentence as _should_bold
     if not paragraph.text or not paragraph.runs or not _should_bold(paragraph.text, paragraph.role):
         return paragraph
 
@@ -534,7 +534,7 @@ def generate_revision_doc(
     Returns:
         输出文件路径
     """
-    from core.document.parser import parse_docx
+    from engine.core.document.parser import parse_docx
 
     # 解析原文档
     orig_model = parse_docx(original_path)

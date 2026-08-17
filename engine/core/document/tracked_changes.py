@@ -8,7 +8,7 @@
   使用户可在 Word「审阅」模式下逐条接受/拒绝修改。
 
 用法：
-  from core.document.tracked_changes import RSIDManager, inject_tracked_change
+  from engine.core.document.tracked_changes import RSIDManager, inject_tracked_change
   rsid = RSIDManager().rsid
   inject_tracked_change(para_node, "旧文本", "新文本", rsid, "公文审校")
 """
@@ -22,11 +22,11 @@ from typing import Optional
 
 from lxml import etree
 
-from utils.logger import logger  # P0-1 修复：except 分支使用 logger 但未导入，异常时二次崩溃
+from engine.utils.logger import logger  # P0-1 修复：except 分支使用 logger 但未导入，异常时二次崩溃
 
 # P2-10 修复：修订 ID 计数器/生成/重置统一从 tracked_common 导入，
 # 消除与 tracked_annotator 的重复实现（w:id 全文档唯一语义本就该共享）
-from core.document.tracked_common import _next_rev_id, _reset_rev_counter  # noqa: F401
+from engine.core.document.tracked_common import _next_rev_id, _reset_rev_counter  # noqa: F401
 
 W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 NSMAP = {'w': W}

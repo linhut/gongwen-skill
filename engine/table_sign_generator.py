@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import List, Optional
 from lxml import etree
 
-from utils.logger import logger
+from engine.utils.logger import logger
 
 # ---------------------------------------------------------------------------
 #  桌签模板路径（方案六 P2-2：内置默认模板；调用者可用 template_path 覆盖）
@@ -339,7 +339,7 @@ def validate_page_setup(docx_path: Path, expected: dict | None = None) -> List[s
     issues: List[str] = []
     if expected is None:
         try:
-            from core.rules.manager import load_rules_merged
+            from engine.core.rules.manager import load_rules_merged
             rules = load_rules_merged("table_sign")
             expected = rules.get("page_setup", {})
         except Exception:

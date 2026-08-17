@@ -13,8 +13,8 @@ Rule-based fixer: interprets YAML fix_rules and delegates to DocumentModifier.
 from __future__ import annotations
 from typing import Any
 
-from core.document.models import DocumentModel
-from core.document.modifier import (
+from engine.core.document.models import DocumentModel
+from engine.core.document.modifier import (
     modify_font, modify_size, modify_alignment, modify_line_spacing,
     modify_first_line_indent, modify_margins, modify_bold,
     remove_extra_spaces, remove_extra_blank_lines,
@@ -23,7 +23,7 @@ from core.document.modifier import (
     unify_text_color,  # 颜色统一：正文区文字统一为黑色
     _parse_pt_value, _parse_indent_value,
 )
-from utils.logger import logger
+from engine.utils.logger import logger
 
 
 # Map YAML action names to modifier functions
@@ -223,7 +223,7 @@ def _apply_page_number(model: DocumentModel, target: str, value: dict) -> None:
 
     # 如果没有 footer 段落，创建一个新的
     if not model.footers:
-        from core.document.models import HeaderFooter, Paragraph, ParagraphFormat, Run, RunFormat
+        from engine.core.document.models import HeaderFooter, Paragraph, ParagraphFormat, Run, RunFormat
         hf = HeaderFooter(
             section_index=0,
             type="footer",

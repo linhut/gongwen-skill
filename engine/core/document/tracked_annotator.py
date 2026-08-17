@@ -8,7 +8,7 @@ F4：句子级/片段级差异修订（inject_tracked_change_granular）——
     仅标记实际变更的短语，非全段替换；相邻 diff 片段合并避免碎片化。
 
 用法：
-  from core.document.tracked_annotator import inject_tracked_with_comments
+  from engine.core.document.tracked_annotator import inject_tracked_with_comments
   inject_tracked_with_comments("输入.docx", changes, suggestions, "输出.docx", id_offset=0)
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from lxml import etree
-from utils.logger import logger
+from engine.utils.logger import logger
 
 W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
@@ -33,7 +33,7 @@ W16 = 'http://schemas.microsoft.com/office/word/2018/wordml'  # T1 修复：W16 
 XML_SPACE = '{http://www.w3.org/XML/1998/namespace}space'
 
 # P2-10 修复：修订 ID 计数器/生成/重置统一从 tracked_common 导入（w:id 全文档唯一）
-from core.document.tracked_common import _next_rev_id, _reset_rev_counter  # noqa: F401,E402
+from engine.core.document.tracked_common import _next_rev_id, _reset_rev_counter  # noqa: F401,E402
 
 
 def _append_ai_disclaimer(root, skill_name: str = "GongWen-Skill") -> bool:
@@ -354,7 +354,7 @@ def _anchor_comment(p, cid: int) -> bool:
     first_anchor = _find_insert_point(runs[0])
     last_anchor = _find_insert_point(runs[-1])
     if first_anchor is None or last_anchor is None:
-        from utils.logger import logger
+        from engine.utils.logger import logger
         logger.warning(f"批注 #{cid} 锚定失败：run 不在段落直接子元素链上")
         return False
 
@@ -394,7 +394,7 @@ def _build_comments_xml(suggestions: list, id_offset: int = 0) -> etree._Element
         t.text = sug.comment_text
         # N4 + P2 修复：仅语义类别追加到正文；R4 修复：author 已是该类别时不追加冗余标签
         if getattr(sug, 'category', ''):
-            from core.document.reviewer_comments import SEMANTIC_CATEGORIES
+            from engine.core.document.reviewer_comments import SEMANTIC_CATEGORIES
             if sug.category in SEMANTIC_CATEGORIES and sug.author != sug.category:
                 r2 = etree.SubElement(p, f'{{{W}}}r')
                 t2 = etree.SubElement(r2, f'{{{W}}}t')
@@ -682,8 +682,8 @@ def inject_tracked_with_comments(
 
     # S1-C + S4-A：people.xml + comments 扩展注册内联进一次 ZIP（消除外部二次打开覆盖 comments.xml）
     try:
-        from core.document.reviewer_comments import REVIEWER_MAP
-        from utils.zip_utils import register_content_type, register_relationship
+        from engine.core.document.reviewer_comments import REVIEWER_MAP
+        from engine.utils.zip_utils import register_content_type, register_relationship
 
         # people.xml（7 角色：6 批注角色 + 修订作者）
         people = etree.Element(f'{{{W15}}}people', nsmap={'w15': W15})

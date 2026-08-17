@@ -26,9 +26,9 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from core.document.font_utils import _LATIN_FONTS, _contains_cjk, BODY_FONT
-from core.document.models import Paragraph, Run, RunFormat
-from utils.logger import logger
+from engine.core.document.font_utils import _LATIN_FONTS, _contains_cjk, BODY_FONT
+from engine.core.document.models import Paragraph, Run, RunFormat
+from engine.utils.logger import logger
 
 
 def _normalize_text(text: str) -> str:
@@ -439,9 +439,9 @@ def create_diff_document(
             f"{[c['paragraph_index'] for c in _full_deletions]}），"
             f"请确认 reason 字段已写明具体去重依据，非误删。"
         )
-    from core.document.parser import parse_docx
-    from core.document.generator import generate_docx
-    from core.document.models import DocumentModel, Paragraph, ParagraphFormat, Run, RunFormat
+    from engine.core.document.parser import parse_docx
+    from engine.core.document.generator import generate_docx
+    from engine.core.document.models import DocumentModel, Paragraph, ParagraphFormat, Run, RunFormat
 
     model = parse_docx(original_path)
 

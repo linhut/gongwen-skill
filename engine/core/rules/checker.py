@@ -9,8 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from core.document.models import DocumentModel, Paragraph
-from utils.logger import logger
+from engine.core.document.models import DocumentModel, Paragraph
+from engine.utils.logger import logger
 
 # P2-26: 1em = 16pt（公文字号基准，正文 16pt），与 modifier 保持一致
 EM_TO_PT = 16.0
@@ -406,7 +406,7 @@ def _check_body(model, rule_id, severity, name, field_path, expected, message) -
                 if all_bold:
                     # B-09（方案三）：排除不应加粗的段落类型（称呼/导语/过渡/署名/会议日期等），
                     # 避免这些段落被误标为 body 后报告"整段加粗"问题造成噪音
-                    from core.document.modifier import should_bold_first_sentence
+                    from engine.core.document.modifier import should_bold_first_sentence
                     if not should_bold_first_sentence(para.text, para.role):
                         continue
                     issues.append(CheckIssue(
@@ -505,7 +505,7 @@ def _check_paragraph_type_field(model, rule_id, severity, name, field_path, expe
     - salutation/introduction/transition/meeting_date/numbered_body：按 detect_paragraph_type 匹配
     支持子字段：align / font / size / bold / first_line_indent。
     """
-    from core.document.modifier import detect_paragraph_type
+    from engine.core.document.modifier import detect_paragraph_type
     issues = []
     target = field_path.split(".", 1)[0]
     sub_field = field_path.split(".", 1)[1] if "." in field_path else ""

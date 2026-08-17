@@ -7,7 +7,7 @@ REVIEWER_MAP 定义五种审校角色 → Word 批注作者名 + 颜色。
 用户在 Word 中可通过「审阅 → 显示批注 → 按审阅者筛选」分别查看各角色意见。
 
 用法：
-  from core.document.reviewer_comments import inject_reviewer_comments
+  from engine.core.document.reviewer_comments import inject_reviewer_comments
   inject_reviewer_comments("原文.docx", [
       {"para_index": 3, "role": "用语审校员", "text": ""抓紧"→"尽快""},
       {"para_index": 5, "role": "综合审校员", "text": "建议补充时限"},
@@ -18,7 +18,7 @@ import logging
 from pathlib import Path
 from typing import List
 
-from core.document.annotator import GongwenAnnotator, CommentSuggestion
+from engine.core.document.annotator import GongwenAnnotator, CommentSuggestion
 
 _logger = logging.getLogger(__name__)
 

@@ -29,7 +29,7 @@ from typing import List, Optional
 
 from lxml import etree
 
-from utils.logger import logger  # NEW-S20-1 修复：logger 导入缺失，倒挂场景 NameError
+from engine.utils.logger import logger  # NEW-S20-1 修复：logger 导入缺失，倒挂场景 NameError
 
 W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
@@ -183,7 +183,7 @@ class GongwenAnnotator:
             t.text = sug.comment_text
             # P2 修复：仅语义类别（事实核验等）追加标签，风格类不显示（与 tracked_annotator 共用 SEMANTIC_CATEGORIES）
             if sug.category:
-                from core.document.reviewer_comments import SEMANTIC_CATEGORIES
+                from engine.core.document.reviewer_comments import SEMANTIC_CATEGORIES
                 if sug.category in SEMANTIC_CATEGORIES:
                     r2 = etree.SubElement(p, f'{{{W}}}r')
                     t2 = etree.SubElement(r2, f'{{{W}}}t')

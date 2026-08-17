@@ -11,7 +11,7 @@ import logging
 import sys
 from logging.handlers import RotatingFileHandler
 
-from config import APP_DATA_DIR
+from engine.config import APP_DATA_DIR
 
 
 def setup_logger(name: str = "official_doc_ai", level: int = logging.INFO) -> logging.Logger:

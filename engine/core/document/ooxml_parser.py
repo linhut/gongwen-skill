@@ -8,7 +8,7 @@ OOXML 原生文档解析器 —— 解决 python-docx 的局限。
 3. 段落索引映射：建立 python-docx 段落索引 → XML <w:p> 节点的映射（批注锚定用）
 
 用法：
-  from core.document.ooxml_parser import OOXMLParser
+  from engine.core.document.ooxml_parser import OOXMLParser
   parser = OOXMLParser()
   blocks = parser.parse_document_structure(docx_path)
   textboxes = parser.parse_textboxes(docx_path)

@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any
 import yaml
 
-from config import RULES_DIR
-from utils.logger import logger
+from engine.config import RULES_DIR
+from engine.utils.logger import logger
 
 
 def load_rule_file(file_path: Path) -> dict[str, Any]:

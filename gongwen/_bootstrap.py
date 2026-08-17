@@ -3,11 +3,11 @@
 """
 gongwen._bootstrap —— 统一的引擎路径引导和编码设置。
 
-所有 CLI 入口点（_legacy.py、__main__.py、live_edit.py、conftest.py）
-都应从此模块导入，而非各自执行 sys.path.insert，消除路径 hack 的重复。
+ARCH-03 已修复：engine/ 下所有模块已改为 `from engine.xxx import` 正规包导入，
+不再依赖 sys.path.insert。保留此处仅为向后兼容（旧代码或外部脚本可能仍
+通过 `from core... import` 访问 engine 内部模块）。
 
-这是 ARCH-03 的渐进式修复：保留 sys.path.insert 的同时集中管理，
-未来可逐步迁移为 from engine.xxx import 的正规包导入。
+所有 CLI 入口点从此模块导入编码设置。
 """
 import sys
 import logging
@@ -15,8 +15,8 @@ from pathlib import Path
 
 _logger = logging.getLogger(__name__)
 
-# 将 engine/ 加入模块搜索路径，使内部 `from core... / from utils... / from config`
-# 的绝对导入生效——这是独立运行的关键。
+# ARCH-03 修复后：engine/ 已改为正规包导入（from engine.xxx import），
+# 此 sys.path.insert 仅作为向后兼容回退（旧脚本/外部代码的 from core... import）
 _ENGINE_DIR = Path(__file__).resolve().parent.parent / "engine"
 if str(_ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(_ENGINE_DIR))

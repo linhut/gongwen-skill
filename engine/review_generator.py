@@ -20,9 +20,9 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
-from utils.logger import logger
+from engine.utils.logger import logger
 # 跨模块#2 修复：统一字体设置入口（避免直接 font.name 导致 eastAsia 回退）
-from core.document.font_utils import set_run_font
+from engine.core.document.font_utils import set_run_font
 
 # 审稿角色定义（完整版 5 角色）
 FULL_SCHEME = [
@@ -139,7 +139,7 @@ def generate_review_template(
     title_run = title_para.add_run(title_text)
     title_run.font.size = Pt(18)
     # S10 修复：使用 set_run_font 设置 4 属性字体，避免直接 font.name 导致 eastAsia 回退
-    from core.document.font_utils import set_run_font
+    from engine.core.document.font_utils import set_run_font
     set_run_font(title_run, '黑体')
     title_run.bold = True
 

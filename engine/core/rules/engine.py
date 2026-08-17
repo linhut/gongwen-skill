@@ -9,11 +9,11 @@ from __future__ import annotations
 from typing import Any
 import copy
 
-from core.document.models import DocumentModel
-from core.rules.manager import load_rules_merged, apply_config_overrides
-from core.rules.checker import check_document, CheckIssue
-from core.rules.fixer import apply_fixes
-from utils.logger import logger
+from engine.core.document.models import DocumentModel
+from engine.core.rules.manager import load_rules_merged, apply_config_overrides
+from engine.core.rules.checker import check_document, CheckIssue
+from engine.core.rules.fixer import apply_fixes
+from engine.utils.logger import logger
 
 
 class RuleEngine:
@@ -44,7 +44,7 @@ class RuleEngine:
         """
         newest = 0.0
         try:
-            from config import RULES_DIR, CUSTOM_RULES_DIR, USER_RULES_DIR
+            from engine.config import RULES_DIR, CUSTOM_RULES_DIR, USER_RULES_DIR
             for d in (RULES_DIR, CUSTOM_RULES_DIR, USER_RULES_DIR):
                 try:
                     for p in d.glob("*.yaml"):
@@ -99,5 +99,5 @@ class RuleEngine:
         return issues, fixed_model
 
     def available_types(self) -> list[str]:
-        from core.rules.loader import list_available_types
+        from engine.core.rules.loader import list_available_types
         return list_available_types()

@@ -18,7 +18,7 @@
 """
 from __future__ import annotations
 
-from core.document.models import (
+from engine.core.document.models import (
     DocumentModel, Paragraph, Run, RunFormat,
     ParagraphFormat, PageSetup,
 )
@@ -364,17 +364,17 @@ def _get_template_content(template_id: str, template_name: str) -> dict:
 
 def _parse_size(size_value) -> float:
     """解析 '22pt' / 22 → float。（跨模块#3: 委托 utils.parse）"""
-    from utils.parse import parse_pt
+    from engine.utils.parse import parse_pt
     return parse_pt(size_value) or 0.0
 
 
 def _parse_indent(indent_str) -> float:
     """解析 '2em' → pt（1em ≈ 16pt）。（跨模块#3: 委托 utils.parse）"""
-    from utils.parse import parse_indent
+    from engine.utils.parse import parse_indent
     return parse_indent(indent_str) or 0.0
 
 
 def _parse_margin(value) -> float:
     """解析 '3.7cm' / '37mm' → mm。（跨模块#3: 委托 utils.parse）"""
-    from utils.parse import parse_mm
+    from engine.utils.parse import parse_mm
     return parse_mm(value) or 0.0

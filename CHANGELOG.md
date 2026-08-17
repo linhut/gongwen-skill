@@ -1,5 +1,32 @@
 # Changelog
 
+## v1.12.68 (2026-08-17)
+
+### Changed — 阶梯2/3/4 全部完成
+
+**2a: modifier.py convert_markdown 提取**
+- `engine/core/document/markdown_converter.py`（447行）：Markdown 转换功能独立模块
+- modifier.py: 1599→1188 行（-411行）
+
+**2b: generator.py _add_table/_add_page_number_field 提取**
+- `engine/core/document/_generator_helpers.py`（296行）：表格和页码域辅助函数
+- generator.py: 1104→835 行（-269行）
+
+**3: cmd_optimize_content 提取**
+- `gongwen/cli/content_cmds.py`（831行）：内容优化命令独立模块
+- _legacy.py: 1702→924 行（-778行，累计-70%）
+
+**4: ARCH-03 彻底修复**
+- engine/ 下 33 个文件的 `from core./utils./config import` 改为 `from engine.core./engine.utils./engine.config import`
+- engine/ 已成为正规 Python 包，不再依赖 sys.path.insert
+- _bootstrap.py 保留 sys.path.insert 仅作为向后兼容回退
+
+### Summary
+- _legacy.py: 3096→924行（-70%）
+- 新增 3 个独立模块（markdown_converter + _generator_helpers + content_cmds）
+- 6 个 cli 子模块 + 3 个 engine 子模块
+- 542/542 测试通过
+
 ## v1.12.67 (2026-08-17)
 
 ### Changed — 覆盖率 55% → 56%，modifier.py 44% → 50%

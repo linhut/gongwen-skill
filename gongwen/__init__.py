@@ -6,7 +6,7 @@
 #
 # gongwen-skill Python package - 中文公文全流程处理工具
 
-__version__ = "1.12.67"
+__version__ = "1.12.68"
 
 # Re-export everything from the legacy module for backward compatibility
 # This allows: from gongwen import main, cmd_check, etc.

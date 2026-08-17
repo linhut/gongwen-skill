@@ -13,8 +13,8 @@ from docx.shared import Pt, Length
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 
-from core.document.models import ParagraphFormat, RunFormat, Run
-from core.document.font_utils import get_effective_font
+from engine.core.document.models import ParagraphFormat, RunFormat, Run
+from engine.core.document.font_utils import get_effective_font
 
 _logger = logging.getLogger(__name__)
 

@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Optional
 
 # 临时 PDF 写入数据目录（config.TMP_DIR，B8 修复：安装目录可能只读，engine/tmp 不再使用）
-from config import TMP_DIR as _TMP_DIR
+from engine.config import TMP_DIR as _TMP_DIR
 _TMP_PDF = _TMP_DIR / "_render_tmp.pdf"
 
 _logger = logging.getLogger(__name__)

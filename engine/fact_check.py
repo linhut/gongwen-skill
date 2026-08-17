@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
-from utils.logger import logger
+from engine.utils.logger import logger
 
 
 # ---------------------------------------------------------------------------
@@ -582,7 +582,7 @@ def run_fact_check(document_path: str | Path, background_paths: Optional[list[st
     report = FactCheckReport(document=doc_path.name)
 
     # Step 1：实体提取（R3 修复：混合提取——LLM 内容理解主通道 + 规则兜底）
-    from core.document.parser import parse_docx
+    from engine.core.document.parser import parse_docx
     model = parse_docx(str(doc_path))
     paragraphs = [p.text for p in model.paragraphs]
     entities = extract_entities_hybrid(paragraphs)

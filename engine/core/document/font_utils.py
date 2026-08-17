@@ -20,7 +20,7 @@ from typing import Optional
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Pt
-from utils.logger import logger
+from engine.utils.logger import logger
 
 
 # ---------------------------------------------------------------------------

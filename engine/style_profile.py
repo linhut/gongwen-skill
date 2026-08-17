@@ -83,13 +83,13 @@ def _load_document_xml(docx_path: str | Path) -> etree._Element:
 
 def _mm(val: Optional[str]) -> Optional[float]:
     """缇(twips) → mm。（跨模块#3: 委托 utils.parse）"""
-    from utils.parse import parse_twips_to_mm
+    from engine.utils.parse import parse_twips_to_mm
     return parse_twips_to_mm(val)
 
 
 def _pt_from_twips(val: Optional[str]) -> Optional[float]:
     """缇(twips) → pt。（跨模块#3: 委托 utils.parse）"""
-    from utils.parse import parse_twips_to_pt
+    from engine.utils.parse import parse_twips_to_pt
     return parse_twips_to_pt(val)
 
 

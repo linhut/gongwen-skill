@@ -14,8 +14,8 @@ import yaml
 from pathlib import Path
 from typing import Any
 
-from config import RULES_DIR, CUSTOM_RULES_DIR, USER_RULES_DIR
-from utils.logger import logger
+from engine.config import RULES_DIR, CUSTOM_RULES_DIR, USER_RULES_DIR
+from engine.utils.logger import logger
 
 # Rule source directories
 OFFICIAL_RULES_DIR = RULES_DIR  # rules/official（只读，捆绑在安装目录）

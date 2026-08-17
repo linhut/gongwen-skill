@@ -6,7 +6,7 @@
 ZIP 读写、原子写入、Content-Type / 关系注册逻辑。
 
 用法：
-  from utils.zip_utils import read_zip_entries, atomic_write_zip, register_content_type, register_relationship
+  from engine.utils.zip_utils import read_zip_entries, atomic_write_zip, register_content_type, register_relationship
 """
 from __future__ import annotations
 import logging

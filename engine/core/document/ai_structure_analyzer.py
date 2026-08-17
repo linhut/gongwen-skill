@@ -16,8 +16,8 @@ import json
 import re
 from typing import Any
 
-from core.document.models import DocumentModel
-from utils.logger import logger
+from engine.core.document.models import DocumentModel
+from engine.utils.logger import logger
 
 
 # 分类提示词模板
@@ -64,7 +64,7 @@ def classify_with_ai(model: DocumentModel, provider_name: str = "openai") -> boo
 
     # 获取AI provider
     try:
-        from utils.crypto import decrypt_value
+        from engine.utils.crypto import decrypt_value
         db = SessionLocal()
         try:
             config = db.query(AIConfig).filter(

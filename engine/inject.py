@@ -19,7 +19,7 @@ GB/T 9704《党政机关公文格式》版式要素注入：
 """
 from __future__ import annotations
 
-from utils.logger import logger
+from engine.utils.logger import logger
 
 
 # ---------------------------------------------------------------------------
@@ -29,10 +29,10 @@ from utils.logger import logger
 def _get_line_spacing_pt() -> float:
     """从规则体系获取正文行距（pt），失败时回退到 33pt。"""
     try:
-        from core.rules.manager import load_rules_merged
+        from engine.core.rules.manager import load_rules_merged
         rules = load_rules_merged("notice")
         ls = rules.get("body", {}).get("line_spacing", "33pt")
-        from utils.parse import parse_pt
+        from engine.utils.parse import parse_pt
         val = parse_pt(ls)
         return val if val and val > 0 else 33.0
     except Exception:
@@ -101,7 +101,7 @@ def inject_header(output_path: str, header_config: dict) -> None:
         from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
         from docx.oxml.ns import qn
         from docx.oxml import OxmlElement
-        from core.document.font_utils import set_run_font, TITLE_FONT, BODY_FONT
+        from engine.core.document.font_utils import set_run_font, TITLE_FONT, BODY_FONT
 
         doc = Document(output_path)
         org_name = header_config.get('org_name', '')
@@ -238,7 +238,7 @@ def inject_footer(output_path: str, footer_config: dict) -> None:
         from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
         from docx.oxml.ns import qn
         from docx.oxml import OxmlElement
-        from core.document.font_utils import set_run_font, BODY_FONT
+        from engine.core.document.font_utils import set_run_font, BODY_FONT
 
         doc = Document(output_path)
         cc = footer_config.get('cc', '')

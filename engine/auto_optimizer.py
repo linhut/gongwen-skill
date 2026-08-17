@@ -15,7 +15,7 @@ import os
 import re
 from typing import List, Optional
 
-from utils.logger import logger
+from engine.utils.logger import logger
 
 
 def get_llm_config() -> tuple[str, str, str]:
@@ -297,7 +297,7 @@ def auto_generate_changes(input_path: str, doc_type: str,
     Returns:
         changes 列表（与 changes.json 格式完全兼容）
     """
-    from core.document.parser import parse_docx
+    from engine.core.document.parser import parse_docx
     model = parse_docx(input_path)
     paragraphs = [p.text for p in model.paragraphs if p.text and p.text.strip()]
 

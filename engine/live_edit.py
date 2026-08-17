@@ -17,11 +17,11 @@ LiveEdit —— 内存级 DocumentModel 编辑会话。
 Agent 交互式编辑场景的预留 API；若计划删除需先评估"无 CLI 入口"的语义。
 """
 from __future__ import annotations
-from utils.logger import logger
-from core.document.modifier import replace_paragraph_text
-from core.document.generator import generate_docx
-from core.document.parser import parse_docx
-from core.document.models import DocumentModel
+from engine.utils.logger import logger
+from engine.core.document.modifier import replace_paragraph_text
+from engine.core.document.generator import generate_docx
+from engine.core.document.parser import parse_docx
+from engine.core.document.models import DocumentModel
 import copy
 import json
 import sys

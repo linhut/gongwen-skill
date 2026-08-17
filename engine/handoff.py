@@ -26,7 +26,7 @@ from datetime import datetime
 from pathlib import Path
 
 # P2-29 修复：复用 config.HANDOFF_DIR，消除路径定义重复
-from config import HANDOFF_DIR
+from engine.config import HANDOFF_DIR
 
 _logger = logging.getLogger(__name__)
 

@@ -20,13 +20,13 @@ from docx.shared import Pt, Cm, Inches, Length
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 
-from core.document.models import (
+from engine.core.document.models import (
     DocumentModel, DocumentMetadata, Paragraph, Run, RunFormat,
     ParagraphFormat, PageSetup, Table, TableCell, HeaderFooter
 )
-from core.document.font_utils import get_effective_font
-from core.document.parser_format import parse_paragraph_format, parse_run, _safe_pt2
-from utils.logger import logger
+from engine.core.document.font_utils import get_effective_font
+from engine.core.document.parser_format import parse_paragraph_format, parse_run, _safe_pt2
+from engine.utils.logger import logger
 
 # 中文公文标题特征字体映射 → heading_level
 _HEADING_FONT_MAP = {
@@ -100,7 +100,7 @@ def parse_docx(file_path: Path | str) -> DocumentModel:
     # 5. 解析表格（含 insert_after_index 定位）
     # 先遍历 doc body 元素，建立每个表格在段落流中的位置
     from lxml import etree
-    from core.document.ooxml_parser import OOXMLParser  # I7: 集成 OOXMLParser
+    from engine.core.document.ooxml_parser import OOXMLParser  # I7: 集成 OOXMLParser
     para_count = 0
     table_position_map = {}  # {table_element_id: last_para_index_before_it}
     ooxml = OOXMLParser()
@@ -156,7 +156,7 @@ def parse_docx(file_path: Path | str) -> DocumentModel:
         if importlib.util.find_spec("ai") is None:
             logger.debug("AI module not available — skipping AI structure analysis (standalone mode)")
         else:
-            from core.document.ai_structure_analyzer import should_use_ai_analysis, classify_with_ai
+            from engine.core.document.ai_structure_analyzer import should_use_ai_analysis, classify_with_ai
             if should_use_ai_analysis(model):
                 logger.info("Heading detection insufficient, attempting AI structure analysis...")
                 if classify_with_ai(model):

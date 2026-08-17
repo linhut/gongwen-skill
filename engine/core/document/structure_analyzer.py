@@ -8,8 +8,8 @@
 from __future__ import annotations
 import re
 from typing import List, Dict, Optional, Tuple
-from core.document.models import DocumentModel, Paragraph
-from utils.logger import logger
+from engine.core.document.models import DocumentModel, Paragraph
+from engine.utils.logger import logger
 
 
 class DocumentStructureAnalyzer:
