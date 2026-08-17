@@ -64,9 +64,13 @@ class TestMainFunction:
 
     def test_font_check_command(self, capsys):
         with patch.object(sys, 'argv', ['gongwen', 'font', 'check']):
-            result = legacy.main()
-            # 0=全部已安装(None), 1=部分未安装(可能sys.exit)
-            assert result in (0, None) or result is None
+            # 字体全部已装：main 正常返回 0/None；部分未装：font check 以 sys.exit(1) 结束。
+            # 两种均为正常行为，需兼容 Linux CI（无字体）与本地（有字体）环境。
+            try:
+                result = legacy.main()
+                assert result in (0, None)
+            except SystemExit as e:
+                assert e.code in (0, 1)
 
     def test_rule_list_command(self, capsys):
         with patch.object(sys, 'argv', ['gongwen', 'rule-list']):
