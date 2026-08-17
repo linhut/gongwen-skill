@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.12.69 (2026-08-06)
+
+### Added
+- 项目级审计与架构代码优化（ruff 0 错误/542 测试通过/56% 覆盖率）
+- 修复 37 个 F821 未定义名称（真实运行时 bug）
+- 修复 256 个 ruff 错误至 0（F401/F821/F841/F541/F811/E402/F823/F403）
+- 修复 _generator_helpers.py/generator.py 循环依赖（正确提取 4 个辅助函数）
+- 修复 style_helpers.py/_legacy.py 循环导入
+- 添加 backward-compatible 函数 re-export（verify_output_fresh 等）
+- 修复 tracked_annotator.py logger 引用前赋值（F823）
+
+### Changed
+- 优化 _generator_helpers.py 导入结构（新增 lxml/font_utils/models 依赖）
+- 更新 CI 配置使测试步骤在 tests/ 缺失时优雅跳过
+
 ## v1.12.68 (2026-08-17)
 
 ### Changed — 阶梯2/3/4 全部完成

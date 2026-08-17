@@ -12,7 +12,6 @@
 """
 from __future__ import annotations
 from pathlib import Path
-from typing import Optional
 
 from docx import Document
 from docx.shared import Pt, Mm, Cm, RGBColor
@@ -133,7 +132,7 @@ def generate_review_template(
     section.right_margin = Cm(3.17)
 
     # 标题
-    title_text = f"公文审稿流转单"
+    title_text = "公文审稿流转单"
     title_para = doc.add_paragraph()
     title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     title_run = title_para.add_run(title_text)

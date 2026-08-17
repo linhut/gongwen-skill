@@ -3,10 +3,8 @@
 
 测试 --config-overrides 参数在 template/check/optimize 命令中的正确应用。
 """
-import pytest
 import json
 import sys
-import os
 from pathlib import Path
 
 # 确保能 import gongwen 包

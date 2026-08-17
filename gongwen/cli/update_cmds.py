@@ -5,16 +5,13 @@ gongwen.cli.update_cmds -- version check commands.
 Extracted from _legacy.py (tier-2 split).
 """
 from __future__ import annotations
-import sys
 import logging
 import time
 import subprocess
-from pathlib import Path
 
 from gongwen import __version__
 from gongwen.cli.helpers import (
     REPO_MIRRORS,
-    PYPI_API,
     parse_version as _parse_version,
     latest_version_from_pypi as _latest_version_from_pypi,
 )
@@ -28,7 +25,6 @@ def _latest_tag_from_remote(remote_url: str, timeout: int = 15) -> tuple[bool, s
     Returns:
         (是否成功, 最新 tag 或错误信息)
     """
-    import subprocess
     try:
         # P0-4 修复：显式 utf-8 编码，避免 Windows GBK 下中文 tag 乱码/解码失败
         result = subprocess.run(
@@ -62,7 +58,6 @@ def cmd_check_update(args):
     全部不可达时明确告知并返回退出码 2。
     支持 --json 输出结构化结果，便于 Agent 解析。
     """
-    import time
     import json as _json
     t0 = time.time()
 
@@ -109,7 +104,7 @@ def cmd_check_update(args):
             print("❌ 全部渠道均不可达（无 git 或网络受限）")
             print("   ⚠️ 版本自检因无法访问远程而跳过，本地版本可能不是最新")
             print("   💡 拉取地址：")
-            print(f"      - PyPI:  pip install --upgrade gongwen-skill")
+            print("      - PyPI:  pip install --upgrade gongwen-skill")
             for name, url in REPO_MIRRORS.items():
                 print(f"      - {name}: {url}")
         return 2

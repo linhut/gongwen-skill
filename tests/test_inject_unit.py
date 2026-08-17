@@ -5,9 +5,7 @@ from inject import (
     _get_line_spacing_pt,
 )
 from docx import Document
-import pytest
 import sys
-import tempfile
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent

@@ -2,10 +2,8 @@
 """engine/utils/zip_utils.py 单元测试。"""
 from lxml import etree
 from utils.zip_utils import read_zip_entries, atomic_write_zip, register_content_type, register_relationship
-import pytest
 import sys
 import zipfile
-import tempfile
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent

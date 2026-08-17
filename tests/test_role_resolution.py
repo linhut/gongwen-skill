@@ -3,7 +3,6 @@
 from core.document.reviewer_comments import (
     REVIEWER_MAP,
     CATEGORY_ROLE_MAP,
-    REASON_CATEGORY_HINTS,
     SEMANTIC_CATEGORIES,
     resolve_role,
     get_author,

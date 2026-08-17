@@ -216,7 +216,6 @@ def learn_style_profile(docx_path: str | Path) -> StyleProfile:
         'heading_3': [], 'body': [], 'signature': [], 'date': [],
     }
 
-    import re
     para_nodes = []
     for child in body:
         tag = etree.QName(child.tag).localname if child.tag else ''
@@ -245,7 +244,7 @@ def learn_style_profile(docx_path: str | Path) -> StyleProfile:
         role = 'body'
         align = para_style.get('alignment', '')
         size = first_run.get('size_pt', 0)
-        font = first_run.get('font', '')
+        _font = first_run.get('font', '')  # noqa: F841
 
         if idx == 0 and align == 'center':
             role = 'doc_title'

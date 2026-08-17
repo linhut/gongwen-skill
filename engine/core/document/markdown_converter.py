@@ -6,11 +6,10 @@ Markdown → DocumentModel 转换器。
 from __future__ import annotations
 import re
 import logging
-from typing import Any
 try:
-    from engine.core.document.models import DocumentModel, Paragraph, Run, RunFormat, ParagraphFormat
+    from engine.core.document.models import DocumentModel, Paragraph, Run, RunFormat, ParagraphFormat, Table, TableCell
 except ImportError:
-    from .models import DocumentModel, Paragraph, Run, RunFormat, ParagraphFormat
+    from .models import DocumentModel, Paragraph, Run, RunFormat, ParagraphFormat, Table, TableCell
 
 logger = logging.getLogger(__name__)
 

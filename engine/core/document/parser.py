@@ -12,20 +12,15 @@ Uses python-docx to read the file structure.
 """
 from __future__ import annotations
 from pathlib import Path
-from typing import Optional
 import re
 
 from docx import Document
-from docx.shared import Pt, Cm, Inches, Length
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml.ns import qn
 
 from engine.core.document.models import (
     DocumentModel, DocumentMetadata, Paragraph, Run, RunFormat,
     ParagraphFormat, PageSetup, Table, TableCell, HeaderFooter
 )
-from engine.core.document.font_utils import get_effective_font
-from engine.core.document.parser_format import parse_paragraph_format, parse_run, _safe_pt2
+from engine.core.document.parser_format import parse_paragraph_format, parse_run
 from engine.utils.logger import logger
 
 # 中文公文标题特征字体映射 → heading_level
@@ -263,7 +258,6 @@ def _paragraph_has_page_field(para) -> bool:
     通过解析 XML 层的 w:fldSimple 或 w:fldChar/w:instrText 元素判断。
     """
     try:
-        from lxml import etree
         nsmap = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
         xml = para._element
 

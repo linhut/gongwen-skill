@@ -18,7 +18,7 @@ from __future__ import annotations
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from lxml import etree
 
@@ -96,7 +96,7 @@ class OOXMLParser:
         root = self._load_document_xml(docx_path)
         textboxes: List[TextBoxContent] = []
         MC_FALLBACK = f'{{{MC}}}Fallback'
-        MC_CHOICE = f'{{{MC}}}Choice'
+        _MC_CHOICE = f'{{{MC}}}Choice'  # noqa: F841
 
         seen_txbx = set()
         for idx, txbx in enumerate(root.iter(f'{{{W}}}txbxContent')):

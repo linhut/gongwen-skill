@@ -1,8 +1,7 @@
 """Tests for the rule system — loader, manager, merge logic."""
 import pytest
-from pathlib import Path
 from core.rules.manager import (
-    _deep_merge, _dedup_extend, load_rules_merged,
+    _deep_merge, load_rules_merged,
     validate_rule, override_priority,
 )
 

@@ -14,7 +14,7 @@ import os
 import tempfile
 import zipfile
 from pathlib import Path
-from typing import Callable, Dict, Optional
+from typing import Dict, Optional
 
 from lxml import etree
 

@@ -5,9 +5,8 @@ from core.document.editor import (
     TextDiff, RevisionSection,
     _split_sentences, _word_diff, _build_revision_note,
     _find_para_by_text, _get_bold_prefix,
-    bold_first_sentence, make_revision_model, generate_revision_doc,
+    bold_first_sentence,
 )
-import pytest
 import sys
 from pathlib import Path
 

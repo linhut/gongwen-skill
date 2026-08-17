@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """engine/utils/parse.py 单元测试。"""
 from utils.parse import parse_pt, parse_mm, parse_indent, parse_twips_to_pt, parse_twips_to_mm
-import pytest
 import sys
 from pathlib import Path
 

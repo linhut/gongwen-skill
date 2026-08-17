@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
 """engine/config.py 单元测试。"""
-import pytest
 import sys
 import os
 from pathlib import Path
-from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "engine"))

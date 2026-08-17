@@ -24,7 +24,6 @@ import json
 import re
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
 
 from engine.core.document.font_utils import _LATIN_FONTS, _contains_cjk, BODY_FONT
 from engine.core.document.models import Paragraph, Run, RunFormat
@@ -441,7 +440,7 @@ def create_diff_document(
         )
     from engine.core.document.parser import parse_docx
     from engine.core.document.generator import generate_docx
-    from engine.core.document.models import DocumentModel, Paragraph, ParagraphFormat, Run, RunFormat
+    from engine.core.document.models import Paragraph, ParagraphFormat, Run, RunFormat
 
     model = parse_docx(original_path)
 

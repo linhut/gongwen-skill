@@ -5,11 +5,12 @@ gongwen.cli.font_cmds -- font management commands.
 Extracted from _legacy.py (tier-2 split).
 """
 from __future__ import annotations
-import sys
 import logging
 from pathlib import Path
 
 _logger = logging.getLogger(__name__)
+
+FONTS_DOWNLOAD_BASE = "https://raw.githubusercontent.com/linhut/document-ai-assistant/master/TTF"
 
 GONGWEN_FONTS = {
     "方正小标宋简体": "方正小标宋简.TTF",

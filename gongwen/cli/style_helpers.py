@@ -6,11 +6,17 @@ Extracted from _legacy.py (tier-2 split).
 """
 from __future__ import annotations
 import sys
-import json
 import logging
 from pathlib import Path
 
 _logger = logging.getLogger(__name__)
+
+
+class _SimplePara:
+    """Minimal paragraph representation for element checking."""
+    def __init__(self, text: str):
+        self.text = text
+
 
 # 有效风格标签集合
 _VALID_STYLES = {
@@ -125,6 +131,7 @@ def _build_style_deviation_hint(style_prompt: str, paragraph_text: str = "") -> 
 
     仅提供方向锚点，最终语义偏差评估由 Agent LLM 完成。
     """
+    from gongwen._legacy import _STYLE_DEVIATION_HINTS
     hints = []
     for keyword, hint in _STYLE_DEVIATION_HINTS.items():
         if keyword in style_prompt:

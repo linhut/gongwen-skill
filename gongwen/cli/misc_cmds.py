@@ -69,7 +69,7 @@ def cmd_rule_import(args):
     if ok:
         print(f"规则已保存: {key} ({source})")
     else:
-        print(f"错误：保存失败", file=sys.stderr)
+        print("错误：保存失败", file=sys.stderr)
         sys.exit(1)
 
 
@@ -117,7 +117,6 @@ def cmd_table_signs(args):
 
 def cmd_audit(args):
     """审计文档处理链：检查文档格式合规性、删除线问题、bold-first 影响。"""
-    from lxml import etree
     from core.document.parser import parse_docx
     from pathlib import Path
 
@@ -177,12 +176,12 @@ def cmd_audit(args):
     elif strike_false > 0:
         print(f"  ⚠️ 发现 {strike_false} 个 strike val=false 伏笔 — 建议清除")
     else:
-        print(f"  ✅ 删除线检查通过")
+        print("  ✅ 删除线检查通过")
 
     if all_bold > 3:
         print(f"  ⚠️ {all_bold} 段整段加粗 — 检查是否为 bold-first bug")
     else:
-        print(f"  ✅ 加粗检查通过")
+        print("  ✅ 加粗检查通过")
 
 
 def cmd_style_learn(args):
@@ -193,7 +192,6 @@ def cmd_style_learn(args):
     之后可用 `optimize -t {模板名}` 套用该模板。
     """
     from style_profile import learn_style_profile, build_user_rule_yaml
-    from core.rules.manager import save_rule
 
     input_path = Path(args.input)
     template_name = args.name or f"自定义_{input_path.stem}"
@@ -220,13 +218,13 @@ def cmd_style_learn(args):
     print()
     print(f"✅ 自定义模板已生成: {out_path}")
     print(f"  模板名: {template_name}")
-    print(f"  已注册到用户规则层（user_rules），后续可用:")
+    print("  已注册到用户规则层（user_rules），后续可用:")
     print(f"    python -m gongwen optimize 文档.docx -t {template_name} --apply")
     print(f"    python -m gongwen check 文档.docx -t {template_name}")
     print()
     print(f"💾 持久化说明：模板存储在 {USER_RULES_DIR}（仓库之外），")
-    print(f"    git pull 更新 skill 不会丢失。若需迁移/备份，")
-    print(f"    复制该目录即可。")
+    print("    git pull 更新 skill 不会丢失。若需迁移/备份，")
+    print("    复制该目录即可。")
     print()
     print("💡 提示：可修改该 YAML 文件微调样式（字体/字号/字间距等），或")
     print("   再次上传不同标准文档生成其他命名模板。")
@@ -261,6 +259,6 @@ def cmd_review(args):
     print(f"  审核方案: {scheme_label}")
     print(f"  待审文稿: {args.title or '（未填写）'}")
     if args.scheme == "full":
-        print(f"  流转路径: 撰稿人→业务审核→文字校对→综合核稿→领导签发")
+        print("  流转路径: 撰稿人→业务审核→文字校对→综合核稿→领导签发")
     else:
-        print(f"  流转路径: 撰稿人→业务+文字复合审核→综合负责人终审")
+        print("  流转路径: 撰稿人→业务+文字复合审核→综合负责人终审")

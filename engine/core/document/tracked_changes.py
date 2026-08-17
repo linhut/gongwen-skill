@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 import copy
+import io
 import random
 import zipfile
 from datetime import datetime, timezone
@@ -275,7 +276,6 @@ def inject_tracked_changes(docx_path: str | Path | "io.BytesIO",
     """
     import io as _io
     _reset_rsid_tracking()  # NEW-I3：每次新文档会话重置追踪
-    import shutil
 
     is_src_obj = isinstance(docx_path, _io.BytesIO)
     is_out_obj = isinstance(output_path, _io.BytesIO)

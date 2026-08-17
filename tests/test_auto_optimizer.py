@@ -5,11 +5,9 @@ from auto_optimizer import (
     _infer_category, _parse_llm_suggestions,
     _build_auto_optimize_prompt, _build_style_enhance_prompt,
 )
-import pytest
 import sys
 import json
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "engine"))

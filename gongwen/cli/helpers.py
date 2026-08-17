@@ -104,7 +104,7 @@ def parse_config_overrides(raw: str) -> dict | None:
         data = json.loads(raw)
         if isinstance(data, dict):
             return data
-        print(f"警告: --config-overrides 不是有效 JSON 对象，已忽略", file=sys.stderr)
+        print("警告: --config-overrides 不是有效 JSON 对象，已忽略", file=sys.stderr)
         return None
     except json.JSONDecodeError as e:
         print(f"警告: --config-overrides JSON 解析失败 ({e})，已忽略", file=sys.stderr)

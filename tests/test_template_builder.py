@@ -2,7 +2,6 @@
 """engine/template_builder.py 单元测试。"""
 from core.rules.manager import load_rules_merged
 from template_builder import create_template_document, _parse_size, _parse_indent, _parse_margin
-import pytest
 import sys
 from pathlib import Path
 

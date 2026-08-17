@@ -6,9 +6,7 @@ from core.document.font_utils import (
 import sys
 from pathlib import Path
 
-import pytest
 from docx import Document
-from docx.shared import Pt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "engine"))
 

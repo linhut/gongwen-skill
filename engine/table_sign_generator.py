@@ -12,11 +12,9 @@
 输入名单格式：每行一个人名，支持逗号/空格/顿号分隔，空行或 # 开头被忽略。
 """
 from __future__ import annotations
-import os
 import copy
 import re
 import zipfile
-import io
 from pathlib import Path
 from typing import List, Optional
 from lxml import etree
@@ -348,7 +346,6 @@ def validate_page_setup(docx_path: Path, expected: dict | None = None) -> List[s
         return ["未获取到期望页面参数（table_sign.yaml page_setup）"]
 
     from docx import Document
-    from docx.shared import Mm
 
     doc = Document(str(docx_path))
     section = doc.sections[0] if doc.sections else None

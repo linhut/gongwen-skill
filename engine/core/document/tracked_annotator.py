@@ -18,7 +18,7 @@ import zipfile
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 from lxml import etree
 from engine.utils.logger import logger
@@ -354,7 +354,6 @@ def _anchor_comment(p, cid: int) -> bool:
     first_anchor = _find_insert_point(runs[0])
     last_anchor = _find_insert_point(runs[-1])
     if first_anchor is None or last_anchor is None:
-        from engine.utils.logger import logger
         logger.warning(f"批注 #{cid} 锚定失败：run 不在段落直接子元素链上")
         return False
 

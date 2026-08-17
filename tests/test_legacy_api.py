@@ -2,10 +2,8 @@
 """gongwen/_legacy.py 直接 API 调用测试——提升 _legacy.py 覆盖率。"""
 import gongwen._legacy as legacy
 import sys
-import json
-import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))

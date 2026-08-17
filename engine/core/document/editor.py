@@ -4,13 +4,11 @@ Produces comparison documents showing original vs revised content
 with red highlights, strikethrough deletions, and revision notes.
 """
 from __future__ import annotations
-from typing import Optional
 import difflib
 import re
 
 from engine.core.document.models import (
-    DocumentModel, DocumentMetadata, PageSetup,
-    Paragraph, ParagraphFormat, Run, RunFormat,
+    DocumentModel, Paragraph, ParagraphFormat, Run, RunFormat,
 )
 from engine.core.document.generator import generate_docx
 # B-02（方案一）：与 modifier.py 共用统一首句边界正则（句号/叹号/问号/冒号）
@@ -218,7 +216,7 @@ def compare_paragraphs(
         if tag == "equal":
             # 相同的段落
             for k in range(i1, i2):
-                role = original_texts[k][0] if k < len(original_texts) else "body"
+                _role = original_texts[k][0] if k < len(original_texts) else "body"  # noqa: F841
                 orig = orig_lines[k]
                 sec = RevisionSection(
                     title=f"段落 {block_idx + 1}（无修改）",
@@ -254,7 +252,7 @@ def compare_paragraphs(
             # 原文删除
             for k in range(i1, i2):
                 orig = orig_lines[k]
-                role = original_texts[k][0] if k < len(original_texts) else "body"
+                _role = original_texts[k][0] if k < len(original_texts) else "body"  # noqa: F841
                 sec = RevisionSection(
                     title=f"段落 {block_idx + 1}（删除）",
                     diffs=[TextDiff("deleted", original=orig, revised="", note="删除此段")],
@@ -265,7 +263,7 @@ def compare_paragraphs(
             # 新增段落
             for k in range(j1, j2):
                 rev = rev_lines[k]
-                role = revised_texts[k][0] if k < len(revised_texts) else "body"
+                _role = revised_texts[k][0] if k < len(revised_texts) else "body"  # noqa: F841
                 sec = RevisionSection(
                     title=f"段落 {block_idx + 1}（新增）",
                     diffs=[TextDiff("added", original="", revised=rev, note="新增内容")],

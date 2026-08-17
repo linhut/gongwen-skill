@@ -6,7 +6,6 @@ from core.document.tracked_annotator import (
     _collect_full_text_including_deleted, _append_ai_disclaimer,
 )
 from lxml import etree
-import pytest
 import sys
 from pathlib import Path
 

@@ -14,7 +14,7 @@ Agent 据此在对话中逐段生成并展示五角色审稿意见。
   ⑤领导签发   → 核心观点确认、是否同意印发
 """
 from __future__ import annotations
-from typing import List, Optional
+from typing import List
 
 # ---------------------------------------------------------------------------
 #  审稿角色定义

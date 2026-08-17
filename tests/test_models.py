@@ -2,7 +2,7 @@
 import pytest
 from core.document.models import (
     DocumentModel, Paragraph, ParagraphFormat, Run, RunFormat,
-    PageSetup, DocumentMetadata, Table, TableCell, HeaderFooter,
+    PageSetup, DocumentMetadata,
 )
 
 

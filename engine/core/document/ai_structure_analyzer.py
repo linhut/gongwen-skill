@@ -14,7 +14,6 @@ AI Structure Analyzer — 基于AI的文档结构智能分析
 from __future__ import annotations
 import json
 import re
-from typing import Any
 
 from engine.core.document.models import DocumentModel
 from engine.utils.logger import logger
@@ -144,7 +143,6 @@ def classify_with_ai(model: DocumentModel, provider_name: str = "openai") -> boo
     finally:
         # 关闭 provider 的 HTTP 连接（同样用独立循环，I9 修复）
         try:
-            import asyncio as _asyncio
             _run_async(provider.close())
         except Exception as e:
             logger.warning(f"关闭 AI provider 失败: {e}")

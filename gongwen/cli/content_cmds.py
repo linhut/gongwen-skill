@@ -18,7 +18,6 @@ from gongwen.cli.helpers import (
     detect_doc_type as _detect_doc_type,
     build_output_name as _build_output_name,
     extract_dominant_style as _extract_dominant_style,
-    echo_progress as _echo_progress_simple,
     safe_write_output,
 )
 import sys
@@ -316,7 +315,7 @@ def cmd_optimize_content(args):
         print("─── 预览模式 ───")
         print("以上是变更内容预览。")
         print("加 --apply 生成差异对比文档。")
-        print(f"示例:")
+        print("示例:")
         print(f"  python -m gongwen optimize-content {args.input} --changes {args.changes} --apply")
         return
 
@@ -504,7 +503,7 @@ def cmd_optimize_content(args):
                         "hint": "请核验此" + ("人员职务" if e.entity_type == "person" else "机构全称") + "是否正确，如不正确请提供正确值及权威来源",
                     })
                 # ====== 路径B v2：增强版 --output-tasks（复用已有检查能力，数据驱动） ======
-                from structure_checker import check_structure, _locate_section, _check_elements
+                from structure_checker import check_structure
                 from focus_checker import run_focus_checks
 
                 # 段落角色推断（复用 _locate_section + _SECTION_KEYWORDS，不硬编码）
@@ -610,7 +609,7 @@ def cmd_optimize_content(args):
                     ],
                 }
                 Path(args.output_tasks).write_text(
-                    _json.dumps(tasks_data, ensure_ascii=False, indent=2), encoding="utf-8")
+                    json.dumps(tasks_data, ensure_ascii=False, indent=2), encoding="utf-8")
                 print(
                     f"📤 --output-tasks: 已输出 {len(entity_tasks)} 个待核验实体 + 风格增强请求"
                     f"（含段落角色/规则摘要/结构焦点问题/风格评分）→ {args.output_tasks}")
@@ -690,11 +689,11 @@ def cmd_optimize_content(args):
                 if _fixed_ids and f"{issue.section_name}:{issue.issue_type}" in _fixed_ids:
                     continue  # E3：已被 Agent 风格建议修复，跳过重复批注
                 if issue.issue_type == "缺失":
-                    cat, role = "格式优化", "格式审校员"
+                    cat, _ = "格式优化", "格式审校员"
                 elif issue.issue_type == "要素缺失":
-                    cat, role = "逻辑优化", "逻辑审校员"
+                    cat, _ = "逻辑优化", "逻辑审校员"
                 else:
-                    cat, role = "内容优化", "综合审校员"
+                    cat, _ = "内容优化", "综合审校员"
                 # T2 修复：resolve_role 传入语义类别名（cat），而非角色名（role）
                 _rcat, _rauthor = resolve_role({"category": cat})
                 suggestions.append(CommentSuggestion(
@@ -712,13 +711,13 @@ def cmd_optimize_content(args):
                     if "准确性" in issue.check_name:
                         continue
                     if issue.check_name in ("逻辑闭环", "时间一致性"):
-                        cat, role = "逻辑优化", "逻辑审校员"
+                        cat, _ = "逻辑优化", "逻辑审校员"
                     elif issue.check_name == "稿源/编辑信息完整性":
-                        cat, role = "格式优化", "格式审校员"
+                        cat, _ = "格式优化", "格式审校员"
                     elif issue.check_name == "事实表述客观克制":
-                        cat, role = "内容优化", "综合审校员"
+                        cat, _ = "内容优化", "综合审校员"
                     else:
-                        cat, role = "用语优化", "用语审校员"
+                        cat, _ = "用语优化", "用语审校员"
                     # T2 修复：resolve_role 传入语义类别名（cat），而非角色名（role）
                     _rcat2, _rauthor2 = resolve_role({"category": cat})
                     suggestions.append(CommentSuggestion(

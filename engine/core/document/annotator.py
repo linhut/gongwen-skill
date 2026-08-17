@@ -19,13 +19,13 @@ Word 原生批注，用户在 Word 中可通过「审阅 → 接受/拒绝」逐
 """
 from __future__ import annotations
 import copy
-import hashlib
+import io
 import shutil
 import zipfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 from lxml import etree
 

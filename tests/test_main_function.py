@@ -3,8 +3,7 @@
 import gongwen._legacy as legacy
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-import argparse
+from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))

@@ -10,8 +10,8 @@ focus_checks 自动检查（v1.12.30 内容优化架构改进方案 改进 C）�
 """
 from __future__ import annotations
 import re
-from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from dataclasses import dataclass
+from typing import List, Optional
 
 
 @dataclass

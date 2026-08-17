@@ -1,8 +1,6 @@
 """Smoke tests for the parse → generate round-trip pipeline."""
 import pytest
 from pathlib import Path
-import tempfile
-import os
 
 
 @pytest.mark.integration

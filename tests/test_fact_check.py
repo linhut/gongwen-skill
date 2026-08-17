@@ -6,10 +6,8 @@ from fact_check import (
     _looks_like_sentence, _is_valid_entity_name,
     _safe_fetch_url, build_baseline,
 )
-import pytest
 import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "engine"))

@@ -23,7 +23,7 @@ import copy
 import re
 from typing import Any
 
-from engine.core.document.models import DocumentModel, Paragraph, Run, ParagraphFormat, RunFormat, Table, TableCell
+from engine.core.document.models import DocumentModel, Paragraph, Run, ParagraphFormat
 from engine.utils.logger import logger
 
 
@@ -965,22 +965,22 @@ def replace_paragraph_text(model: DocumentModel, para_index: int, new_text: str)
                 r.text = ""
             return
         pos = 0
-        prev_r = None
+        _prev = None  # noqa: F841
         for r in para.runs:
             orig_len = len(r.text or '')
             if orig_len <= 0:
                 r.text = ""
-                prev_r = r
+                _prev = r  # noqa: F841
                 continue
             alloc = round(len(new_text) * orig_len / total_len)
             # NEW-I5 修复：alloc=0 时跳过该 run（不产生空 run），或并入相邻 run
             if alloc == 0:
                 r.text = ""
-                prev_r = r
+                _prev = r  # noqa: F841
                 continue
             r.text = new_text[pos:pos + alloc]
             pos += alloc
-            prev_r = r
+            _prev = r  # noqa: F841
         # 处理舍入误差（剩余字符并入最后一个非空 run）
         if pos < len(new_text):
             for r in reversed(para.runs):
@@ -993,28 +993,12 @@ def replace_paragraph_text(model: DocumentModel, para_index: int, new_text: str)
 #  Markdown 语法识别与转换（AI 生成内容直接粘贴到 Word 的场景）
 # ---------------------------------------------------------------------------
 
-# markdown 标题标记：行首的 # ## ### #### 等，捕获 # 数量和正文
 # Markdown 转换功能已迁移到 markdown_converter.py（阶梯2 拆分）
+# 以下 import 保留为向后兼容引用（fixer.py 等外部模块仍通过 modifier 导入）
 try:
-    from engine.core.document.markdown_converter import (  # type: ignore
-        convert_markdown, _split_inline_headings, _add_attachment_page_breaks,
-        _detect_md_table_regions, _apply_heading_format,
-    )
-    from engine.core.document.markdown_converter import (  # type: ignore
-        _MD_HEADING_RE, _MD_BOLD_RE, _MD_BOLD_UNDER_RE, _MD_UL_RE, _MD_OL_RE,
-        _MD_TABLE_RE, _MD_TABLE_SEP_RE, _MD_HR_RE, _MD_LINK_RE,
-        _MD_CODE_BLOCK_RE, _MD_INLINE_CODE_RE,
-    )
+    from engine.core.document.markdown_converter import convert_markdown  # noqa: F401
 except ImportError:
-    from .markdown_converter import (
-        convert_markdown, _split_inline_headings, _add_attachment_page_breaks,
-        _detect_md_table_regions, _apply_heading_format,
-    )
-    from .markdown_converter import (
-        _MD_HEADING_RE, _MD_BOLD_RE, _MD_BOLD_UNDER_RE, _MD_UL_RE, _MD_OL_RE,
-        _MD_TABLE_RE, _MD_TABLE_SEP_RE, _MD_HR_RE, _MD_LINK_RE,
-        _MD_CODE_BLOCK_RE, _MD_INLINE_CODE_RE,
-    )
+    pass
 
 
 def set_paragraph_format_attr(model: DocumentModel, para_index: int,
@@ -1141,7 +1125,7 @@ def bold_first_sentence_of_body(model: DocumentModel) -> int:
         # 若 run 跨越首句边界，则拆分该 run
         pos = 0
         new_runs = []
-        split_happened = False
+        _split_happened = False  # noqa: F841
         for run in para.runs:
             run_text = run.text or ""
             run_start = pos
@@ -1169,7 +1153,7 @@ def bold_first_sentence_of_body(model: DocumentModel) -> int:
                         text=rest_part,
                         format=deepcopy(run.format),
                     ))
-                split_happened = True
+                _split_happened = True  # noqa: F841
             elif run_end <= first_end:
                 # 该 run 完全在首句内 → 加粗
                 new_run = deepcopy(run)

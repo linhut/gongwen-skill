@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """engine/structure_checker.py 单元测试。"""
-from structure_checker import check_structure, StructureIssue, _locate_section, _check_elements
-import pytest
+from structure_checker import check_structure, _locate_section, _check_elements
 import sys
 from pathlib import Path
 from dataclasses import dataclass

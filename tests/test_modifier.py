@@ -7,16 +7,14 @@ from core.document.models import (
 from core.document.modifier import (
     _select_paragraphs, modify_font, modify_size, modify_alignment,
     modify_line_spacing, modify_first_line_indent, modify_bold,
-    modify_margins, remove_extra_spaces, detect_paragraph_type,
+    modify_margins, detect_paragraph_type,
     should_bold_first_sentence, _roman_to_int, _arabic_to_chinese,
     replace_paragraph_text, _parse_mm_value, _parse_pt_value,
     _parse_indent_value, _extract_para_index, set_paragraph_format_attr,
     clean_path_b_markers, unify_text_color,
 )
-import pytest
 import sys
 from pathlib import Path
-from dataclasses import dataclass
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "engine"))

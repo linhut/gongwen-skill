@@ -141,7 +141,6 @@ def _register_comments_infrastructure(doc_path: str | Path, comment_count: int) 
 
     W15 = 'http://schemas.microsoft.com/office/word/2012/wordml'
     W16 = 'http://schemas.microsoft.com/office/word/2018/wordml'
-    W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 
     p = Path(doc_path)
     if not p.exists():
@@ -240,10 +239,8 @@ def _register_persons_xml(doc_path: str | Path) -> None:
     from lxml import etree
     from pathlib import Path
 
-    W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
     CT = 'http://schemas.openxmlformats.org/package/2006/content-types'
     PC = 'http://schemas.openxmlformats.org/package/2006/relationships'
-    R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 
     p = Path(doc_path)
     if not p.exists():
@@ -266,7 +263,7 @@ def _register_persons_xml(doc_path: str | Path) -> None:
     # 批注角色（六角色）
     for role, cfg in REVIEWER_MAP.items():
         author = cfg["author"]
-        color = cfg["color"]
+        _ = cfg["color"]  # noqa: F841
         person = etree.SubElement(people, f'{{{W15}}}person')
         person.set(f'{{{W15}}}author', author)
         person.set(f'{{{W15}}}preserve', '1')

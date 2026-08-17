@@ -22,7 +22,7 @@ if str(_ENGINE_DIR) not in sys.path:
 from table_sign_generator import (  # noqa: E402
     _calc_font_size, _format_name, parse_name_list,
     _replace_placeholder_in_xml, _duplicate_body_for_combined,
-    _prepare_docx_from_template, generate_table_signs,
+    generate_table_signs,
     generate_table_signs_combined,
 )
 

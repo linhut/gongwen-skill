@@ -12,7 +12,6 @@
 
 from gongwen.cli.content_cmds import (
     cmd_optimize_content,
-    _SimplePara,
 )
 from gongwen.cli.misc_cmds import (
     cmd_rule_export,
@@ -27,49 +26,20 @@ from gongwen.cli.misc_cmds import (
 from gongwen.cli.review_cmds import (
     cmd_full_review,
     cmd_bold_first,
-    _count_fmt_changes,
     cmd_fix_common,
     cmd_handoff,
 )
-from gongwen.cli.style_helpers import (
-    _validate_changes_schema,
-    _extract_content_rules,
-    _infer_paragraph_roles,
-    _build_style_deviation_hint,
-    _compute_style_scores,
-    _merge_style_mapped,
-    _validate_style,
-    _load_style_prompt,
-    _VALID_STYLES,
-)
 from gongwen.cli.update_cmds import (
     cmd_check_update,
-    _latest_tag_from_remote,
 )
 from gongwen.cli.font_cmds import (
-    GONGWEN_FONTS,
     cmd_font,
-    _get_fonts_dir,
-    _download_font,
-    _ensure_font_file,
-    _get_windows_fonts_dir,
-    _is_font_installed,
-    _install_font_file,
 )
 from gongwen.cli.helpers import (
-    TYPE_KEYWORDS as _TYPE_KEYWORDS,
-    REPO_MIRRORS,
-    PYPI_API,
     detect_doc_type as _detect_doc_type,
-    extract_dominant_style as _extract_dominant_style,
     build_output_name as _build_output_name,
     parse_config_overrides as _parse_config_overrides,
     load_rules_with_overrides as _load_rules_with_overrides,
-    parse_version as _parse_version,
-    safe_backup_input,
-    safe_write_output,
-    verify_output_fresh,
-    latest_version_from_pypi as _latest_version_from_pypi,
 )
 __version__ = "1.12.68"
 # 版本号应与 gongwen/__init__.py 保持一致，每次发版同步更新
@@ -106,11 +76,19 @@ __version__ = "1.12.68"
   python -m gongwen footer in.docx --cc 各省民委 --printer 国家民委办公厅 --print-date 2026年7月23日
   python -m gongwen pagenum in.docx --alignment right
 """
-import argparse
-import json
-import logging
-import sys
-from pathlib import Path
+import argparse  # noqa: E402
+import json  # noqa: E402
+import logging  # noqa: E402
+import sys  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+# Re-export migrated functions for backward compatibility (tests access via gongwen._legacy)
+from gongwen.cli.helpers import (  # noqa: E402, F401
+    verify_output_fresh, safe_backup_input, safe_write_output,
+    parse_version as _parse_version,
+)
+from gongwen.cli.style_helpers import _validate_changes_schema, _extract_content_rules  # noqa: E402, F401
+from gongwen.cli.font_cmds import _is_font_installed, _get_fonts_dir  # noqa: E402, F401
 
 _logger = logging.getLogger(__name__)
 
@@ -252,11 +230,11 @@ def cmd_optimize(args):
     print(f"🔍 类型: {doc_type}（{type_source}）")
     print(f"📊 问题: 共 {len(issues)} 项（P0:{len(p0)}, P1:{len(p1)}, P2:{len(p2)}）")
     if issues:
-        print(f"  P0 示例（必须修复）:")
+        print("  P0 示例（必须修复）:")
         for i in p0[:3]:
             print(f"    - {i.name} @ {i.location}")
         if p1:
-            print(f"  P1 示例（建议修复）:")
+            print("  P1 示例（建议修复）:")
             for i in p1[:3]:
                 print(f"    - {i.name} @ {i.location}")
     if args.layout:
@@ -346,9 +324,7 @@ def cmd_md2docx(args):
     - attachments: 附件列表（字符串数组）
     - doc_type: 公文类型（默认 notice）
     """
-    import io
     from datetime import date as _dt
-    from core.document.parser_format import parse_paragraph_format, parse_run
     from core.document.generator import generate_docx
     from core.document.models import (
         DocumentModel, DocumentMetadata, PageSetup,
@@ -409,7 +385,7 @@ def cmd_md2docx(args):
     margins = rules.get("page_setup", {}).get("margins", {})
 
     # 使用统一的解析工具（跨模块#3 修复：消除重复 _parse_margin/_parse_cm 实现）
-    from utils.parse import parse_mm, parse_pt
+    from utils.parse import parse_mm
 
     # 构建 DocumentModel（改动1/10：页边距与页眉页脚距离取自 _common.yaml page_setup 配置）
     page_setup_cfg = rules.get("page_setup", {})

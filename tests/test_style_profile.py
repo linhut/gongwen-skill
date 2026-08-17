@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 """engine/style_profile.py 单元测试。"""
-import pytest
 import sys
 from pathlib import Path
 

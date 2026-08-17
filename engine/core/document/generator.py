@@ -12,18 +12,19 @@ Document generator: converts DocumentModel back into a .docx file.
 """
 from __future__ import annotations
 from pathlib import Path
+import io
+from typing import Any
 from docx import Document
 from docx.shared import Pt, Mm, Cm, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from lxml import etree
 
-from engine.core.document.models import DocumentModel, Paragraph, Run, Table as TableModel, HeaderFooter
+from engine.core.document.models import DocumentModel, Paragraph, HeaderFooter
 from engine.core.document.font_utils import (
-    set_run_font, set_paragraph_font, validate_document_fonts,
-    TITLE_FONT, BODY_FONT, LATIN_FONT,
-    PAGE_NUMBER_FONT, PAGE_NUMBER_LATIN_FONT, PAGE_NUMBER_SIZE_PT,
+    set_run_font, validate_document_fonts,
+    BODY_FONT, LATIN_FONT,
     _LATIN_FONTS, _contains_cjk,
 )
 from engine.utils.logger import logger
@@ -31,9 +32,12 @@ from engine.utils.logger import logger
 # Table/page-number helpers 已迁移到 _generator_helpers.py（阶梯2 拆分）
 try:
     from engine.core.document._generator_helpers import (
-        _add_table, _add_page_number_field, _smart_align_cell, _update_table_content)
+        _add_table, _add_page_number_field, _update_table_content,
+        _update_pPr, _add_runs_to_paragraph, _apply_paragraph_format)
 except ImportError:
-    from ._generator_helpers import _add_table, _add_page_number_field, _smart_align_cell, _update_table_content
+    from ._generator_helpers import (
+        _add_table, _add_page_number_field, _update_table_content,
+        _update_pPr, _add_runs_to_paragraph, _apply_paragraph_format)
 
 
 def _accept_all_revisions(body_elem) -> int:
@@ -260,7 +264,7 @@ def _apply_ai_declaration(doc: Document, no_ai_declaration: bool) -> None:
 
 def _auto_fix_fonts(doc: Document, font_issues: list[dict]):
     """自动替换检测到的无效字体（MS Gothic 等）为合规字体。"""
-    from engine.core.document.font_utils import FONT_FALLBACK_MAP, INVALID_FONT_PATTERNS
+    from engine.core.document.font_utils import FONT_FALLBACK_MAP
 
     def _get_replacement(attr: str, invalid_font: str) -> str:
         """根据属性类型和无效字体名，返回合规替换字体。"""
@@ -448,89 +452,6 @@ def _replace_paragraph_content(doc: Document, p_element, para_model: Paragraph):
         _add_runs_via_xml(p_element, para_model)
 
 
-def _update_pPr(p_element, para_model: Paragraph):
-    """更新 <w:p> 元素的 <w:pPr> 段落属性。
-    关键原则：model 有值才替换，None 保留原文档格式不删除。"""
-    fmt = para_model.format
-
-    # 获取或创建 pPr
-    pPr = p_element.find(qn('w:pPr'))
-    if pPr is None:
-        pPr = OxmlElement('w:pPr')
-        p_element.insert(0, pPr)
-
-    # 对齐方式：仅当 model 有值时替换
-    if fmt.alignment:
-        jc = pPr.find(qn('w:jc'))
-        if jc is not None:
-            pPr.remove(jc)
-        jc = OxmlElement('w:jc')
-        alignment_map = {
-            "left": "left", "center": "center",
-            "right": "right", "justify": "both",
-        }
-        jc.set(qn('w:val'), alignment_map.get(fmt.alignment, "left"))
-        pPr.append(jc)
-
-    # 缩进：仅当 model 有值时替换，否则保留原文档缩进
-    has_indent = (fmt.first_line_indent_pt is not None or
-                  fmt.left_indent_pt is not None or
-                  fmt.right_indent_pt is not None)
-    if has_indent:
-        ind = pPr.find(qn('w:ind'))
-        if ind is not None:
-            pPr.remove(ind)
-        ind = OxmlElement('w:ind')
-        if fmt.first_line_indent_pt is not None:
-            ind.set(qn('w:firstLine'), str(int(fmt.first_line_indent_pt * 20)))
-            # P1-4 修复：使用段落实际字号计算 firstLineChars（此前硬编码 16pt，
-            # 标题 22pt/表格 12pt 时缩进字符数计算错误）
-            _font_size = 16.0
-            if para_model.runs and para_model.runs[0].format.font_size_pt:
-                _font_size = para_model.runs[0].format.font_size_pt
-            chars = int(round(fmt.first_line_indent_pt / _font_size * 100))
-            if chars > 0:
-                ind.set(qn('w:firstLineChars'), str(chars))
-        if fmt.left_indent_pt is not None:
-            ind.set(qn('w:left'), str(int(fmt.left_indent_pt * 20)))
-        if fmt.right_indent_pt is not None:
-            ind.set(qn('w:right'), str(int(fmt.right_indent_pt * 20)))
-        pPr.append(ind)
-
-    # 行距：仅当 model 有值时替换，否则保留原文档行距
-    has_spacing = (fmt.line_spacing_pt is not None or
-                   fmt.space_before_pt is not None or
-                   fmt.space_after_pt is not None)
-    if has_spacing:
-        spacing = pPr.find(qn('w:spacing'))
-        if spacing is not None:
-            pPr.remove(spacing)
-        spacing = OxmlElement('w:spacing')
-        if fmt.line_spacing_pt is not None:
-            spacing_pt = max(6, min(200, fmt.line_spacing_pt))
-            rule = fmt.line_spacing_rule or "exact"
-            if rule == "multiple":
-                # 倍数行距：w:line 值为 240 分之一行（如 1.5x = 360）
-                # line_spacing_pt 存储的是 pt 值，需要反算回倍数
-                # 公文标准字号16pt，1倍行距=240（即 16pt * 15 = 240）
-                # pt → 240ths: value = spacing_pt / 16 * 240
-                line_val = int(round(spacing_pt / 16 * 240))
-                spacing.set(qn('w:line'), str(line_val))
-                spacing.set(qn('w:lineRule'), 'auto')
-            elif rule == "atLeast":
-                spacing.set(qn('w:line'), str(int(spacing_pt * 20)))
-                spacing.set(qn('w:lineRule'), 'atLeast')
-            else:
-                # exact (默认，符合GB/T 9704标准)
-                spacing.set(qn('w:line'), str(int(spacing_pt * 20)))
-                spacing.set(qn('w:lineRule'), 'exact')
-        if fmt.space_before_pt is not None:
-            spacing.set(qn('w:before'), str(int(fmt.space_before_pt * 20)))
-        if fmt.space_after_pt is not None:
-            spacing.set(qn('w:after'), str(int(fmt.space_after_pt * 20)))
-        pPr.append(spacing)
-
-
 # 预构建段落元素 → Paragraph 对象的映射，避免 O(N^2) 查找
 # NI9 修复：缓存键为 id(doc)，配合 weakref.finalize 保证文档 GC 时自动清理，避免泄漏
 _paragraph_index_cache: dict[int, dict[int, Any]] = {}
@@ -561,24 +482,6 @@ def _find_paragraph_object(doc: Document, p_element):
     """通过 XML 元素找到对应的 python-docx Paragraph 对象（O(1) 哈希查找）。"""
     idx = _build_paragraph_index(doc)
     return idx.get(id(p_element))
-
-
-def _add_runs_to_paragraph(para, para_model: Paragraph):
-    """使用 python-docx API 向段落添加 runs。"""
-    if para_model.runs:
-        for run_model in para_model.runs:
-            run = para.add_run(run_model.text)
-            _apply_run_format(run, run_model)
-    else:
-        if para_model.text:
-            run = para.add_run(para_model.text)
-            # 优先使用段落 format 中的 font_name，fallback 到 BODY_FONT
-            fmt_font = None
-            if para_model.runs and para_model.runs[0].format:
-                fmt_font = para_model.runs[0].format.font_name
-            if not fmt_font and para_model.format:
-                fmt_font = getattr(para_model.format, 'font_name', None)
-            set_run_font(run, fmt_font or BODY_FONT)
 
 
 def _add_runs_via_xml(p_element, para_model: Paragraph):
@@ -740,97 +643,3 @@ def _update_metadata(doc: Document, model: DocumentModel):
         logger.debug("Document metadata updated")
     except Exception as e:
         logger.warning(f"Failed to update metadata: {e}")
-
-
-# ---------------------------------------------------------------------------
-#  Format Helpers
-# ---------------------------------------------------------------------------
-
-def _apply_paragraph_format(para, para_model: Paragraph):
-    """Apply formatting to a paragraph using python-docx API."""
-    pf = para.paragraph_format
-    fmt = para_model.format
-
-    # Alignment
-    if fmt.alignment:
-        alignment_map = {
-            "left": WD_ALIGN_PARAGRAPH.LEFT,
-            "center": WD_ALIGN_PARAGRAPH.CENTER,
-            "right": WD_ALIGN_PARAGRAPH.RIGHT,
-            "justify": WD_ALIGN_PARAGRAPH.JUSTIFY,
-        }
-        para.alignment = alignment_map.get(fmt.alignment, WD_ALIGN_PARAGRAPH.LEFT)
-
-    # Indentation
-    if fmt.first_line_indent_pt is not None:
-        pf.first_line_indent = Pt(fmt.first_line_indent_pt)
-    if fmt.left_indent_pt is not None:
-        pf.left_indent = Pt(fmt.left_indent_pt)
-    if fmt.right_indent_pt is not None:
-        pf.right_indent = Pt(fmt.right_indent_pt)
-
-    # Spacing
-    if fmt.space_before_pt is not None:
-        pf.space_before = Pt(fmt.space_before_pt)
-    if fmt.space_after_pt is not None:
-        pf.space_after = Pt(fmt.space_after_pt)
-
-    # Line spacing
-    if fmt.line_spacing_pt is not None:
-        spacing_pt = max(6, min(200, fmt.line_spacing_pt))
-        rule = fmt.line_spacing_rule or "exact"
-        if rule == "multiple":
-            # MULTIPLE 模式：python-docx 期望倍数（如 1.5），而非 Pt 值
-            # 公文标准字号 16pt，行距 33pt → 33/16 ≈ 2.06
-            multiple = spacing_pt / 16.0
-            pf.line_spacing = multiple
-            pf.line_spacing_rule = WD_LINE_SPACING.MULTIPLE
-        elif rule == "atLeast":
-            pf.line_spacing = Pt(spacing_pt)
-            pf.line_spacing_rule = WD_LINE_SPACING.AT_LEAST
-        else:
-            pf.line_spacing = Pt(spacing_pt)
-            pf.line_spacing_rule = WD_LINE_SPACING.EXACTLY
-
-
-def _apply_run_format(run, run_model: Run):
-    """
-    Apply formatting to a run.
-    使用 font_utils.set_run_font 统一处理中文字体。
-    """
-    fmt = run_model.format
-
-    # === 字体设置（统一入口） ===
-    if fmt.font_name:
-        set_run_font(run, fmt.font_name)
-    else:
-        set_run_font(run, BODY_FONT)
-
-    # === 字号 ===
-    if fmt.font_size_pt is not None:
-        run.font.size = Pt(fmt.font_size_pt)
-
-    # === 样式 ===
-    if fmt.bold is not None:
-        run.font.bold = fmt.bold
-    if fmt.italic is not None:
-        run.font.italic = fmt.italic
-    if fmt.underline is not None:
-        run.font.underline = fmt.underline
-    if fmt.strikethrough is True:
-        run.font.strike = True
-    # 注意：strikethrough=False 时不写入 strike 元素
-    # 否则 python-docx 会生成 <w:strike w:val="false"/>，
-    # 被 parser_format.py 误判为有删除线
-
-    # === 颜色 ===
-    if fmt.color:
-        try:
-            rgb_str = fmt.color.replace("#", "")
-            if len(rgb_str) == 6:
-                r = int(rgb_str[0:2], 16)
-                g = int(rgb_str[2:4], 16)
-                b = int(rgb_str[4:6], 16)
-                run.font.color.rgb = RGBColor(r, g, b)
-        except Exception as e:
-            logger.warning(f"颜色值解析失败: {e}")

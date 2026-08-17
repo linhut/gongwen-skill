@@ -7,18 +7,12 @@ Extracted from _legacy.py (tier-2 split).
 from __future__ import annotations
 from gongwen.cli.style_helpers import (
     _validate_changes_schema,
-    _extract_content_rules,
 )
 from gongwen.cli.helpers import (
     detect_doc_type as _detect_doc_type,
     build_output_name as _build_output_name,
-    parse_config_overrides as _parse_config_overrides,
-    load_rules_with_overrides as _load_rules_with_overrides,
-    safe_write_output,
-    safe_backup_input,
-    verify_output_fresh,
 )
-import sys
+from engine.core.document.models import DocumentModel
 import json
 import logging
 from pathlib import Path

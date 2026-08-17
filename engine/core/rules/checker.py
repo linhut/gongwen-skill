@@ -6,10 +6,10 @@ Format checker: validates a DocumentModel against loaded rules.
 Returns a list of CheckIssue objects.
 """
 from __future__ import annotations
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
-from engine.core.document.models import DocumentModel, Paragraph
+from engine.core.document.models import DocumentModel
 from engine.utils.logger import logger
 
 # P2-26: 1em = 16pt（公文字号基准，正文 16pt），与 modifier 保持一致
@@ -72,7 +72,7 @@ def check_document(model: DocumentModel, rules: dict[str, Any]) -> list[CheckIss
         elif field_path.startswith("body."):
             # B-01（方案二）：speech 文种正文整段加粗是规范，跳过 CHK-C030 整段加粗检查
             if rules.get('_doc_type') == 'speech' and field_path.endswith('bold_range'):
-                logger.info(f"check_document: speech 文种跳过 CHK-C030（整段加粗为规范）")
+                logger.info("check_document: speech 文种跳过 CHK-C030（整段加粗为规范）")
                 continue
             issues.extend(_check_body(model, rule_id, severity, name, field_path, expected, message))
         elif field_path.startswith("page_setup."):

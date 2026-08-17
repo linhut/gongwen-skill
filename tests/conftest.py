@@ -4,8 +4,6 @@ pytest 共享配置（P3-34：统一 sys.path 管理与共享 fixture）。
 
 通过 gongwen._bootstrap 统一管理 engine/ 路径，消除测试文件中的重复 sys.path.insert。
 """
-import sys
-from pathlib import Path
 
 import pytest
 

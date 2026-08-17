@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
 """engine/focus_checker.py 单元测试。"""
 from focus_checker import (
-    run_focus_checks, FocusCheckIssue,
-    _check_time_consistency, _check_logic_closure,
+    run_focus_checks, _check_time_consistency, _check_logic_closure,
     _check_objective_expression, _check_source_info,
     _check_abbreviation, _check_entity_accuracy,
 )
-import pytest
 import sys
 from pathlib import Path
 from dataclasses import dataclass

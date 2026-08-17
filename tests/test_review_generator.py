@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """engine/review_generator.py 单元测试。"""
 from review_generator import generate_review_template, FULL_SCHEME, COMPACT_SCHEME
-import pytest
 import sys
 from pathlib import Path
 

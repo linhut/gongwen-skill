@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 """engine/docx_to_image.py 和 engine/live_edit.py 基础测试。"""
-import pytest
 import sys
 from pathlib import Path
 
