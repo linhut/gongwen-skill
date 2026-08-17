@@ -9,6 +9,9 @@ env/
 # 运行时可写数据（用户/自定义规则、日志）
 .gongwen-skill/
 
+# 测试用例（仅本地保留，不推送远程仓库）
+tests/
+
 # 测试与临时产物
 *_optimized.docx
 *_formatted.docx
