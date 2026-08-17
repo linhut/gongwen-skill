@@ -7,8 +7,8 @@
   - 精简版（3 角色）：撰稿人→业务+文字复合审核→综合负责人终审
 
 用法（CLI）：
-  python gongwen.py review 通知 -o 审稿单.docx
-  python gongwen.py review 请示 --scheme compact -o 审稿-精简版.docx
+  python -m gongwen review 通知 -o 审稿单.docx
+  python -m gongwen review 请示 --scheme compact -o 审稿-精简版.docx
 """
 from __future__ import annotations
 from pathlib import Path

@@ -197,6 +197,12 @@ def cmd_style_learn(args):
     input_path = Path(args.input)
     template_name = args.name or f"自定义_{input_path.stem}"
 
+    # SEC-V168-01 修复：路径遍历防护（只允许字母/数字/下划线/连字符/中文）
+    import re
+    if not re.match(r'^[a-zA-Z0-9_\-\u4e00-\u9fff]+$', template_name):
+        print("错误：模板名称只允许字母、数字、下划线、连字符和中文", file=sys.stderr)
+        return 1
+
     print(f"📖 正在学习排版样式: {input_path.name} ...")
     profile = learn_style_profile(str(input_path))
     print()

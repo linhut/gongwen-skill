@@ -32,6 +32,10 @@ class OOXMLWorkflow:
         if self.unpack_dir is None:
             self.unpack_dir = Path(tempfile.mkdtemp(prefix="gongwen_ooxml_"))
         with zipfile.ZipFile(self.doc_path) as z:
+            # SEC-V168-02 修复：Zip Slip 防护——拒绝含路径穿越的条目
+            for member in z.namelist():
+                if member.startswith("..") or member.startswith("/") or ".." in Path(member).parts:
+                    raise ValueError(f"不安全的 ZIP 条目: {member}")
             z.extractall(str(self.unpack_dir))
         return self.unpack_dir
 

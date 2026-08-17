@@ -7,11 +7,11 @@ Licensed under the MIT License. See the LICENSE file for details.
 
 # 公文语言风格提示词库
 
-本文件提供多套「公文语言风格」提示词。格式引擎（`gongwen.py`）负责**排版合规**（字体、字号、页边距），
+本文件提供多套「公文语言风格」提示词。格式引擎（`python -m gongwen`）负责**排版合规**（字体、字号、页边距），
 而语言风格属于**文字表达**层面，需交由大语言模型（LLM）处理。将下列提示词作为 system / 前置指令，
 把公文草稿或口语化内容交给模型，即可获得符合对应风格的公文文字。
 
-> 用法：`风格提示词 + 用户原文` → LLM → 规范公文文字 → 存为 .docx → `gongwen.py optimize` 做排版合规。
+> 用法：`风格提示词 + 用户原文` → LLM → 规范公文文字 → 存为 .docx → `python -m gongwen optimize` 做排版合规。
 
 ---
 
@@ -193,10 +193,10 @@ Licensed under the MIT License. See the LICENSE file for details.
    LLM 生成规范公文文字
         │
         ▼   （保存为 .docx）
-   gongwen.py check   ← 查排版合规
+   python -m gongwen check   ← 查排版合规
         │
         ▼
-   gongwen.py optimize ← 自动修复字体/字号/页边距/行距
+   python -m gongwen optimize ← 自动修复字体/字号/页边距/行距
         │
         ▼
    合规公文 .docx（文字规范 + 排版达标）

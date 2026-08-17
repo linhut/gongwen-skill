@@ -32,6 +32,10 @@ def _download_font(ttf_file: str, dest: Path) -> bool:
         req = urllib.request.Request(url, headers={"User-Agent": "gongwen-skill"})
         with urllib.request.urlopen(req, timeout=60) as resp:
             data = resp.read()
+        # SEC-V168-03 修复：完整性校验——字体文件应 >1MB
+        if len(data) < 1_000_000:
+            print(f"  ❌ 下载文件过小 ({len(data)} bytes)，可能不完整")
+            return False
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(data)
         print(f"  📦 已下载: {dest} ({len(data) / 1024:.0f}KB)")

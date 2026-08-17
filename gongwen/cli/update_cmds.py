@@ -7,7 +7,17 @@ Extracted from _legacy.py (tier-2 split).
 from __future__ import annotations
 import sys
 import logging
+import time
+import subprocess
 from pathlib import Path
+
+from gongwen import __version__
+from gongwen.cli.helpers import (
+    REPO_MIRRORS,
+    PYPI_API,
+    parse_version as _parse_version,
+    latest_version_from_pypi as _latest_version_from_pypi,
+)
 
 _logger = logging.getLogger(__name__)
 

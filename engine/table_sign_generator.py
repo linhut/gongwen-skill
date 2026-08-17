@@ -6,8 +6,8 @@
 确保生成的桌签与模板布局完全一致（Drawing→TextBox→Table 结构）。
 
 用法（CLI）：
-  python gongwen.py table-signs 名单.txt -o ./桌签/
-  python gongwen.py table-signs 名单.txt --combined -o 桌签-合并.docx
+  python -m gongwen table-signs 名单.txt -o ./桌签/
+  python -m gongwen table-signs 名单.txt --combined -o 桌签-合并.docx
 
 输入名单格式：每行一个人名，支持逗号/空格/顿号分隔，空行或 # 开头被忽略。
 """

@@ -15,7 +15,7 @@
 输出：标注版 .docx（原文灰色删除线、修改后红色高亮、段尾附说明块）
 
 用法：
-  python gongwen.py optimize-content 原文.docx -o 对比.docx --changes changes.json
+  python -m gongwen optimize-content 原文.docx -o 对比.docx --changes changes.json
 """
 from __future__ import annotations
 

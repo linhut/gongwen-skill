@@ -72,7 +72,7 @@ Licensed under the MIT License. See the LICENSE file for details.
    |---------|---------|---------|
    | python-docx | `pip install python-docx` | 不可降级（核心依赖），需修复安装环境 |
    | pydantic | `pip install pydantic` | 不可降级（模型定义依赖） |
-   | pyyaml | `pip install pyyaml` | `gongwen.py` 内置 YAML 解析兜底（rules 加载） |
+   | pyyaml | `pip install pyyaml` | `python -m gongwen` 内置 YAML 解析兜底（rules 加载） |
    | lxml | `pip install lxml` | 不可降级（OOXML/批注/修订注入核心） |
    | LibreOffice（文档转图片） | `soffice --headless --convert-to pdf` | `python engine/docx_to_image.py <docx> --outdir <dir>`（docx2pdf/PyMuPDF 降级） |
    | kdocs-cli（可选云协作） | `kdocs-cli --help` | 回退纯本地流程，不影响 gongwen 功能 |
@@ -89,7 +89,7 @@ Licensed under the MIT License. See the LICENSE file for details.
 
 ### 六、版本自检（Agent 必须在技能加载后执行）
 
-1. 读取 `gongwen.py` 顶部的 `__version__` 常量，获取本地版本号
+1. 读取 `gongwen` 包顶部的 `__version__` 常量，获取本地版本号
 2. 告知用户：`当前加载 gongwen-skill v{__version__}`
 3. **多渠道比对远程最新 tag**（不能只用本地 `git describe`——它只读本地可达 tag，未 fetch 时会误判本地即最新；也不能只查单一远程——某仓库不可达/网络抖动会导致误判）：
    ```bash
@@ -355,7 +355,7 @@ python -m gongwen handoff --latest --summary # 最新交接文档（Markdown 摘
 以下规则具有最高优先级，Agent 在任何情况下**不得违反**：
 
 #### 规则 1：路径 B 必须使用 optimize-content 命令
-- 内容优化任务**必须**使用 `gongwen.py optimize-content` 命令
+- 内容优化任务**必须**使用 `python -m gongwen optimize-content` 命令
 - **严禁**自写 Python 脚本直接操作 docx 文件替换段落文本
 - **严禁**使用 python-docx 库的 `add_run`/`clear` 方法手动修改段落
 - 如果 `optimize-content` 报错或匹配失败，必须排查原因并重试，不得静默切换到自写脚本
@@ -740,10 +740,10 @@ Agent 在交付任何文档前，必须逐项检查并在回复中汇报：
 
 ```
 📋 合规自检报告
-Skill 版本: 填写当前版本号（运行 gongwen.py --version）
+Skill 版本: 填写当前版本号（运行 python -m gongwen --version）
 路径判定: B（内容优化）
 依据: 用户说"优化第二章节"且指定了已有文档
-命令调用: 1. gongwen.py optimize-content input.docx --changes changes.json --apply
+命令调用: 1. python -m gongwen optimize-content input.docx --changes changes.json --apply
 是否绕过: 否
 交付物: 关于XX的通知+庄重严谨+2026-07-29+v1.docx（差异对比版）
 质量验证: check 通过，剩余 6 项已知误报
@@ -828,7 +828,7 @@ python -m gongwen fix-common 文件.docx -o 成品.docx
 ### OOXML 编辑规范（P7，所有路径强制）
 
 - **严禁使用 PowerShell 操作 docx 的 XML**（`System.IO.Compression` / `[xml]` 解析等不可靠，P7 已证实）
-- 所有 .docx 的解析/修改/生成**必须走 Python 代码路径**（`engine/core/document/*` 或 `gongwen.py` 子命令）
+- 所有 .docx 的解析/修改/生成**必须走 Python 代码路径**（`engine/core/document/*` 或 `python -m gongwen` 子命令）
 - 需编辑 OOXML 层时使用 Python `python-docx` + `lxml`（项目内 `engine/core/document/generator.py` 的 `_accept_all_revisions` 即为参考实现）
 - 违反此规范的操作视为不合格执行
 
@@ -2791,9 +2791,8 @@ XX处                                                 ← 华文楷体 16pt 居�
 适用于本地命令行或脚本自动化：
 
 ```bash
-cd engine
-python ../gongwen.py optimize 文件.docx -o 成品.docx -t report
-python ../gongwen.py optimize-content 文件.docx --changes 修订内容
+python -m gongwen optimize 文件.docx -o 成品.docx -t report
+python -m gongwen optimize-content 文件.docx --changes 修订内容
 ```
 
 ### 方式二：Agent 对话调用，无执行权限
