@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.12.67 (2026-08-17)
+
+### Changed — 覆盖率 55% → 56%，modifier.py 44% → 50%
+- **test_modifier.py**（44用例）：modifier.py 全函数测试——modify_font/size/alignment/bold/margins/line_spacing + detect_paragraph_type + should_bold_first_sentence + clean_path_b_markers + parse 辅助函数
+- **三仓同步**：v1.12.64-v1.12.66 全部推送到 GitHub/GitCode/AtomGit，含测试文件
+- 总用例 498 → 542
+
 ## v1.12.66 (2026-08-17)
 
 ### Changed — 覆盖率从 41% → 55%
