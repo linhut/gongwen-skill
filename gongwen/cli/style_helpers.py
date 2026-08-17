@@ -20,6 +20,7 @@ _VALID_STYLES = {
     "总结回顾", "逻辑严密",
 }
 
+
 def _validate_changes_schema(changes: list[dict], source: str = "") -> list[dict]:
     """P5 修复：校验 changes.json schema，返回有效条目列表。
 
@@ -401,6 +402,3 @@ def _load_style_prompt(style_name: str) -> str:
         return "\n".join(collected).strip()
     # 兜底：全文截取风格相关段落
     return content[:1000] if style_name in content else ""
-
-
-

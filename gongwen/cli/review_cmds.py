@@ -5,14 +5,10 @@ gongwen.cli.review_cmds -- review/fix/handoff commands.
 Extracted from _legacy.py (tier-2 split).
 """
 from __future__ import annotations
-import sys
-import json
-import logging
-from pathlib import Path
-
-_logger = logging.getLogger(__name__)
-
-# 从 helpers 导入共享辅助函数
+from gongwen.cli.style_helpers import (
+    _validate_changes_schema,
+    _extract_content_rules,
+)
 from gongwen.cli.helpers import (
     detect_doc_type as _detect_doc_type,
     build_output_name as _build_output_name,
@@ -22,10 +18,14 @@ from gongwen.cli.helpers import (
     safe_backup_input,
     verify_output_fresh,
 )
-from gongwen.cli.style_helpers import (
-    _validate_changes_schema,
-    _extract_content_rules,
-)
+import sys
+import json
+import logging
+from pathlib import Path
+
+_logger = logging.getLogger(__name__)
+
+# 从 helpers 导入共享辅助函数
 
 
 def cmd_full_review(args):
@@ -264,6 +264,3 @@ def cmd_handoff(args):
     # P2-31 修复：cmd_handoff 不再引用 main() 的局部 parser 变量，直接打印用法
     print("交接文档子命令：--list / --latest [--summary] / --write 交接.json")
     print("写入方式：Agent 通过 Python 调用 handoff.write_handoff 完成")
-
-
-

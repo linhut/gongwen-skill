@@ -10,6 +10,67 @@
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，
 # 无需原桌面端项目、无需数据库、无需后端服务。
 
+from gongwen.cli.content_cmds import (
+    cmd_optimize_content,
+    _SimplePara,
+)
+from gongwen.cli.misc_cmds import (
+    cmd_rule_export,
+    cmd_rule_list,
+    cmd_rule_import,
+    cmd_table_signs,
+    cmd_audit,
+    cmd_style_learn,
+    cmd_style_list,
+    cmd_review,
+)
+from gongwen.cli.review_cmds import (
+    cmd_full_review,
+    cmd_bold_first,
+    _count_fmt_changes,
+    cmd_fix_common,
+    cmd_handoff,
+)
+from gongwen.cli.style_helpers import (
+    _validate_changes_schema,
+    _extract_content_rules,
+    _infer_paragraph_roles,
+    _build_style_deviation_hint,
+    _compute_style_scores,
+    _merge_style_mapped,
+    _validate_style,
+    _load_style_prompt,
+    _VALID_STYLES,
+)
+from gongwen.cli.update_cmds import (
+    cmd_check_update,
+    _latest_tag_from_remote,
+)
+from gongwen.cli.font_cmds import (
+    GONGWEN_FONTS,
+    cmd_font,
+    _get_fonts_dir,
+    _download_font,
+    _ensure_font_file,
+    _get_windows_fonts_dir,
+    _is_font_installed,
+    _install_font_file,
+)
+from gongwen.cli.helpers import (
+    TYPE_KEYWORDS as _TYPE_KEYWORDS,
+    REPO_MIRRORS,
+    PYPI_API,
+    detect_doc_type as _detect_doc_type,
+    extract_dominant_style as _extract_dominant_style,
+    build_output_name as _build_output_name,
+    parse_config_overrides as _parse_config_overrides,
+    load_rules_with_overrides as _load_rules_with_overrides,
+    parse_version as _parse_version,
+    safe_backup_input,
+    safe_write_output,
+    verify_output_fresh,
+    latest_version_from_pypi as _latest_version_from_pypi,
+)
 __version__ = "1.12.68"
 # 版本号应与 gongwen/__init__.py 保持一致，每次发版同步更新
 """
@@ -58,79 +119,18 @@ _logger = logging.getLogger(__name__)
 from gongwen._bootstrap import _ENGINE_DIR  # noqa: F401, E402
 
 # 阶梯2：从 cli.helpers 导入提取的辅助函数（逐步消除单文件膨胀）
-from gongwen.cli.helpers import (
-    TYPE_KEYWORDS as _TYPE_KEYWORDS,
-    REPO_MIRRORS,
-    PYPI_API,
-    detect_doc_type as _detect_doc_type,
-    extract_dominant_style as _extract_dominant_style,
-    build_output_name as _build_output_name,
-    parse_config_overrides as _parse_config_overrides,
-    load_rules_with_overrides as _load_rules_with_overrides,
-    parse_version as _parse_version,
-    safe_backup_input,
-    safe_write_output,
-    verify_output_fresh,
-    latest_version_from_pypi as _latest_version_from_pypi,
-)
 
 # 阶梯2：font 子命令迁移到 gongwen/cli/font_cmds.py
-from gongwen.cli.font_cmds import (
-    GONGWEN_FONTS,
-    cmd_font,
-    _get_fonts_dir,
-    _download_font,
-    _ensure_font_file,
-    _get_windows_fonts_dir,
-    _is_font_installed,
-    _install_font_file,
-)
 
 # 阶梯2：check-update 子命令迁移到 gongwen/cli/update_cmds.py
-from gongwen.cli.update_cmds import (
-    cmd_check_update,
-    _latest_tag_from_remote,
-)
 
 # 阶梯2：样式/内容辅助函数迁移到 gongwen/cli/style_helpers.py
-from gongwen.cli.style_helpers import (
-    _validate_changes_schema,
-    _extract_content_rules,
-    _infer_paragraph_roles,
-    _build_style_deviation_hint,
-    _compute_style_scores,
-    _merge_style_mapped,
-    _validate_style,
-    _load_style_prompt,
-    _VALID_STYLES,
-)
 
 # 阶梯2：review/fix/handoff 命令迁移到 gongwen/cli/review_cmds.py
-from gongwen.cli.review_cmds import (
-    cmd_full_review,
-    cmd_bold_first,
-    _count_fmt_changes,
-    cmd_fix_common,
-    cmd_handoff,
-)
 
 # 阶梯2：misc 命令迁移到 gongwen/cli/misc_cmds.py
-from gongwen.cli.misc_cmds import (
-    cmd_rule_export,
-    cmd_rule_list,
-    cmd_rule_import,
-    cmd_table_signs,
-    cmd_audit,
-    cmd_style_learn,
-    cmd_style_list,
-    cmd_review,
-)
 
 # 阶梯2：optimize-content 命令迁移到 gongwen/cli/content_cmds.py
-from gongwen.cli.content_cmds import (
-    cmd_optimize_content,
-    _SimplePara,
-)
 
 # ---------------------------------------------------------------------------
 #  以下辅助函数已迁移到 gongwen/cli/helpers.py（阶梯2 拆分）
@@ -139,6 +139,7 @@ from gongwen.cli.content_cmds import (
 # ---------------------------------------------------------------------------
 #  子命令实现
 # ---------------------------------------------------------------------------
+
 
 def cmd_list_types(args):
     """列出所有支持的公文类型。"""

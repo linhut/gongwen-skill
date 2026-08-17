@@ -1016,6 +1016,7 @@ except ImportError:
         _MD_CODE_BLOCK_RE, _MD_INLINE_CODE_RE,
     )
 
+
 def set_paragraph_format_attr(model: DocumentModel, para_index: int,
                               attr: str, value: Any) -> None:
     """设置指定段落格式属性。"""

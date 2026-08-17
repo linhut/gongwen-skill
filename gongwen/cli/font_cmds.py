@@ -17,6 +17,7 @@ GONGWEN_FONTS = {
     "楷体_GB2312": "楷体_GB2312.TTF",
 }
 
+
 def _get_fonts_dir() -> Path:
     """定位项目内 assets/fonts/ 目录。"""
     return Path(__file__).resolve().parent.parent / "assets" / "fonts"
@@ -79,7 +80,7 @@ def _is_font_installed(font_name: str) -> bool:
             for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
                 try:
                     key = winreg.OpenKey(hive,
-                                        r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts")
+                                         r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts")
                 except OSError:
                     continue
                 for i in range(512):
@@ -253,6 +254,3 @@ def cmd_font(args):
 
     print(f"未知的 font action: {action}")
     return 1
-
-
-

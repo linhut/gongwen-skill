@@ -10,7 +10,6 @@ env/
 .gongwen-skill/
 
 # 测试与临时产物
-tests/
 *_optimized.docx
 *_formatted.docx
 *_template.docx

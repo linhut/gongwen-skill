@@ -12,6 +12,7 @@ from pathlib import Path
 
 _logger = logging.getLogger(__name__)
 
+
 def cmd_rule_export(args):
     """导出某类型的合并规则为 YAML。"""
     from core.rules.manager import load_rules_merged
@@ -263,6 +264,3 @@ def cmd_review(args):
         print(f"  流转路径: 撰稿人→业务审核→文字校对→综合核稿→领导签发")
     else:
         print(f"  流转路径: 撰稿人→业务+文字复合审核→综合负责人终审")
-
-
-

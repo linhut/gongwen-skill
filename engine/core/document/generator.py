@@ -30,7 +30,8 @@ from engine.utils.logger import logger
 
 # Table/page-number helpers 已迁移到 _generator_helpers.py（阶梯2 拆分）
 try:
-    from engine.core.document._generator_helpers import _add_table, _add_page_number_field, _smart_align_cell, _update_table_content
+    from engine.core.document._generator_helpers import (
+        _add_table, _add_page_number_field, _smart_align_cell, _update_table_content)
 except ImportError:
     from ._generator_helpers import _add_table, _add_page_number_field, _smart_align_cell, _update_table_content
 

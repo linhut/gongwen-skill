@@ -21,6 +21,7 @@ from gongwen.cli.helpers import (
 
 _logger = logging.getLogger(__name__)
 
+
 def _latest_tag_from_remote(remote_url: str, timeout: int = 15) -> tuple[bool, str]:
     """从单个远程仓库查询最新 tag。
 
@@ -155,6 +156,3 @@ def cmd_check_update(args):
 
     print(f"⏱️  自检耗时 {time.time() - t0:.1f}s")
     return 0
-
-
-

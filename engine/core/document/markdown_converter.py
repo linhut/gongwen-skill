@@ -445,6 +445,3 @@ def _apply_heading_format(para, text: str, font: str, size: int,
             r.format.font_name = font
             r.format.font_size_pt = float(size)
             r.format.bold = bold if bold else None
-
-
-

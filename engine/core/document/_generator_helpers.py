@@ -18,6 +18,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
 def _smart_align_cell(cell_text: str, is_header: bool, col_idx: int, total_cols: int) -> str:
     """智能判断单元格对齐方式。
 
@@ -291,6 +292,3 @@ def _add_page_number_field(para, para_model: Paragraph) -> None:
             fldChar_end.set(qn('w:fldCharType'), 'end')
             fld_end.append(fldChar_end)
             para._element.append(fld_end)
-
-
-

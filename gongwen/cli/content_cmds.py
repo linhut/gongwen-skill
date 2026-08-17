@@ -5,23 +5,6 @@ gongwen.cli.content_cmds -- content optimization command.
 Extracted from _legacy.py (tier-2 split).
 """
 from __future__ import annotations
-import sys
-import json
-import logging
-from pathlib import Path
-
-_logger = logging.getLogger(__name__)
-
-# 从 helpers 导入共享辅助函数
-from gongwen.cli.helpers import (
-    detect_doc_type as _detect_doc_type,
-    build_output_name as _build_output_name,
-    extract_dominant_style as _extract_dominant_style,
-    echo_progress as _echo_progress_simple,
-    safe_write_output,
-)
-
-# 从 style_helpers 导入样式辅助函数
 from gongwen.cli.style_helpers import (
     _validate_changes_schema,
     _extract_content_rules,
@@ -31,6 +14,23 @@ from gongwen.cli.style_helpers import (
     _validate_style,
     _load_style_prompt,
 )
+from gongwen.cli.helpers import (
+    detect_doc_type as _detect_doc_type,
+    build_output_name as _build_output_name,
+    extract_dominant_style as _extract_dominant_style,
+    echo_progress as _echo_progress_simple,
+    safe_write_output,
+)
+import sys
+import json
+import logging
+from pathlib import Path
+
+_logger = logging.getLogger(__name__)
+
+# 从 helpers 导入共享辅助函数
+
+# 从 style_helpers 导入样式辅助函数
 
 
 def _echo_progress(args, step: int, total: int, label: str, detail: str = "") -> None:
@@ -826,6 +826,3 @@ def cmd_optimize_content(args):
     )
     print(f"差异对比文档已生成: {out_name}")
     print(f"  共 {len(changes)} 处变更")
-
-
-
