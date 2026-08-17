@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.12.65 (2026-08-17)
+
+### Changed — 阶梯2：_legacy.py 大规模拆分
+- **`_legacy.py` 从 3096 行 → 1702 行（-45%）**，拆分到 6 个子模块：
+  - `gongwen/cli/helpers.py`（198行）：辅助函数（detect_doc_type/build_output_name/parse_config_overrides 等）
+  - `gongwen/cli/font_cmds.py`（254行）：font 子命令 + 字体安装/检查/下载
+  - `gongwen/cli/update_cmds.py`（150行）：check-update 子命令
+  - `gongwen/cli/style_helpers.py`（406行）：样式辅助函数（_validate_changes_schema/_infer_paragraph_roles 等）
+  - `gongwen/cli/review_cmds.py`（269行）：full-review/bold-first/fix-common/handoff 命令
+  - `gongwen/cli/misc_cmds.py`（262行）：rule-export/rule-list/rule-import/table-signs/audit/style-learn/style-list/review 命令
+- `gongwen/cli/__init__.py` 修复循环导入（lazy import）
+- `_legacy.py` 通过 re-import 保持 100% 向后兼容
+
 ## v1.12.64 (2026-08-17)
 
 ### Added
