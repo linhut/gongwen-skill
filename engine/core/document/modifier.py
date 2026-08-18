@@ -271,149 +271,6 @@ def remove_extra_spaces(model: DocumentModel) -> None:
             run.text = t
 
 
-def remove_extra_blank_lines(model: DocumentModel, mode: str = 'delete_single',
-                             protected_roles: set | None = None) -> None:
-    """处理空行（支持三种模式）。
-
-    Args:
-        model: 文档模型
-        mode: 空行处理模式
-            - 'keep_all': 不改动任何空行
-            - 'delete_single': 删除单个空行，多个空行保留至1个
-            - 'keep_single': 保留单个空行，多个空行保留至1个
-        protected_roles: 受保护角色集合，这些角色前的空行不被删除。
-                         由 YAML 规则中的 value.protected_roles 传入。
-                         默认为空（不保护任何角色）。
-    """
-    protected = protected_roles or set()
-
-    def _has_protected_role_after(paragraphs: list, start_idx: int) -> bool:
-        """检查从 start_idx 开始的后续非空段落是否包含受保护角色。"""
-        for j in range(start_idx + 1, min(start_idx + 4, len(paragraphs))):
-            p = paragraphs[j]
-            if p.text.strip() and p.role in protected:
-                return True
-            if p.text.strip() and p.role not in protected:
-                return False
-        return False
-
-    if mode == 'keep_all':
-        return
-
-    if mode == 'keep_single':
-        to_remove: set[int] = set()
-        blank_count = 0
-        for i, para in enumerate(model.paragraphs):
-            if not para.text.strip():
-                blank_count += 1
-                if blank_count > 1:
-                    if protected and _has_protected_role_after(model.paragraphs, i):
-                        blank_count = 1
-                        continue
-                    to_remove.add(i)
-            else:
-                blank_count = 0
-
-        # P2-8 修复：用列表重建代替循环 pop（pop(idx) 是 O(N)，循环总复杂度 O(N²)）
-        model.paragraphs = [p for i, p in enumerate(model.paragraphs) if i not in to_remove]
-    else:
-        to_remove: set[int] = set()
-        for i, para in enumerate(model.paragraphs):
-            if not para.text.strip() and i > 0:
-                prev = model.paragraphs[i - 1]
-                if not prev.text.strip():
-                    if protected and _has_protected_role_after(model.paragraphs, i):
-                        continue
-                    to_remove.add(i)
-
-        # P2-8 修复：列表重建代替 pop 循环
-        model.paragraphs = [p for i, p in enumerate(model.paragraphs) if i not in to_remove]
-
-    for i, p in enumerate(model.paragraphs):
-        p.index = i
-
-
-def _insert_blank_lines(model: DocumentModel, rules: dict | None = None) -> int:
-    """根据 blank_line_rules 配置主动插入必要空行（改动9，省筹委会规范）。
-
-    与 remove_extra_blank_lines（删除多余空行）互补——此函数在空行清理之后执行，
-    按规范补齐缺失的空行：
-      - doc_title_before: 公文大标题前空 N 行
-      - doc_title_after:  公文大标题后空 N 行
-      - body_to_signature: 正文末尾与落款前空 N 行
-      - attachment_gap:    附件标题与正文间空 N 行
-
-    Args:
-        model: 文档模型（原地修改）
-        rules: 合并后的规则字典（含 blank_line_rules 配置）
-
-    Returns:
-        插入的空行段落数
-    """
-    if not rules:
-        return 0
-    bl = (rules.get('blank_line_rules') or {}) if isinstance(rules, dict) else {}
-    if not bl:
-        return 0
-    inserted = 0
-
-    def _blank_para() -> Paragraph:
-        return Paragraph(index=0, text="", role="body", runs=[], format=ParagraphFormat())
-
-    # 1. 公文大标题前/后空行
-    title_indices = [i for i, p in enumerate(model.paragraphs)
-                     if p.is_heading and p.heading_level == 0]
-    if title_indices:
-        before = int(bl.get('doc_title_before', 0) or 0)
-        after = int(bl.get('doc_title_after', 0) or 0)
-        first = title_indices[0]
-        # 标题前：往前找首个非空段落，在其后插入空行（避免文档开头堆空行）
-        if before > 0:
-            anchor = -1
-            for j in range(first - 1, -1, -1):
-                if model.paragraphs[j].text.strip():
-                    anchor = j
-                    break
-            if anchor >= 0:
-                for _ in range(before):
-                    model.paragraphs.insert(anchor + 1, _blank_para())
-                    inserted += 1
-                    anchor += 1
-        # 标题后：在标题段后插入空行
-        if after > 0:
-            for _ in range(after):
-                model.paragraphs.insert(first + 1, _blank_para())
-                inserted += 1
-                first += 1
-
-    # 2. 正文末尾与落款前空 N 行（body_to_signature）
-    sig_gap = int(bl.get('body_to_signature', 0) or 0)
-    if sig_gap > 0:
-        sig_idx = next((i for i, p in enumerate(model.paragraphs)
-                        if p.role in ('signature', 'date') and p.text.strip()), None)
-        if sig_idx is not None:
-            for _ in range(sig_gap):
-                model.paragraphs.insert(sig_idx, _blank_para())
-                inserted += 1
-
-    # 3. 附件标题与正文间空 N 行（attachment_gap）
-    att_gap = int(bl.get('attachment_gap', 0) or 0)
-    if att_gap > 0:
-        att_idx = next((i for i, p in enumerate(model.paragraphs)
-                        if p.role == 'attachment' and p.text.strip()), None)
-        if att_idx is not None:
-            for _ in range(att_gap):
-                model.paragraphs.insert(att_idx + 1, _blank_para())
-                inserted += 1
-                att_idx += 1
-
-    if inserted:
-        for i, p in enumerate(model.paragraphs):
-            p.index = i
-        logger.info(f"_insert_blank_lines: inserted {inserted} blank line(s)")
-    return inserted
-
-
 # 空行处理模式常量
 BLANK_LINE_MODE_KEEP_ALL = 'keep_all'
 BLANK_LINE_MODE_DELETE_SINGLE = 'delete_single'
@@ -539,193 +396,6 @@ def should_bold_first_sentence(text: str | None, role: str | None = None) -> boo
     return PARAGRAPH_TYPE_RULES.get(para_type, True)
 
 
-# 编号拆分模式（P6：一是/二是/三是、一要/二要、第X，、（X）等）
-_NUMBERED_SPLIT_RE = re.compile(
-    r'((?:一是|二是|三是|四是|五是|六是|七是|八是|九是|'
-    r'一要|二要|三要|四要|五要|'
-    r'第[一二三四五六七八九十百]+\s*[、，,]|'
-    r'[（(]\s*\d+\s*[）)]))'
-)
-
-
-def split_numbered_paragraphs(model: DocumentModel) -> int:
-    """将同一段内合并的多条编号内容拆分为独立段落（P6）。
-
-    例如"一是坚持政治引领。二是聚焦主责主业。三是强化队伍建设。"
-    拆分为3个独立段落，拆分后的段落继承原段落的格式与 role。
-
-    Returns:
-        拆分后新增的段落数（原段改写为第一段，不计入新增）
-    """
-    rebuilt: list[Paragraph] = []
-    changes = 0
-    for para in model.paragraphs:
-        text = para.text or ""
-        if not text.strip():
-            rebuilt.append(para)
-            continue
-
-        # 收集所有编号起始位置（跳过段首位置：段首是第一个编号时不拆分）
-        starts = [m.start() for m in _NUMBERED_SPLIT_RE.finditer(text)]
-        if len(starts) <= 1:
-            rebuilt.append(para)
-            continue
-
-        # 段边界：从第二个编号起拆分，最后一段到文本末尾
-        bounds = [0] + starts[1:] + [len(text)]
-        seg_count = len(bounds) - 1
-
-        # 按字符偏移把原 runs 分配到各 segment（保留各自格式）
-        seg_runs: list[list[Run]] = [[] for _ in range(seg_count)]
-        pos = 0
-        for r in para.runs:
-            run_start, run_end = pos, pos + len(r.text)
-            pos = run_end
-            for i in range(seg_count):
-                bs, be = bounds[i], bounds[i + 1]
-                a, b = max(run_start, bs), min(run_end, be)
-                if b > a:
-                    part = r.text[a - run_start: b - run_start]
-                    if part:
-                        seg_runs[i].append(Run(
-                            index=len(seg_runs[i]),
-                            text=part,
-                            format=copy.deepcopy(r.format),
-                        ))
-
-        # 合并文本与 runs，过滤空段
-        merged = [
-            (text[bs:be].strip(), seg_runs[i])
-            for i, (bs, be) in enumerate(zip(bounds, bounds[1:]))
-            if text[bs:be].strip() or seg_runs[i]
-        ]
-        if len(merged) <= 1:
-            rebuilt.append(para)
-            continue
-
-        # P2 配合：编号正文（一是/二是/三是）是正文而非标题——
-        # 解析器可能因领句加粗（楷体+加粗）将其误判为 heading_level=2，
-        # 拆分时统一重置标题标记，否则 bold_first_sentence_of_body 会跳过它们
-        is_numbered_body = detect_paragraph_type(para.text, para.role) == PARAGRAPH_TYPE_NUMBERED_BODY
-        if is_numbered_body:
-            para.is_heading = False
-            para.heading_level = None
-
-        # 第一段：复用原段落对象（保留原格式与 role）
-        first_text, first_runs = merged[0]
-        para.text = first_text
-        para.runs = first_runs
-        rebuilt.append(para)
-        for seg_text, runs in merged[1:]:
-            rebuilt.append(Paragraph(
-                index=0,
-                text=seg_text,
-                style_name=para.style_name,
-                is_heading=False if is_numbered_body else para.is_heading,
-                heading_level=None if is_numbered_body else para.heading_level,
-                role=para.role,
-                runs=runs,
-                format=copy.deepcopy(para.format),
-                page_break=False,
-            ))
-            changes += 1
-
-    # 统一重排段落与 run 索引
-    for i, p in enumerate(rebuilt):
-        p.index = i
-        for j, r in enumerate(p.runs):
-            r.index = j
-    model.paragraphs = rebuilt
-    if changes:
-        logger.info(f"split_numbered_paragraphs: {changes} new paragraph(s) created")
-    return changes
-
-
-def fix_bold_range(model: DocumentModel, doc_type: str | None = None) -> int:
-    """
-    正文段落加粗范围修复：
-    1. 有冒号/句号边界 → 仅首句加粗，后续取消
-    2. 无边界但整段加粗 → 全部取消加粗
-
-    B-01（方案二）：文种感知——讲话稿/主持词（speech）正文整段加粗是规范，
-    跳过修复，避免 FIX-C031 破坏朗读件格式。
-    """
-    changes = 0
-    # B-01：整段加粗为规范要求的文种（讲话稿/主持词）
-    _SPEECH_SKIP_TYPES = {'speech'}
-    if doc_type and str(doc_type).lower() in _SPEECH_SKIP_TYPES:
-        return 0
-    # B-10（方案九）：移除 _EXCLUDE_ROLES 分支，完全统一到 should_bold_first_sentence
-    # 单层判断——PARAGRAPH_TYPE_RULES 已显式注册 signature/date/title/annotation 为 False，
-    # 不再需要第二层角色过滤，消除两层逻辑不一致的维护成本
-    _CLAUSE_RE = FIRST_SENTENCE_DELIMITERS
-
-    for para in model.paragraphs:
-        if para.is_heading and para.heading_level is not None and para.heading_level <= 2:
-            continue
-        # B-06（方案五）：移除 30 字阈值（及 P2-13 的 4 字阈值）——
-        # 所有整段加粗段落均执行修复，短段落（如编号拆分后的"二是聚焦主责主业。"）不再遗漏
-        if not para.text.strip():
-            continue
-        if not para.runs or not all(r.format.bold for r in para.runs if r.text.strip()):
-            continue
-
-        # P2: 段落类型感知——称呼/导语/过渡等段落类型不应加粗，整段取消加粗
-        if not should_bold_first_sentence(para.text, para.role):
-            for run in para.runs:
-                run.format.bold = False
-            changes += 1
-            continue
-
-        full_text = para.text
-        m = _CLAUSE_RE.search(full_text)
-
-        if not m:
-            # 无边界 → 整段取消加粗
-            for run in para.runs:
-                run.format.bold = False
-            changes += 1
-            continue
-
-        # 有边界 → 首句保持加粗，后续取消
-        split_pos = m.end()
-        char_count = 0
-        # 先收集需要分裂的 run 位置和文本，再统一修改
-        # 避免在迭代 runs 列表过程中插入新元素
-        insertions: list[tuple[int, str, str]] = []  # [(run_index, first_part, second_part)]
-        for run_idx, run in enumerate(para.runs):
-            run_end = char_count + len(run.text)
-            if run_end <= split_pos:
-                pass  # 首句内，保持加粗
-            elif char_count >= split_pos:
-                run.format.bold = False
-            else:
-                split_in_run = split_pos - char_count
-                first_part = run.text[:split_in_run]
-                second_part = run.text[split_in_run:]
-                insertions.append((run_idx, first_part, second_part))
-            char_count = run_end
-
-        # 按索引倒序执行分裂操作，避免索引偏移
-        for run_idx, first_part, second_part in reversed(insertions):
-            para.runs[run_idx].text = first_part
-            from engine.core.document.models import Run as _Run, RunFormat as _RF
-            new_run = _Run(
-                index=run_idx + 1,
-                text=second_part,
-                format=_RF(
-                    font_name=para.runs[run_idx].format.font_name,
-                    font_size_pt=para.runs[run_idx].format.font_size_pt,
-                    bold=False,
-                ),
-            )
-            para.runs.insert(run_idx + 1, new_run)
-
-        changes += 1
-
-    return changes
-
-
 # ---------------------------------------------------------------------------
 #  标点规范化（参考 GB/T 15834 标点符号用法）
 # ---------------------------------------------------------------------------
@@ -751,159 +421,6 @@ _PUNCT_SPACE_RE = re.compile(r'([，。；：！？）】])\s{2,}')
 
 # 中文标点前多余空格（逗号/句号前不应有空格）
 _PUNCT_BEFORE_SPACE_RE = re.compile(r'\s+([，。；：！？])')
-
-
-def normalize_punctuation(model: DocumentModel) -> int:
-    """
-    标点规范化：半角→全角，清理标点前后多余空格。
-    对每个 run 单独处理，保持 run 级格式不丢失。
-    返回总修改次数。
-    """
-    total_changes = 0
-    for para in model.paragraphs:
-        for run in para.runs:
-            if not run.text:
-                continue
-            original = run.text
-            text = run.text
-
-            # 1. 半角标点→全角（逐字符处理，避免破坏英文/URL）
-            result = []
-            for i, ch in enumerate(text):
-                if ch in _PUNCT_MAP:
-                    # 判断上下文：如果前后都是 ASCII 字母数字，则不转换（保护英文环境）
-                    prev_ch = text[i-1] if i > 0 else ''
-                    next_ch = text[i+1] if i < len(text)-1 else ''
-                    # 括号始终转换（中文文档中半角括号几乎总是错误的）
-                    if ch in '()[]':
-                        result.append(_PUNCT_MAP[ch])
-                    # 逗号/冒号/分号等：如果不在纯英文环境中则转换
-                    elif prev_ch.isascii() and next_ch.isascii() and prev_ch.strip() and next_ch.strip():
-                        result.append(ch)  # 保留半角（可能是英文环境）
-                    else:
-                        result.append(_PUNCT_MAP[ch])
-                else:
-                    result.append(ch)
-            text = ''.join(result)
-
-            # 2. 句号：仅中文字符后转换
-            text = _PERIOD_RE.sub(r'\1。', text)
-
-            # 3. 清理中文标点后多余空格
-            text = _PUNCT_SPACE_RE.sub(r'\1', text)
-
-            # 4. 清理中文标点前多余空格
-            text = _PUNCT_BEFORE_SPACE_RE.sub(r'\1', text)
-
-            if text != original:
-                changes = sum(1 for a, b in zip(original, text) if a != b)
-                total_changes += changes
-                run.text = text
-
-    return total_changes
-
-
-def normalize_heading_content(model: DocumentModel) -> int:
-    """
-    标题编号统一化：
-    - 一级标题：1、→ 一、（阿拉伯数字转中文）
-    - 二级标题：(一)→（一）（半角括号转全角）
-    - 三级标题：1．→ 1.（全角句号转半角）
-    - 四级标题：(1)→（1）（半角括号转全角）
-    返回修改次数。
-
-    I8 修复：保留多 run 标题格式——只更新首个 run 的编号前缀，
-    不再清空后续 run（避免加粗/字体等格式丢失）。
-    """
-    def _apply_heading_text(para, new_text: str) -> None:
-        """仅更新首 run 前缀，保留后续 run 文本与格式。"""
-        para.text = new_text
-        if not para.runs:
-            return
-        rest_text = ''.join(r.text or '' for r in para.runs[1:])
-        # P2-14 修复：前缀长度做边界保护——endswith 命中时前缀必须 >0 且不超过新文本长度，
-        # 避免负切片/越界导致的标题文本分配偏移
-        prefix_len = len(new_text) - len(rest_text)
-        if rest_text and new_text.endswith(rest_text) and 0 < prefix_len <= len(new_text):
-            # 首 run 只放新前缀 + 其余部分保持在后缀 run
-            para.runs[0].text = new_text[:prefix_len]
-        else:
-            para.runs[0].text = new_text
-            for r in para.runs[1:]:
-                r.text = ""
-        # 注意：不清空后续 run 的格式，只更新文本
-
-    changes = 0
-    for para in model.paragraphs:
-        if not para.text.strip():
-            continue
-        text = para.text.strip()
-
-        # 一级标题：1、xxx → 一、xxx
-        m = re.match(r'^(\d+)[、，](.+)', text)
-        # P1-2 修复：仅明确的一级标题（heading_level==1）执行编号转换，
-        # 移除 heading_level is None 条件——未识别为标题的正文段落不应被误转编号
-        if m and para.is_heading and para.heading_level == 1:
-            num = int(m.group(1))
-            cn = _arabic_to_chinese(num)
-            if cn:
-                new_text = f'{cn}、{m.group(2)}'
-                if new_text != text:
-                    _apply_heading_text(para, new_text)
-                    changes += 1
-                continue
-
-        # 改动8：罗马数字一级标题 I. xxx → 一、xxx（附件/法规/技术方案序号体系）
-        m = re.match(r'^([IVXLCDM]+)\.\s+(.+)', text)
-        if m and para.is_heading and para.heading_level == 1:
-            num = _roman_to_int(m.group(1))
-            cn = _arabic_to_chinese(num)
-            if cn:
-                new_text = f'{cn}、{m.group(2)}'
-                if new_text != text:
-                    _apply_heading_text(para, new_text)
-                    changes += 1
-                continue
-
-        # 改动8：英文字母二级标题 A. xxx → （一）xxx（英文序号体系二级）
-        m = re.match(r'^([A-Z])\.\s+(.+)', text)
-        if m and para.is_heading and para.heading_level == 2:
-            letter_ord = ord(m.group(1)) - ord('A') + 1
-            cn = _arabic_to_chinese(letter_ord)
-            if cn:
-                new_text = f'（{cn}）{m.group(2)}'
-                if new_text != text:
-                    _apply_heading_text(para, new_text)
-                    changes += 1
-                continue
-
-        # 二级标题：(一)xxx → （一）xxx
-        m = re.match(r'^\(([一二三四五六七八九十]+)\)(.+)', text)
-        if m:
-            new_text = f'（{m.group(1)}）{m.group(2)}'
-            if new_text != text:
-                _apply_heading_text(para, new_text)
-                changes += 1
-            continue
-
-        # 三级标题：1．xxx → 1.xxx（全角句号→半角）
-        m = re.match(r'^(\d+)[．。](.+)', text)
-        if m:
-            new_text = f'{m.group(1)}.{m.group(2)}'
-            if new_text != text:
-                _apply_heading_text(para, new_text)
-                changes += 1
-            continue
-
-        # 四级标题：(1)xxx → （1）xxx
-        m = re.match(r'^\((\d+)\)(.+)', text)
-        if m:
-            new_text = f'（{m.group(1)}）{m.group(2)}'
-            if new_text != text:
-                _apply_heading_text(para, new_text)
-                changes += 1
-
-    return changes
 
 
 # 改动8：罗马数字→整数转换（省筹委会规范：附件/法规/技术方案用罗马数字序号）
@@ -1090,6 +607,488 @@ def _extract_para_index(location: str) -> int | None:
         return None
 
 
+
+_NUMBERED_SPLIT_RE = re.compile(
+    r'((?:一是|二是|三是|四是|五是|六是|七是|八是|九是|'
+    r'一要|二要|三要|四要|五要|'
+    r'第[一二三四五六七八九十百]+\s*[、，,]|'
+    r'[（(]\s*\d+\s*[）)]))'
+)
+
+def remove_extra_blank_lines(model: DocumentModel, mode: str = 'delete_single',
+                             protected_roles: set | None = None) -> None:
+    """处理空行（支持三种模式）。
+
+    Args:
+        model: 文档模型
+        mode: 空行处理模式
+            - 'keep_all': 不改动任何空行
+            - 'delete_single': 删除单个空行，多个空行保留至1个
+            - 'keep_single': 保留单个空行，多个空行保留至1个
+        protected_roles: 受保护角色集合，这些角色前的空行不被删除。
+                         由 YAML 规则中的 value.protected_roles 传入。
+                         默认为空（不保护任何角色）。
+    """
+    protected = protected_roles or set()
+
+    def _has_protected_role_after(paragraphs: list, start_idx: int) -> bool:
+        """检查从 start_idx 开始的后续非空段落是否包含受保护角色。"""
+        for j in range(start_idx + 1, min(start_idx + 4, len(paragraphs))):
+            p = paragraphs[j]
+            if p.text.strip() and p.role in protected:
+                return True
+            if p.text.strip() and p.role not in protected:
+                return False
+        return False
+
+    if mode == 'keep_all':
+        return
+
+    if mode == 'keep_single':
+        to_remove: set[int] = set()
+        blank_count = 0
+        for i, para in enumerate(model.paragraphs):
+            if not para.text.strip():
+                blank_count += 1
+                if blank_count > 1:
+                    if protected and _has_protected_role_after(model.paragraphs, i):
+                        blank_count = 1
+                        continue
+                    to_remove.add(i)
+            else:
+                blank_count = 0
+
+        # P2-8 修复：用列表重建代替循环 pop（pop(idx) 是 O(N)，循环总复杂度 O(N²)）
+        model.paragraphs = [p for i, p in enumerate(model.paragraphs) if i not in to_remove]
+    else:
+        to_remove: set[int] = set()
+        for i, para in enumerate(model.paragraphs):
+            if not para.text.strip() and i > 0:
+                prev = model.paragraphs[i - 1]
+                if not prev.text.strip():
+                    if protected and _has_protected_role_after(model.paragraphs, i):
+                        continue
+                    to_remove.add(i)
+
+        # P2-8 修复：列表重建代替 pop 循环
+        model.paragraphs = [p for i, p in enumerate(model.paragraphs) if i not in to_remove]
+
+    for i, p in enumerate(model.paragraphs):
+        p.index = i
+
+
+def _insert_blank_lines(model: DocumentModel, rules: dict | None = None) -> int:
+    """根据 blank_line_rules 配置主动插入必要空行（改动9，省筹委会规范）。
+
+    与 remove_extra_blank_lines（删除多余空行）互补——此函数在空行清理之后执行，
+    按规范补齐缺失的空行：
+      - doc_title_before: 公文大标题前空 N 行
+      - doc_title_after:  公文大标题后空 N 行
+      - body_to_signature: 正文末尾与落款前空 N 行
+      - attachment_gap:    附件标题与正文间空 N 行
+
+    Args:
+        model: 文档模型（原地修改）
+        rules: 合并后的规则字典（含 blank_line_rules 配置）
+
+    Returns:
+        插入的空行段落数
+    """
+    if not rules:
+        return 0
+    bl = (rules.get('blank_line_rules') or {}) if isinstance(rules, dict) else {}
+    if not bl:
+        return 0
+    inserted = 0
+
+    def _blank_para() -> Paragraph:
+        return Paragraph(index=0, text="", role="body", runs=[], format=ParagraphFormat())
+
+    # 1. 公文大标题前/后空行
+    title_indices = [i for i, p in enumerate(model.paragraphs)
+                     if p.is_heading and p.heading_level == 0]
+    if title_indices:
+        before = int(bl.get('doc_title_before', 0) or 0)
+        after = int(bl.get('doc_title_after', 0) or 0)
+        first = title_indices[0]
+        # 标题前：往前找首个非空段落，在其后插入空行（避免文档开头堆空行）
+        if before > 0:
+            anchor = -1
+            for j in range(first - 1, -1, -1):
+                if model.paragraphs[j].text.strip():
+                    anchor = j
+                    break
+            if anchor >= 0:
+                for _ in range(before):
+                    model.paragraphs.insert(anchor + 1, _blank_para())
+                    inserted += 1
+                    anchor += 1
+        # 标题后：在标题段后插入空行
+        if after > 0:
+            for _ in range(after):
+                model.paragraphs.insert(first + 1, _blank_para())
+                inserted += 1
+                first += 1
+
+    # 2. 正文末尾与落款前空 N 行（body_to_signature）
+    sig_gap = int(bl.get('body_to_signature', 0) or 0)
+    if sig_gap > 0:
+        sig_idx = next((i for i, p in enumerate(model.paragraphs)
+                        if p.role in ('signature', 'date') and p.text.strip()), None)
+        if sig_idx is not None:
+            for _ in range(sig_gap):
+                model.paragraphs.insert(sig_idx, _blank_para())
+                inserted += 1
+
+    # 3. 附件标题与正文间空 N 行（attachment_gap）
+    att_gap = int(bl.get('attachment_gap', 0) or 0)
+    if att_gap > 0:
+        att_idx = next((i for i, p in enumerate(model.paragraphs)
+                        if p.role == 'attachment' and p.text.strip()), None)
+        if att_idx is not None:
+            for _ in range(att_gap):
+                model.paragraphs.insert(att_idx + 1, _blank_para())
+                inserted += 1
+                att_idx += 1
+
+    if inserted:
+        for i, p in enumerate(model.paragraphs):
+            p.index = i
+        logger.info(f"_insert_blank_lines: inserted {inserted} blank line(s)")
+    return inserted
+
+
+def split_numbered_paragraphs(model: DocumentModel) -> int:
+    """将同一段内合并的多条编号内容拆分为独立段落（P6）。
+
+    例如"一是坚持政治引领。二是聚焦主责主业。三是强化队伍建设。"
+    拆分为3个独立段落，拆分后的段落继承原段落的格式与 role。
+
+    Returns:
+        拆分后新增的段落数（原段改写为第一段，不计入新增）
+    """
+    rebuilt: list[Paragraph] = []
+    changes = 0
+    for para in model.paragraphs:
+        text = para.text or ""
+        if not text.strip():
+            rebuilt.append(para)
+            continue
+
+        # 收集所有编号起始位置（跳过段首位置：段首是第一个编号时不拆分）
+        starts = [m.start() for m in _NUMBERED_SPLIT_RE.finditer(text)]
+        if len(starts) <= 1:
+            rebuilt.append(para)
+            continue
+
+        # 段边界：从第二个编号起拆分，最后一段到文本末尾
+        bounds = [0] + starts[1:] + [len(text)]
+        seg_count = len(bounds) - 1
+
+        # 按字符偏移把原 runs 分配到各 segment（保留各自格式）
+        seg_runs: list[list[Run]] = [[] for _ in range(seg_count)]
+        pos = 0
+        for r in para.runs:
+            run_start, run_end = pos, pos + len(r.text)
+            pos = run_end
+            for i in range(seg_count):
+                bs, be = bounds[i], bounds[i + 1]
+                a, b = max(run_start, bs), min(run_end, be)
+                if b > a:
+                    part = r.text[a - run_start: b - run_start]
+                    if part:
+                        seg_runs[i].append(Run(
+                            index=len(seg_runs[i]),
+                            text=part,
+                            format=copy.deepcopy(r.format),
+                        ))
+
+        # 合并文本与 runs，过滤空段
+        merged = [
+            (text[bs:be].strip(), seg_runs[i])
+            for i, (bs, be) in enumerate(zip(bounds, bounds[1:]))
+            if text[bs:be].strip() or seg_runs[i]
+        ]
+        if len(merged) <= 1:
+            rebuilt.append(para)
+            continue
+
+        # P2 配合：编号正文（一是/二是/三是）是正文而非标题——
+        # 解析器可能因领句加粗（楷体+加粗）将其误判为 heading_level=2，
+        # 拆分时统一重置标题标记，否则 bold_first_sentence_of_body 会跳过它们
+        is_numbered_body = detect_paragraph_type(para.text, para.role) == PARAGRAPH_TYPE_NUMBERED_BODY
+        if is_numbered_body:
+            para.is_heading = False
+            para.heading_level = None
+
+        # 第一段：复用原段落对象（保留原格式与 role）
+        first_text, first_runs = merged[0]
+        para.text = first_text
+        para.runs = first_runs
+        rebuilt.append(para)
+        for seg_text, runs in merged[1:]:
+            rebuilt.append(Paragraph(
+                index=0,
+                text=seg_text,
+                style_name=para.style_name,
+                is_heading=False if is_numbered_body else para.is_heading,
+                heading_level=None if is_numbered_body else para.heading_level,
+                role=para.role,
+                runs=runs,
+                format=copy.deepcopy(para.format),
+                page_break=False,
+            ))
+            changes += 1
+
+    # 统一重排段落与 run 索引
+    for i, p in enumerate(rebuilt):
+        p.index = i
+        for j, r in enumerate(p.runs):
+            r.index = j
+    model.paragraphs = rebuilt
+    if changes:
+        logger.info(f"split_numbered_paragraphs: {changes} new paragraph(s) created")
+    return changes
+
+
+def fix_bold_range(model: DocumentModel, doc_type: str | None = None) -> int:
+    """
+    正文段落加粗范围修复：
+    1. 有冒号/句号边界 → 仅首句加粗，后续取消
+    2. 无边界但整段加粗 → 全部取消加粗
+
+    B-01（方案二）：文种感知——讲话稿/主持词（speech）正文整段加粗是规范，
+    跳过修复，避免 FIX-C031 破坏朗读件格式。
+    """
+    changes = 0
+    # B-01：整段加粗为规范要求的文种（讲话稿/主持词）
+    _SPEECH_SKIP_TYPES = {'speech'}
+    if doc_type and str(doc_type).lower() in _SPEECH_SKIP_TYPES:
+        return 0
+    # B-10（方案九）：移除 _EXCLUDE_ROLES 分支，完全统一到 should_bold_first_sentence
+    # 单层判断——PARAGRAPH_TYPE_RULES 已显式注册 signature/date/title/annotation 为 False，
+    # 不再需要第二层角色过滤，消除两层逻辑不一致的维护成本
+    _CLAUSE_RE = FIRST_SENTENCE_DELIMITERS
+
+    for para in model.paragraphs:
+        if para.is_heading and para.heading_level is not None and para.heading_level <= 2:
+            continue
+        # B-06（方案五）：移除 30 字阈值（及 P2-13 的 4 字阈值）——
+        # 所有整段加粗段落均执行修复，短段落（如编号拆分后的"二是聚焦主责主业。"）不再遗漏
+        if not para.text.strip():
+            continue
+        if not para.runs or not all(r.format.bold for r in para.runs if r.text.strip()):
+            continue
+
+        # P2: 段落类型感知——称呼/导语/过渡等段落类型不应加粗，整段取消加粗
+        if not should_bold_first_sentence(para.text, para.role):
+            for run in para.runs:
+                run.format.bold = False
+            changes += 1
+            continue
+
+        full_text = para.text
+        m = _CLAUSE_RE.search(full_text)
+
+        if not m:
+            # 无边界 → 整段取消加粗
+            for run in para.runs:
+                run.format.bold = False
+            changes += 1
+            continue
+
+        # 有边界 → 首句保持加粗，后续取消
+        split_pos = m.end()
+        char_count = 0
+        # 先收集需要分裂的 run 位置和文本，再统一修改
+        # 避免在迭代 runs 列表过程中插入新元素
+        insertions: list[tuple[int, str, str]] = []  # [(run_index, first_part, second_part)]
+        for run_idx, run in enumerate(para.runs):
+            run_end = char_count + len(run.text)
+            if run_end <= split_pos:
+                pass  # 首句内，保持加粗
+            elif char_count >= split_pos:
+                run.format.bold = False
+            else:
+                split_in_run = split_pos - char_count
+                first_part = run.text[:split_in_run]
+                second_part = run.text[split_in_run:]
+                insertions.append((run_idx, first_part, second_part))
+            char_count = run_end
+
+        # 按索引倒序执行分裂操作，避免索引偏移
+        for run_idx, first_part, second_part in reversed(insertions):
+            para.runs[run_idx].text = first_part
+            from engine.core.document.models import Run as _Run, RunFormat as _RF
+            new_run = _Run(
+                index=run_idx + 1,
+                text=second_part,
+                format=_RF(
+                    font_name=para.runs[run_idx].format.font_name,
+                    font_size_pt=para.runs[run_idx].format.font_size_pt,
+                    bold=False,
+                ),
+            )
+            para.runs.insert(run_idx + 1, new_run)
+
+        changes += 1
+
+    return changes
+
+
+def normalize_punctuation(model: DocumentModel) -> int:
+    """
+    标点规范化：半角→全角，清理标点前后多余空格。
+    对每个 run 单独处理，保持 run 级格式不丢失。
+    返回总修改次数。
+    """
+    total_changes = 0
+    for para in model.paragraphs:
+        for run in para.runs:
+            if not run.text:
+                continue
+            original = run.text
+            text = run.text
+
+            # 1. 半角标点→全角（逐字符处理，避免破坏英文/URL）
+            result = []
+            for i, ch in enumerate(text):
+                if ch in _PUNCT_MAP:
+                    # 判断上下文：如果前后都是 ASCII 字母数字，则不转换（保护英文环境）
+                    prev_ch = text[i-1] if i > 0 else ''
+                    next_ch = text[i+1] if i < len(text)-1 else ''
+                    # 括号始终转换（中文文档中半角括号几乎总是错误的）
+                    if ch in '()[]':
+                        result.append(_PUNCT_MAP[ch])
+                    # 逗号/冒号/分号等：如果不在纯英文环境中则转换
+                    elif prev_ch.isascii() and next_ch.isascii() and prev_ch.strip() and next_ch.strip():
+                        result.append(ch)  # 保留半角（可能是英文环境）
+                    else:
+                        result.append(_PUNCT_MAP[ch])
+                else:
+                    result.append(ch)
+            text = ''.join(result)
+
+            # 2. 句号：仅中文字符后转换
+            text = _PERIOD_RE.sub(r'\1。', text)
+
+            # 3. 清理中文标点后多余空格
+            text = _PUNCT_SPACE_RE.sub(r'\1', text)
+
+            # 4. 清理中文标点前多余空格
+            text = _PUNCT_BEFORE_SPACE_RE.sub(r'\1', text)
+
+            if text != original:
+                changes = sum(1 for a, b in zip(original, text) if a != b)
+                total_changes += changes
+                run.text = text
+
+    return total_changes
+
+
+def normalize_heading_content(model: DocumentModel) -> int:
+    """
+    标题编号统一化：
+    - 一级标题：1、→ 一、（阿拉伯数字转中文）
+    - 二级标题：(一)→（一）（半角括号转全角）
+    - 三级标题：1．→ 1.（全角句号转半角）
+    - 四级标题：(1)→（1）（半角括号转全角）
+    返回修改次数。
+
+    I8 修复：保留多 run 标题格式——只更新首个 run 的编号前缀，
+    不再清空后续 run（避免加粗/字体等格式丢失）。
+    """
+    def _apply_heading_text(para, new_text: str) -> None:
+        """仅更新首 run 前缀，保留后续 run 文本与格式。"""
+        para.text = new_text
+        if not para.runs:
+            return
+        rest_text = ''.join(r.text or '' for r in para.runs[1:])
+        # P2-14 修复：前缀长度做边界保护——endswith 命中时前缀必须 >0 且不超过新文本长度，
+        # 避免负切片/越界导致的标题文本分配偏移
+        prefix_len = len(new_text) - len(rest_text)
+        if rest_text and new_text.endswith(rest_text) and 0 < prefix_len <= len(new_text):
+            # 首 run 只放新前缀 + 其余部分保持在后缀 run
+            para.runs[0].text = new_text[:prefix_len]
+        else:
+            para.runs[0].text = new_text
+            for r in para.runs[1:]:
+                r.text = ""
+        # 注意：不清空后续 run 的格式，只更新文本
+
+    changes = 0
+    for para in model.paragraphs:
+        if not para.text.strip():
+            continue
+        text = para.text.strip()
+
+        # 一级标题：1、xxx → 一、xxx
+        m = re.match(r'^(\d+)[、，](.+)', text)
+        # P1-2 修复：仅明确的一级标题（heading_level==1）执行编号转换，
+        # 移除 heading_level is None 条件——未识别为标题的正文段落不应被误转编号
+        if m and para.is_heading and para.heading_level == 1:
+            num = int(m.group(1))
+            cn = _arabic_to_chinese(num)
+            if cn:
+                new_text = f'{cn}、{m.group(2)}'
+                if new_text != text:
+                    _apply_heading_text(para, new_text)
+                    changes += 1
+                continue
+
+        # 改动8：罗马数字一级标题 I. xxx → 一、xxx（附件/法规/技术方案序号体系）
+        m = re.match(r'^([IVXLCDM]+)\.\s+(.+)', text)
+        if m and para.is_heading and para.heading_level == 1:
+            num = _roman_to_int(m.group(1))
+            cn = _arabic_to_chinese(num)
+            if cn:
+                new_text = f'{cn}、{m.group(2)}'
+                if new_text != text:
+                    _apply_heading_text(para, new_text)
+                    changes += 1
+                continue
+
+        # 改动8：英文字母二级标题 A. xxx → （一）xxx（英文序号体系二级）
+        m = re.match(r'^([A-Z])\.\s+(.+)', text)
+        if m and para.is_heading and para.heading_level == 2:
+            letter_ord = ord(m.group(1)) - ord('A') + 1
+            cn = _arabic_to_chinese(letter_ord)
+            if cn:
+                new_text = f'（{cn}）{m.group(2)}'
+                if new_text != text:
+                    _apply_heading_text(para, new_text)
+                    changes += 1
+                continue
+
+        # 二级标题：(一)xxx → （一）xxx
+        m = re.match(r'^\(([一二三四五六七八九十]+)\)(.+)', text)
+        if m:
+            new_text = f'（{m.group(1)}）{m.group(2)}'
+            if new_text != text:
+                _apply_heading_text(para, new_text)
+                changes += 1
+            continue
+
+        # 三级标题：1．xxx → 1.xxx（全角句号→半角）
+        m = re.match(r'^(\d+)[．。](.+)', text)
+        if m:
+            new_text = f'{m.group(1)}.{m.group(2)}'
+            if new_text != text:
+                _apply_heading_text(para, new_text)
+                changes += 1
+            continue
+
+        # 四级标题：(1)xxx → （1）xxx
+        m = re.match(r'^\((\d+)\)(.+)', text)
+        if m:
+            new_text = f'（{m.group(1)}）{m.group(2)}'
+            if new_text != text:
+                _apply_heading_text(para, new_text)
+                changes += 1
+
+    return changes
+
+
 def bold_first_sentence_of_body(model: DocumentModel) -> int:
     """将正文段落的首句（遇 。！？：； 为界）加粗。
 
@@ -1100,6 +1099,7 @@ def bold_first_sentence_of_body(model: DocumentModel) -> int:
         修改的段落数
     """
     from copy import deepcopy
+
     changes = 0
     exclude_roles = {'signature', 'date', 'title', 'recipient', 'annotation'}
     for para in model.paragraphs:

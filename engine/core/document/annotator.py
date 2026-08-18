@@ -117,7 +117,13 @@ class GongwenAnnotator:
             out = Path(output_path) if output_path else src.with_stem(src.stem + "_批注版")
 
         if not suggestions:
-            if not is_fileobj:
+            if is_fileobj:
+                # 无批注但输入是内存对象（如 full-review 中间稿）：必须把内容落盘
+                out.parent.mkdir(parents=True, exist_ok=True)
+                src.seek(0)
+                with open(out, "wb") as f:
+                    f.write(src.read())
+            else:
                 shutil.copy2(str(src), str(out))
             return out
 

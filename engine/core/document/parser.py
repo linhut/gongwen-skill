@@ -51,6 +51,390 @@ _H2_WESTERN_PATTERN = re.compile(r'^[A-Z]\.\s+')
 _H4_WESTERN_PATTERN = re.compile(r'^[a-z]\.\s+')
 
 
+def _detect_heading_heuristic(
+    text: str, runs: list[Run], para_format: ParagraphFormat
+) -> tuple[bool, int | None]:
+    """
+    中文公文标题启发式检测（v2: 支持未排版文档）。
+
+    检测策略：
+    1. 格式信号：字体名称、字号、加粗、对齐（准确率高）
+    2. 内容信号：编号模式、文本长度、位置（无需格式信息）
+
+    两种信号独立工作，任一命中即可识别标题。
+    未排版文档主要依赖内容信号。
+
+    返回: (is_heading, heading_level)
+    """
+    text_stripped = text.strip() if text else ""
+    if not text_stripped or len(text_stripped) > 80:
+        return False, None  # 空文本或超长文本不作为标题
+
+    # 跳过 AI 声明段落（如"（内容由GongWen-skill-AI生成，仅供参考）"）
+    if text_stripped.startswith("（内容由") or text_stripped.startswith("(内容由"):
+        return False, None
+
+    # 获取主run的字体信息（取第一个非空run）
+    main_font = None
+    main_size = None
+    is_bold = False
+    for run in runs:
+        if run.text.strip():
+            main_font = (run.format.font_name or "").strip()
+            main_size = run.format.font_size_pt
+            is_bold = run.format.bold or False
+            break
+
+    font_lower = (main_font or "").lower()
+    alignment = para_format.alignment or "left"
+    has_font_signal = bool(main_font)  # 是否有有效字体信息
+
+    # =====================================================================
+    #  路径A：格式信号驱动（高置信度，已排版文档走这条路径）
+    # =====================================================================
+
+    # --- Level 0: 公文大标题 ---
+    if has_font_signal:
+        if "小标宋" in font_lower or main_font in ("方正小标宋简体",):
+            return True, 0
+        if main_size and main_size >= 20 and alignment == "center":
+            return True, 0
+
+    # --- Level 1: 一级标题（黑体）---
+    if has_font_signal and ("黑体" in font_lower or font_lower in ("simhei",)):
+        if alignment == "center" or is_bold or len(text_stripped) < 30:
+            return True, 1
+
+    # 格式信号："一、" + 加粗或黑体
+    if _H1_PATTERN.match(text_stripped) and len(text_stripped) < 50:
+        if is_bold or "黑体" in font_lower:
+            return True, 1
+    # 改动7：罗马数字序号 "I. II." → 一级标题（无条件，优先于英文字母 H2 判断——
+    # 否则 "I." 会被 [A-Z]. 模式误判为二级标题）
+    if _H1_WESTERN_PATTERN.match(text_stripped) and len(text_stripped) < 50:
+        return True, 1
+
+    # --- Level 2: 二级标题（楷体 + 加粗）---
+    if has_font_signal and ("楷体" in font_lower or font_lower in ("kaiti", "楷体_gb2312")) and is_bold:
+        return True, 2
+
+    # "（一）" 格式（无论字体如何，此模式足够唯一）
+    if _H2_PATTERN.match(text_stripped) and len(text_stripped) < 50:
+        return True, 2
+    # 改动7：英文大写序号 "A. B." 短文本 → 二级标题
+    if _H2_WESTERN_PATTERN.match(text_stripped) and len(text_stripped) < 50:
+        return True, 2
+
+    # --- Level 3: 三级标题（仿宋加粗 或 "1." + 加粗）---
+    if has_font_signal and ("仿宋" in font_lower or font_lower in ("fangsong", "仿宋_gb2312")) and is_bold:
+        if len(text_stripped) < 50:
+            return True, 3
+
+    if _H3_PATTERN.match(text_stripped) and is_bold and len(text_stripped) < 60:
+        return True, 3
+
+    # =====================================================================
+    #  路径B：内容信号驱动（未排版文档走这条路径）
+    #  当格式信号不足时，仅靠编号模式+文本长度判断
+    # =====================================================================
+
+    # B-0: 居中短文本 → 很可能是公文标题（即使无特殊字体）
+    if alignment == "center" and len(text_stripped) < 30 and not _H1_PATTERN.match(text_stripped):
+        return True, 0
+
+    # B-1: "一、" 开头 + 短文本 → 一级标题（无需加粗/黑体）
+    if _H1_PATTERN.match(text_stripped) and len(text_stripped) < 40:
+        return True, 1
+    # 改动7：罗马数字 "I." 开头 + 短文本 → 一级标题
+    if _H1_WESTERN_PATTERN.match(text_stripped) and len(text_stripped) < 40:
+        return True, 1
+
+    # B-3: "1." 开头 + 短文本 → 三级标题（无需加粗）
+    if _H3_PATTERN.match(text_stripped) and len(text_stripped) < 40:
+        return True, 3
+
+    # B-4: "（1）" 开头 + 短文本 → 四级标题
+    if _H4_PATTERN.match(text_stripped) and len(text_stripped) < 40:
+        return True, 4
+    # 改动7：英文小写序号 "a." 开头 + 短文本 → 四级标题
+    if _H4_WESTERN_PATTERN.match(text_stripped) and len(text_stripped) < 40:
+        return True, 4
+
+    return False, None
+
+
+def _post_detect_headings(paragraphs: list[Paragraph]) -> None:
+    """
+    后处理：位置/统计启发式标题检测。
+
+    解决未排版文档中标题检测不足的问题：
+    1. 若无 level=0 标题，将第一个短段落标记为标题
+    2. 统计段落平均长度，短于平均40%的编号段落标记为标题候选
+    """
+    non_empty = [p for p in paragraphs if p.text.strip()]
+    if len(non_empty) < 3:
+        return
+
+    # --- 补检公文标题 (level 0) ---
+    has_title = any(p.is_heading and p.heading_level == 0 for p in paragraphs)
+    if not has_title:
+        # 第一个非空段落：若短于30字符且无句末标点，视为标题
+        first = non_empty[0]
+        t = first.text.strip()
+        if len(t) < 30 and not t.endswith(('。', '；', '，', '！', '？', '.', ';', ',')):
+            first.is_heading = True
+            first.heading_level = 0
+            logger.info(f"[后处理] 将首段识别为公文标题: {t[:30]!r}")
+
+    # --- 统计辅助：基于段落长度的标题候选 ---
+    lengths = [len(p.text.strip()) for p in non_empty if len(p.text.strip()) > 0]
+    if not lengths:
+        return
+    avg_len = sum(lengths) / len(lengths)
+
+    # 已检测到的标题数
+    detected_count = sum(1 for p in paragraphs if p.is_heading)
+
+    # 若标题数过少（< 2个），尝试用长度+编号模式补充检测
+    if detected_count < 2 and avg_len > 20:
+        for p in paragraphs:
+            if p.is_heading or not p.text.strip():
+                continue
+            t = p.text.strip()
+            # 短于平均长度40% + 匹配编号模式 → 标题候选
+            if len(t) < avg_len * 0.4:
+                if _H1_PATTERN.match(t) and len(t) < 40:
+                    p.is_heading = True
+                    p.heading_level = 1
+                    logger.info(f"[后处理] 统计+模式补充检测一级标题: {t[:30]!r}")
+                elif _H2_PATTERN.match(t) and len(t) < 40:
+                    p.is_heading = True
+                    p.heading_level = 2
+                    logger.info(f"[后处理] 统计+模式补充检测二级标题: {t[:30]!r}")
+                elif _H3_PATTERN.match(t) and len(t) < 40:
+                    p.is_heading = True
+                    p.heading_level = 3
+                    logger.info(f"[后处理] 统计+模式补充检测三级标题: {t[:30]!r}")
+
+    # --- 清除误标：标题后连续格式信号段落 ---
+    # 修复场景：署名（"林彰良"）和日期（"（2026年7月30日）"）与标题同字体字号，
+    # 被 _detect_heading_heuristic 误标为 heading_level=0。
+    # 规则：若某段落 is_heading=True 且 heading_level=0，但无编号内容信号
+    # （即非"一、""（一）""1."等模式），且前一段也是同级别标题，则降级为正文。
+    # P2-15 修复：降级增加保护——仅当该段是短文本（≤30字，疑似署名/日期）才降级，
+    # 避免误伤两个相邻的合法标题（如"一、…""二、…"或标题+副标题）
+    for i in range(1, len(paragraphs)):
+        p = paragraphs[i]
+        if not (p.is_heading and p.heading_level == 0):
+            continue
+        t = p.text.strip()
+        if not t or len(t) > 30:
+            continue
+        # 有内容信号的标题（"关于...的通知"等模式）跳过
+        if '关于' in t or '通知' in t or '请示' in t or '报告' in t or '函' in t:
+            continue
+        if _H1_PATTERN.match(t) or _H2_PATTERN.match(t) or _H3_PATTERN.match(t):
+            continue
+        prev = paragraphs[i - 1]
+        if prev.is_heading and prev.heading_level == 0:
+            # 前一段是同级标题，当前段为短文本且无标题内容信号 → 署名/日期，降级
+            p.is_heading = False
+            p.heading_level = None
+            logger.info(f"[后处理] 连续标题降级（署名/日期）: {t[:30]!r}")
+
+
+def _assign_paragraph_roles(paragraphs: list[Paragraph]) -> None:
+    """
+    后处理：为每个段落标注 role（角色）。
+    role 值: title / recipient / body / signature / date / attachment / cc / notes
+    """
+    non_empty = [(i, p) for i, p in enumerate(paragraphs) if p.text.strip()]
+    if not non_empty:
+        return
+
+    # 第一段非空段落 = 标题
+    first_idx, first_para = non_empty[0]
+    if first_para.is_heading and first_para.heading_level == 0:
+        first_para.role = 'title'
+    elif not first_para.is_heading and len(first_para.text.strip()) < 30:
+        first_para.role = 'title'
+
+    # 标题后的署名/日期（会议主持词模式：标题→署名→日期）
+    # 当文档以"标题→短文本（姓名）→短文本（日期）"开头时，
+    # 第二段为署名（speaker/author），第三段为日期。
+    signature_idx = -1
+    if first_para.role == 'title' and len(non_empty) >= 2:
+        second_idx, second_para = non_empty[1]
+        st = second_para.text.strip()
+        # 第二段是署名的条件：非recipient（不以冒号结尾）、短文本、不含标题信号
+        if not second_para.role and len(st) < 20 and not st.endswith(('：', ':')):
+            if not (second_para.is_heading and second_para.heading_level is not None):
+                second_para.role = 'signature'
+                signature_idx = second_idx
+        if len(non_empty) >= 3 and signature_idx >= 0:
+            third_idx, third_para = non_empty[2]
+            thd = third_para.text.strip()
+            # 第三段是日期的条件：匹配日期格式，且前一段已被标为署名
+            if not third_para.role and (_DATE_RE.match(thd) or _DATE_ALT_RE.match(thd)):
+                third_para.role = 'date'
+
+    # 最后几段：日期、落款、抄送、印发
+    for i in range(len(non_empty) - 1, max(len(non_empty) - 6, 0), -1):
+        idx, para = non_empty[i]
+        text = para.text.strip()
+
+        # 跳过修改说明汇总条目（含【修改】关键词）
+        if '【修改' in text:
+            continue
+
+        # 日期
+        if _DATE_RE.match(text) or _DATE_ALT_RE.match(text):
+            para.role = 'date'
+            continue
+
+        # 抄送
+        if _CC_RE.match(text):
+            para.role = 'cc'
+            continue
+
+        # 印发
+        if _PRINT_RE.match(text):
+            para.role = 'cc'
+            continue
+
+    # 落款：日期前的短文本（< 20 字，或含机关关键词）
+    date_indices = [i for i, p in non_empty if p.role == 'date']
+    if date_indices:
+        date_idx = date_indices[-1]
+        for i in range(len(non_empty)):
+            idx, para = non_empty[i]
+            if idx == date_idx - 1:
+                text = para.text.strip()
+                is_sig = False
+                if len(text) < 20:
+                    is_sig = True
+                elif any(kw in text for kw in ['人民政府', '委员会', '办公厅', '办公室', '管理局', '局', '部']):
+                    if len(text) < 40:
+                        is_sig = True
+                if is_sig:
+                    para.role = 'signature'
+                    # P4 修复：居中署名段（如"陈龙"）可能被 B-0 启发式误判为标题，
+                    # 落款区识别后清除标题标记，避免 optimize 套用标题格式破坏署名段
+                    if para.is_heading:
+                        para.is_heading = False
+                        para.heading_level = None
+
+    # 主送机关：标题后第一段，以冒号结尾
+    if len(non_empty) >= 2:
+        second_idx, second_para = non_empty[1]
+        if not second_para.role:
+            text = second_para.text.strip()
+            if text.endswith(('：', ':')) and len(text) < 50:
+                second_para.role = 'recipient'
+            elif any(kw in text for kw in _RECIPIENT_KEYWORDS) and text.endswith(('：', ':')):
+                second_para.role = 'recipient'
+
+    # 附件
+    for idx, para in non_empty:
+        if not para.role and _ATTACHMENT_RE.match(para.text.strip()):
+            para.role = 'attachment'
+
+    # 其余非空段落默认为 body
+    for idx, para in non_empty:
+        if not para.role:
+            para.role = 'body'
+
+
+def _apply_style_fallback(para, runs: list[Run], para_format: ParagraphFormat) -> None:
+    """
+    当 run 没有直接格式时，从段落样式读取默认值。
+    确保预览时 font_size_pt / font_name 等字段不会是 None。
+    """
+    try:
+        style = para.style
+        if style is None:
+            return
+
+        # 读取样式的字体大小
+        style_font_size = None
+        try:
+            if style.font and style.font.size:
+                style_font_size = round(style.font.size.pt, 1)
+        except Exception as e:
+            logger.warning(f"样式字号读取失败: {e}")
+
+        # 读取样式的字体名称
+        style_font_name = None
+        try:
+            if style.font and style.font.name:
+                style_font_name = style.font.name
+        except Exception as e:
+            logger.warning(f"样式字体读取失败: {e}")
+
+        # 读取样式的行距
+        style_line_spacing = None
+        try:
+            if style.paragraph_format and style.paragraph_format.line_spacing:
+                from docx.shared import Length
+                sp = style.paragraph_format.line_spacing
+                # P2-12 修复：优先用 Length 类型直接取 pt，避免魔数判断（>100/>3）
+                if isinstance(sp, Length):
+                    style_line_spacing = round(sp.pt, 2)
+                elif isinstance(sp, (int, float)) and sp > 100:
+                    # 很可能是 EMU 值
+                    style_line_spacing = round(Length(int(sp), 0).pt, 2)
+                elif isinstance(sp, (int, float)) and sp > 3:
+                    # 大于 3 视为固定 pt 值
+                    style_line_spacing = round(float(sp), 2)
+                else:
+                    # 小于等于 3 视为倍数（如 1.5 倍行距），按正文 16pt 换算
+                    style_line_spacing = round(float(sp) * 16, 2)
+        except Exception as e:
+            logger.warning(f"样式行距读取失败: {e}")
+
+        # 读取样式的对齐
+        style_alignment = None
+        try:
+            if style.paragraph_format and style.paragraph_format.alignment is not None:
+                from docx.enum.text import WD_ALIGN_PARAGRAPH
+                _map = {
+                    WD_ALIGN_PARAGRAPH.LEFT: "left",
+                    WD_ALIGN_PARAGRAPH.CENTER: "center",
+                    WD_ALIGN_PARAGRAPH.RIGHT: "right",
+                    WD_ALIGN_PARAGRAPH.JUSTIFY: "justify",
+                }
+                style_alignment = _map.get(style.paragraph_format.alignment)
+        except Exception as e:
+            logger.warning(f"样式对齐读取失败: {e}")
+
+        # 读取样式的首行缩进
+        style_indent = None
+        try:
+            if style.paragraph_format and style.paragraph_format.first_line_indent:
+                from docx.shared import Length as L
+                style_indent = round(L(style.paragraph_format.first_line_indent, 0).pt, 1)
+        except Exception as e:
+            logger.warning(f"样式首行缩进读取失败: {e}")
+
+        # 应用 fallback：run 没有直接格式时用样式值
+        for run in runs:
+            if run.format.font_size_pt is None and style_font_size:
+                run.format.font_size_pt = style_font_size
+            if not run.format.font_name and style_font_name:
+                run.format.font_name = style_font_name
+
+        # 段落级格式 fallback
+        if para_format.line_spacing_pt is None and style_line_spacing:
+            para_format.line_spacing_pt = style_line_spacing
+        if para_format.alignment is None and style_alignment:
+            para_format.alignment = style_alignment
+        if para_format.first_line_indent_pt is None and style_indent:
+            para_format.first_line_indent_pt = style_indent
+
+    except Exception as e:
+        logger.warning(f"样式回退应用失败: {e}")
+
+
 def parse_docx(file_path: Path | str) -> DocumentModel:
     """
     Parse a .docx file into a DocumentModel.
@@ -152,6 +536,7 @@ def parse_docx(file_path: Path | str) -> DocumentModel:
             logger.debug("AI module not available — skipping AI structure analysis (standalone mode)")
         else:
             from engine.core.document.ai_structure_analyzer import should_use_ai_analysis, classify_with_ai
+
             if should_use_ai_analysis(model):
                 logger.info("Heading detection insufficient, attempting AI structure analysis...")
                 if classify_with_ai(model):
@@ -372,198 +757,6 @@ def _parse_paragraph(para, index: int) -> Paragraph:
     )
 
 
-def _detect_heading_heuristic(
-    text: str, runs: list[Run], para_format: ParagraphFormat
-) -> tuple[bool, int | None]:
-    """
-    中文公文标题启发式检测（v2: 支持未排版文档）。
-
-    检测策略：
-    1. 格式信号：字体名称、字号、加粗、对齐（准确率高）
-    2. 内容信号：编号模式、文本长度、位置（无需格式信息）
-
-    两种信号独立工作，任一命中即可识别标题。
-    未排版文档主要依赖内容信号。
-
-    返回: (is_heading, heading_level)
-    """
-    text_stripped = text.strip() if text else ""
-    if not text_stripped or len(text_stripped) > 80:
-        return False, None  # 空文本或超长文本不作为标题
-
-    # 跳过 AI 声明段落（如"（内容由GongWen-skill-AI生成，仅供参考）"）
-    if text_stripped.startswith("（内容由") or text_stripped.startswith("(内容由"):
-        return False, None
-
-    # 获取主run的字体信息（取第一个非空run）
-    main_font = None
-    main_size = None
-    is_bold = False
-    for run in runs:
-        if run.text.strip():
-            main_font = (run.format.font_name or "").strip()
-            main_size = run.format.font_size_pt
-            is_bold = run.format.bold or False
-            break
-
-    font_lower = (main_font or "").lower()
-    alignment = para_format.alignment or "left"
-    has_font_signal = bool(main_font)  # 是否有有效字体信息
-
-    # =====================================================================
-    #  路径A：格式信号驱动（高置信度，已排版文档走这条路径）
-    # =====================================================================
-
-    # --- Level 0: 公文大标题 ---
-    if has_font_signal:
-        if "小标宋" in font_lower or main_font in ("方正小标宋简体",):
-            return True, 0
-        if main_size and main_size >= 20 and alignment == "center":
-            return True, 0
-
-    # --- Level 1: 一级标题（黑体）---
-    if has_font_signal and ("黑体" in font_lower or font_lower in ("simhei",)):
-        if alignment == "center" or is_bold or len(text_stripped) < 30:
-            return True, 1
-
-    # 格式信号："一、" + 加粗或黑体
-    if _H1_PATTERN.match(text_stripped) and len(text_stripped) < 50:
-        if is_bold or "黑体" in font_lower:
-            return True, 1
-    # 改动7：罗马数字序号 "I. II." → 一级标题（无条件，优先于英文字母 H2 判断——
-    # 否则 "I." 会被 [A-Z]. 模式误判为二级标题）
-    if _H1_WESTERN_PATTERN.match(text_stripped) and len(text_stripped) < 50:
-        return True, 1
-
-    # --- Level 2: 二级标题（楷体 + 加粗）---
-    if has_font_signal and ("楷体" in font_lower or font_lower in ("kaiti", "楷体_gb2312")) and is_bold:
-        return True, 2
-
-    # "（一）" 格式（无论字体如何，此模式足够唯一）
-    if _H2_PATTERN.match(text_stripped) and len(text_stripped) < 50:
-        return True, 2
-    # 改动7：英文大写序号 "A. B." 短文本 → 二级标题
-    if _H2_WESTERN_PATTERN.match(text_stripped) and len(text_stripped) < 50:
-        return True, 2
-
-    # --- Level 3: 三级标题（仿宋加粗 或 "1." + 加粗）---
-    if has_font_signal and ("仿宋" in font_lower or font_lower in ("fangsong", "仿宋_gb2312")) and is_bold:
-        if len(text_stripped) < 50:
-            return True, 3
-
-    if _H3_PATTERN.match(text_stripped) and is_bold and len(text_stripped) < 60:
-        return True, 3
-
-    # =====================================================================
-    #  路径B：内容信号驱动（未排版文档走这条路径）
-    #  当格式信号不足时，仅靠编号模式+文本长度判断
-    # =====================================================================
-
-    # B-0: 居中短文本 → 很可能是公文标题（即使无特殊字体）
-    if alignment == "center" and len(text_stripped) < 30 and not _H1_PATTERN.match(text_stripped):
-        return True, 0
-
-    # B-1: "一、" 开头 + 短文本 → 一级标题（无需加粗/黑体）
-    if _H1_PATTERN.match(text_stripped) and len(text_stripped) < 40:
-        return True, 1
-    # 改动7：罗马数字 "I." 开头 + 短文本 → 一级标题
-    if _H1_WESTERN_PATTERN.match(text_stripped) and len(text_stripped) < 40:
-        return True, 1
-
-    # B-3: "1." 开头 + 短文本 → 三级标题（无需加粗）
-    if _H3_PATTERN.match(text_stripped) and len(text_stripped) < 40:
-        return True, 3
-
-    # B-4: "（1）" 开头 + 短文本 → 四级标题
-    if _H4_PATTERN.match(text_stripped) and len(text_stripped) < 40:
-        return True, 4
-    # 改动7：英文小写序号 "a." 开头 + 短文本 → 四级标题
-    if _H4_WESTERN_PATTERN.match(text_stripped) and len(text_stripped) < 40:
-        return True, 4
-
-    return False, None
-
-
-def _post_detect_headings(paragraphs: list[Paragraph]) -> None:
-    """
-    后处理：位置/统计启发式标题检测。
-
-    解决未排版文档中标题检测不足的问题：
-    1. 若无 level=0 标题，将第一个短段落标记为标题
-    2. 统计段落平均长度，短于平均40%的编号段落标记为标题候选
-    """
-    non_empty = [p for p in paragraphs if p.text.strip()]
-    if len(non_empty) < 3:
-        return
-
-    # --- 补检公文标题 (level 0) ---
-    has_title = any(p.is_heading and p.heading_level == 0 for p in paragraphs)
-    if not has_title:
-        # 第一个非空段落：若短于30字符且无句末标点，视为标题
-        first = non_empty[0]
-        t = first.text.strip()
-        if len(t) < 30 and not t.endswith(('。', '；', '，', '！', '？', '.', ';', ',')):
-            first.is_heading = True
-            first.heading_level = 0
-            logger.info(f"[后处理] 将首段识别为公文标题: {t[:30]!r}")
-
-    # --- 统计辅助：基于段落长度的标题候选 ---
-    lengths = [len(p.text.strip()) for p in non_empty if len(p.text.strip()) > 0]
-    if not lengths:
-        return
-    avg_len = sum(lengths) / len(lengths)
-
-    # 已检测到的标题数
-    detected_count = sum(1 for p in paragraphs if p.is_heading)
-
-    # 若标题数过少（< 2个），尝试用长度+编号模式补充检测
-    if detected_count < 2 and avg_len > 20:
-        for p in paragraphs:
-            if p.is_heading or not p.text.strip():
-                continue
-            t = p.text.strip()
-            # 短于平均长度40% + 匹配编号模式 → 标题候选
-            if len(t) < avg_len * 0.4:
-                if _H1_PATTERN.match(t) and len(t) < 40:
-                    p.is_heading = True
-                    p.heading_level = 1
-                    logger.info(f"[后处理] 统计+模式补充检测一级标题: {t[:30]!r}")
-                elif _H2_PATTERN.match(t) and len(t) < 40:
-                    p.is_heading = True
-                    p.heading_level = 2
-                    logger.info(f"[后处理] 统计+模式补充检测二级标题: {t[:30]!r}")
-                elif _H3_PATTERN.match(t) and len(t) < 40:
-                    p.is_heading = True
-                    p.heading_level = 3
-                    logger.info(f"[后处理] 统计+模式补充检测三级标题: {t[:30]!r}")
-
-    # --- 清除误标：标题后连续格式信号段落 ---
-    # 修复场景：署名（"林彰良"）和日期（"（2026年7月30日）"）与标题同字体字号，
-    # 被 _detect_heading_heuristic 误标为 heading_level=0。
-    # 规则：若某段落 is_heading=True 且 heading_level=0，但无编号内容信号
-    # （即非"一、""（一）""1."等模式），且前一段也是同级别标题，则降级为正文。
-    # P2-15 修复：降级增加保护——仅当该段是短文本（≤30字，疑似署名/日期）才降级，
-    # 避免误伤两个相邻的合法标题（如"一、…""二、…"或标题+副标题）
-    for i in range(1, len(paragraphs)):
-        p = paragraphs[i]
-        if not (p.is_heading and p.heading_level == 0):
-            continue
-        t = p.text.strip()
-        if not t or len(t) > 30:
-            continue
-        # 有内容信号的标题（"关于...的通知"等模式）跳过
-        if '关于' in t or '通知' in t or '请示' in t or '报告' in t or '函' in t:
-            continue
-        if _H1_PATTERN.match(t) or _H2_PATTERN.match(t) or _H3_PATTERN.match(t):
-            continue
-        prev = paragraphs[i - 1]
-        if prev.is_heading and prev.heading_level == 0:
-            # 前一段是同级标题，当前段为短文本且无标题内容信号 → 署名/日期，降级
-            p.is_heading = False
-            p.heading_level = None
-            logger.info(f"[后处理] 连续标题降级（署名/日期）: {t[:30]!r}")
-
-
 # ---------------------------------------------------------------------------
 #  Paragraph Role Assignment (段落角色标注)
 # ---------------------------------------------------------------------------
@@ -588,201 +781,9 @@ _CC_RE = re.compile(r'^抄送[：:]')
 _PRINT_RE = re.compile(r'^印发机关|^印发日期')
 
 
-def _assign_paragraph_roles(paragraphs: list[Paragraph]) -> None:
-    """
-    后处理：为每个段落标注 role（角色）。
-    role 值: title / recipient / body / signature / date / attachment / cc / notes
-    """
-    non_empty = [(i, p) for i, p in enumerate(paragraphs) if p.text.strip()]
-    if not non_empty:
-        return
-
-    # 第一段非空段落 = 标题
-    first_idx, first_para = non_empty[0]
-    if first_para.is_heading and first_para.heading_level == 0:
-        first_para.role = 'title'
-    elif not first_para.is_heading and len(first_para.text.strip()) < 30:
-        first_para.role = 'title'
-
-    # 标题后的署名/日期（会议主持词模式：标题→署名→日期）
-    # 当文档以"标题→短文本（姓名）→短文本（日期）"开头时，
-    # 第二段为署名（speaker/author），第三段为日期。
-    signature_idx = -1
-    if first_para.role == 'title' and len(non_empty) >= 2:
-        second_idx, second_para = non_empty[1]
-        st = second_para.text.strip()
-        # 第二段是署名的条件：非recipient（不以冒号结尾）、短文本、不含标题信号
-        if not second_para.role and len(st) < 20 and not st.endswith(('：', ':')):
-            if not (second_para.is_heading and second_para.heading_level is not None):
-                second_para.role = 'signature'
-                signature_idx = second_idx
-        if len(non_empty) >= 3 and signature_idx >= 0:
-            third_idx, third_para = non_empty[2]
-            thd = third_para.text.strip()
-            # 第三段是日期的条件：匹配日期格式，且前一段已被标为署名
-            if not third_para.role and (_DATE_RE.match(thd) or _DATE_ALT_RE.match(thd)):
-                third_para.role = 'date'
-
-    # 最后几段：日期、落款、抄送、印发
-    for i in range(len(non_empty) - 1, max(len(non_empty) - 6, 0), -1):
-        idx, para = non_empty[i]
-        text = para.text.strip()
-
-        # 跳过修改说明汇总条目（含【修改】关键词）
-        if '【修改' in text:
-            continue
-
-        # 日期
-        if _DATE_RE.match(text) or _DATE_ALT_RE.match(text):
-            para.role = 'date'
-            continue
-
-        # 抄送
-        if _CC_RE.match(text):
-            para.role = 'cc'
-            continue
-
-        # 印发
-        if _PRINT_RE.match(text):
-            para.role = 'cc'
-            continue
-
-    # 落款：日期前的短文本（< 20 字，或含机关关键词）
-    date_indices = [i for i, p in non_empty if p.role == 'date']
-    if date_indices:
-        date_idx = date_indices[-1]
-        for i in range(len(non_empty)):
-            idx, para = non_empty[i]
-            if idx == date_idx - 1:
-                text = para.text.strip()
-                is_sig = False
-                if len(text) < 20:
-                    is_sig = True
-                elif any(kw in text for kw in ['人民政府', '委员会', '办公厅', '办公室', '管理局', '局', '部']):
-                    if len(text) < 40:
-                        is_sig = True
-                if is_sig:
-                    para.role = 'signature'
-                    # P4 修复：居中署名段（如"陈龙"）可能被 B-0 启发式误判为标题，
-                    # 落款区识别后清除标题标记，避免 optimize 套用标题格式破坏署名段
-                    if para.is_heading:
-                        para.is_heading = False
-                        para.heading_level = None
-
-    # 主送机关：标题后第一段，以冒号结尾
-    if len(non_empty) >= 2:
-        second_idx, second_para = non_empty[1]
-        if not second_para.role:
-            text = second_para.text.strip()
-            if text.endswith(('：', ':')) and len(text) < 50:
-                second_para.role = 'recipient'
-            elif any(kw in text for kw in _RECIPIENT_KEYWORDS) and text.endswith(('：', ':')):
-                second_para.role = 'recipient'
-
-    # 附件
-    for idx, para in non_empty:
-        if not para.role and _ATTACHMENT_RE.match(para.text.strip()):
-            para.role = 'attachment'
-
-    # 其余非空段落默认为 body
-    for idx, para in non_empty:
-        if not para.role:
-            para.role = 'body'
-
-
 # ---------------------------------------------------------------------------
 #  Paragraph Format
 # ---------------------------------------------------------------------------
-
-def _apply_style_fallback(para, runs: list[Run], para_format: ParagraphFormat) -> None:
-    """
-    当 run 没有直接格式时，从段落样式读取默认值。
-    确保预览时 font_size_pt / font_name 等字段不会是 None。
-    """
-    try:
-        style = para.style
-        if style is None:
-            return
-
-        # 读取样式的字体大小
-        style_font_size = None
-        try:
-            if style.font and style.font.size:
-                style_font_size = round(style.font.size.pt, 1)
-        except Exception as e:
-            logger.warning(f"样式字号读取失败: {e}")
-
-        # 读取样式的字体名称
-        style_font_name = None
-        try:
-            if style.font and style.font.name:
-                style_font_name = style.font.name
-        except Exception as e:
-            logger.warning(f"样式字体读取失败: {e}")
-
-        # 读取样式的行距
-        style_line_spacing = None
-        try:
-            if style.paragraph_format and style.paragraph_format.line_spacing:
-                from docx.shared import Length
-                sp = style.paragraph_format.line_spacing
-                # P2-12 修复：优先用 Length 类型直接取 pt，避免魔数判断（>100/>3）
-                if isinstance(sp, Length):
-                    style_line_spacing = round(sp.pt, 2)
-                elif isinstance(sp, (int, float)) and sp > 100:
-                    # 很可能是 EMU 值
-                    style_line_spacing = round(Length(int(sp), 0).pt, 2)
-                elif isinstance(sp, (int, float)) and sp > 3:
-                    # 大于 3 视为固定 pt 值
-                    style_line_spacing = round(float(sp), 2)
-                else:
-                    # 小于等于 3 视为倍数（如 1.5 倍行距），按正文 16pt 换算
-                    style_line_spacing = round(float(sp) * 16, 2)
-        except Exception as e:
-            logger.warning(f"样式行距读取失败: {e}")
-
-        # 读取样式的对齐
-        style_alignment = None
-        try:
-            if style.paragraph_format and style.paragraph_format.alignment is not None:
-                from docx.enum.text import WD_ALIGN_PARAGRAPH
-                _map = {
-                    WD_ALIGN_PARAGRAPH.LEFT: "left",
-                    WD_ALIGN_PARAGRAPH.CENTER: "center",
-                    WD_ALIGN_PARAGRAPH.RIGHT: "right",
-                    WD_ALIGN_PARAGRAPH.JUSTIFY: "justify",
-                }
-                style_alignment = _map.get(style.paragraph_format.alignment)
-        except Exception as e:
-            logger.warning(f"样式对齐读取失败: {e}")
-
-        # 读取样式的首行缩进
-        style_indent = None
-        try:
-            if style.paragraph_format and style.paragraph_format.first_line_indent:
-                from docx.shared import Length as L
-                style_indent = round(L(style.paragraph_format.first_line_indent, 0).pt, 1)
-        except Exception as e:
-            logger.warning(f"样式首行缩进读取失败: {e}")
-
-        # 应用 fallback：run 没有直接格式时用样式值
-        for run in runs:
-            if run.format.font_size_pt is None and style_font_size:
-                run.format.font_size_pt = style_font_size
-            if not run.format.font_name and style_font_name:
-                run.format.font_name = style_font_name
-
-        # 段落级格式 fallback
-        if para_format.line_spacing_pt is None and style_line_spacing:
-            para_format.line_spacing_pt = style_line_spacing
-        if para_format.alignment is None and style_alignment:
-            para_format.alignment = style_alignment
-        if para_format.first_line_indent_pt is None and style_indent:
-            para_format.first_line_indent_pt = style_indent
-
-    except Exception as e:
-        logger.warning(f"样式回退应用失败: {e}")
-
 
 # 已迁移至 parser_format.py
 

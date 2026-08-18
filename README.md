@@ -53,6 +53,66 @@ Licensed under the MIT License. See the LICENSE file for details.
 
 > 在 AI 对话中调用 gongwen-skill，输入自然语言指令，自动生成符合 GB/T 9704 国标格式的正式公文。
 
+### 🤖 调用环境的适配指引（AI Agent 必读）
+
+本工具针对不同能力层级的 AI 调用环境，提供不同的使用方式。**AI 读取本文件后，请先判断自身环境属于哪一类，再按对应指引执行：**
+
+| 环境类型 | 典型平台 | 能力 | 使用方式 |
+|:---------|:---------|:-----|:---------|
+| **① 可执行代码的 Agent** | WorkBuddy、CloudCode、Claude Code、AtomCode、DeepSeek Harness | 可运行命令、读写本地文件 | 直接执行 `python -m gongwen <命令>`，见下方「快速开始」与「通过 Agent 调用」 |
+| **② 纯对话 LLM（无代码执行能力）** | 豆包、Kimi、ChatGPT 网页版等 | 只能阅读文本、给出建议，**不能运行命令或读写文件** | 引导用户手动执行，见下方「纯对话 LLM 使用指引」 |
+
+#### 纯对话 LLM 使用指引（环境 ②）
+
+> **如果你是无法执行代码的纯对话 AI**（如豆包、Kimi、ChatGPT 网页版等），请按以下方式协助用户：
+
+1. **告知工具性质**：向用户说明「这是一个本地运行的 Python 命令行工具，需要在你自己的电脑上安装后使用」，并说明它能做什么（格式检查、自动修复、内容优化、模板生成等 25 项能力）。
+2. **引导安装**：请用户在自己的电脑上执行以下步骤：
+   ```bash
+   # 步骤 1：克隆仓库
+   git clone https://github.com/linhut/gongwen-skill.git
+   cd gongwen-skill
+
+   # 步骤 2：安装依赖（需要 Python 3.10+）
+   pip install -r requirements.txt
+   # 或直接安装 PyPI 包：
+   # pip install gongwen-skill
+   ```
+3. **按需给出具体命令**：根据用户的实际需求，给出对应的命令让用户自行执行：
+
+   | 用户需求 | 建议用户执行 |
+   |:---------|:-------------|
+   | 检查公文格式 | `python -m gongwen check 公文.docx -t notice --json` |
+   | 自动修复格式 | `python -m gongwen optimize 公文.docx -o 成品.docx -t notice --apply` |
+   | 生成标准模板 | `python -m gongwen template notice -o 通知模板.docx` |
+   | Markdown 转公文 | `python -m gongwen md2docx 草稿.md -o 正式公文.docx -t report` |
+   | 内容润色（修订+批注） | `python -m gongwen optimize-content 原文.docx --changes 修订内容.json --apply --mode tracked` |
+   | 注入版头/版记/页码 | `python -m gongwen header/footer/pagenum 公文.docx ...` |
+   | 安装标准字体 | `python -m gongwen font install` |
+
+4. **解释输出**：用户执行后，把命令输出结果（问题清单、修复报告、生成文件等）发给你时，你能继续帮助解读、判断下一步操作。
+5. **注意事项**：你**不能**代替用户执行任何命令，也**不能**读取用户本地的文件内容——所有文件操作都必须由用户在你的指引下完成。
+
+#### 文字性资源库（纯对话 LLM 可读的知识源）
+
+项目内置以下文字性资源，纯对话 AI 可以直接读取，用作**公文写作指导的知识库**：
+
+| 资源 | 位置 | 内容 | 行数 |
+|:-----|:-----|:------|:----:|
+| **公文语言风格提示词库** | `prompts/style-prompts.md` | 6 套风格（庄重严谨/平实简洁/宏观概括/请示商洽/法规条文/讲话稿），每套含用词规范、句式和语气指导 | 205 |
+| **使用指引与决策速查** | `prompts/usage-prompts.md` | 最小可用指引、决策速查、每种公文类型的用法模板、常见问题解答 | 381 |
+| **公文类型规则库** | `rules/official/*.yaml`（25 个文件） | 每种公文类型的格式规范 + 内容层定义（如"请示应以'妥否，请批示'结尾""通知应以'特此通知'结尾"） | 25 文件 |
+| **通用格式标准** | `rules/official/_common.yaml` | GB/T 9704 国标全文参数：字体/字号/行距/页边距等 | 836 |
+| **技能完整指令** | `SKILL.md` | 路径路由、执行标准、质量评审、禁令清单、审稿机制 | 2854 |
+
+**使用方式**：纯对话 AI 在回答用户关于公文写作的问题时，可直接引用上述资源中的内容，例如：
+- 用户问"通知怎么写" → 引用 `rules/official/notice.yaml` 的结语规范和 `style-prompts.md` 的庄重严谨风格
+- 用户问"请示和报告的区别" → 引用 `request.yaml` 和 `report.yaml` 的规则说明
+- 用户问"公文用什么字体" → 引用 `_common.yaml` 中的 GB/T 9704 标准
+- 用户需要润色文字 → 引用 `style-prompts.md` 中对应的风格提示词
+
+> 这些资源均以纯文本格式存储，纯对话 AI 可直接读取解读，无需执行任何代码即可提供专业的公文写作指导。
+
 ## 🚀 快速开始
 
 ```bash
@@ -243,6 +303,8 @@ python -m gongwen rule-list notice
 - **路径 A**：格式修复（不改文字，只修排版）
 - **路径 B**：内容优化（润色文字，Word 原生修订+批注 / 差异对比版）
 - **路径 C**：生成公文（从零创建，四步流水线）
+
+**平台适配**：`SKILL.md` 采用通用 frontmatter（`name/description/whenToUse/user-invocable`），兼容 **WorkBuddy、CloudCode、Claude Code、AtomCode、DeepSeek Harness** 等以 `SKILL.md` 为技能清单的平台；纯对话 LLM（无代码执行能力）请参见上方「纯对话 LLM 使用指引」。
 
 ### 🔄 版本追新（Agent 加载 skill 后必须执行）
 
@@ -461,12 +523,15 @@ python -m gongwen optimize input.docx -o output.docx --apply \
 
 ## 🤖 通过 Agent 调用
 
-本 Skill 可直接被 AI Agent（如 AtomCode、Claude Code 等）加载并调用，无需手动操作。
+本 Skill 可直接被 AI Agent（如 WorkBuddy、CloudCode、Claude Code、AtomCode 等）加载并调用，无需手动操作。
 
 ### 安装方式
 
 **方式一：克隆到 Skills 目录（推荐）**
 ```bash
+# WorkBuddy / CloudCode
+git clone https://github.com/linhut/gongwen-skill.git ~/.workbuddy/skills/gongwen-skill/
+
 # AtomCode
 git clone https://github.com/linhut/gongwen-skill.git ~/.atomcode/skills/gongwen-skill/
 

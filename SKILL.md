@@ -31,18 +31,19 @@ Licensed under the MIT License. See the LICENSE file for details.
 **在任何操作之前，Agent 必须先声明以下内容，不得跳过：**
 
 ```
-■ 当前调用环境：[CLI / computer-use / browser:control-in-app-browser / 其他（请注明）]
+■ 当前调用环境：[CLI / workbuddy / cloudcode / dsh / dialogue-only / 其他（请注明）]
 ■ 用户需求判定：[路径 A 格式修复 / 路径 B 内容优化 / 路径 C 生成公文 / 其他（请注明）]
 ■ 判定依据：[用户原话或内容摘要]
 ```
 
 **环境适配规则**：
 
-| 环境 | 行为要求 |
-|------|---------|
-| **CLI 直接调用** | 必须执行完整命令（`python -m gongwen check/optimize/optimize-content`），展示命令和输出 |
-| **computer-use** | 必须先确认操作路径，明确告知用户将要执行什么命令、产出什么文件 |
-| **browser:control-in-app-browser** | 不支持直接执行 python 命令，应将命令展示给用户让其自行执行，或引导至 CLI 环境 |
+| 环境 | 能力 | 行为要求 |
+|------|------|---------|
+| **CLI 直接调用** | 可执行命令、读写文件 | 必须执行完整命令（`python -m gongwen check/optimize/optimize-content`），展示命令和输出 |
+| **workbuddy / cloudcode** | 加载 SKILL.md 注册为 skill，可执行命令 | 加载 skill 后直接调用 CLI 命令，按 SKILL.md 指引执行路径路由和禁令 |
+| **dsh** | 加载 SKILL.md + cordis 插件，可执行命令、有 Web UI | 加载 skill 后调用 CLI 命令，或通过 DSH 插件 API 调用；配置面板可调整排版参数 |
+| **dialogue-only** | 纯对话，**不能执行命令** | 不应直接执行命令，应引导用户手动操作；同时可读取项目内的文字性资源库（`prompts/style-prompts.md`、`prompts/usage-prompts.md`、`rules/official/*.yaml`、`SKILL.md` 等）作为公文写作指导的知识库，在对话中提供用词用语、写作规范、风格指引等专业建议；参考 README.md 中的「纯对话 LLM 使用指引」
 
 ### 二、聚合禁令（违反任一条即为不合格执行）
 
@@ -80,12 +81,14 @@ Licensed under the MIT License. See the LICENSE file for details.
 
 ### 五、环境说明
 
-本 Skill 可通过以下方式使用：
+本 Skill 通过多种方式被 AI 平台加载使用：
 
 | 方式 | 说明 |
 |------|------|
 | **本地 CLI** | 克隆仓库 → `pip install -r requirements.txt` → `python -m gongwen <命令>` |
-| **AI Agent 内嵌** | 将仓库路径加入 Agent 的 skills 目录，Agent 自动读取 SKILL.md 并调用 CLI 命令 |
+| **WorkBuddy / CloudCode 类** | 将仓库路径加入 skills 目录，加载 SKILL.md 后注册为 skill，Agent 可直接调用 CLI 命令 |
+| **DeepSeek Harness (DSH)** | 通过 npm 包或 skill 目录加载，支持 cordis 插件体系（Web UI 配置面板 + API 路由） |
+| **纯对话 LLM** | 无法执行代码的 AI 平台（如豆包、Kimi、ChatGPT 网页版），应引导用户手动操作，详见 README.md 使用指引 |
 
 ### 六、版本自检（Agent 必须在技能加载后执行）
 

@@ -7,7 +7,40 @@
   "exports": {
     ".": "./dsh/index.js",
     "./dsh": "./dsh/index.js",
+    "./client": "./dsh/client.js",
     "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [],
+      "platform": "web"
+    }
+  },
+  "keywords": [
+    "chinese",
+    "document",
+    "government",
+    "format",
+    "GB/T 9704",
+    "docx",
+    "official-document",
+    "dsh",
+    "deepseek-harness",
+    "skill",
+    "cordis",
+    "config-panel"
+  ],
+  "author": "Jose AI",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/linhut/gongwen-skill.git"
+  },
+  "scripts": {
+    "prepack": "node scripts/clean-cache.js"
   },
   "files": [
     "dsh/",
@@ -22,30 +55,7 @@
     "pyproject.toml",
     "requirements.txt",
     "README.md",
-    "LICENSE"
-  ],
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    }
-  },
-  "keywords": [
-    "chinese",
-    "document",
-    "government",
-    "format",
-    "GB/T 9704",
-    "docx",
-    "official-document",
-    "dsh",
-    "deepseek-harness",
-    "skill",
-    "cordis"
-  ],
-  "author": "Jose AI",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/linhut/gongwen-skill.git"
-  }
+    "LICENSE",
+    "CHANGELOG.md"
+  ]
 }

@@ -1,4 +1,5 @@
-# dsh bundle layer: mount the gongwen-skill plugin
+# dsh bundle layer: mount the gongwen-skill plugin (host + client)
 - insert:
     - id: gongwen-skill
       name: gongwen-skill
+      client: true

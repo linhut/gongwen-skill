@@ -13,13 +13,13 @@ from __future__ import annotations
 
 def get_generator() -> object:
     """延迟导入并返回 document generator 模块。"""
-    from core.document import generator
+    from engine.core.document import generator
     return generator
 
 
 def get_parser() -> object:
     """延迟导入并返回 document parser 模块。"""
-    from core.document import parser
+    from engine.core.document import parser
     return parser
 
 

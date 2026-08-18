@@ -1,0 +1,30 @@
+# npm 包排除清单
+# 注：.gitignore 已排除 __pycache__/ *.py[cod] tests/ .coverage *.tgz dist/ build/
+# 此文件仅排除 .gitignore 未覆盖但 npm 包不应包含的项
+
+# Python 缓存（npm 的 .gitignore 解析与 git 不完全一致，此处显式排除）
+**/__pycache__
+**/__pycache__/**
+*.pyc
+*.pyo
+
+# 开发/CI 相关
+.github/
+.gitattributes
+.gitignore
+.npmignore
+.codegraph/
+Makefile
+MANIFEST.in
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 临时文件
+*.tmp
+*.log
+.pytest_cache/
+htmlcov/
