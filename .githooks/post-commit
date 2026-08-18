@@ -1,0 +1,3 @@
+#!/bin/sh
+# Auto-update codegraph index after every commit
+codegraph sync --quiet

@@ -241,20 +241,28 @@ git push atomgit master && git push atomgit vX.Y.Z
 | 发布前（§2 步骤⑥） | `codegraph sync --quiet` | 确保发布时的索引是最新的 |
 | 日常开发按需 | `codegraph sync` | 不带 `--quiet` 可查看同步进度 |
 
-### 9.2 推荐：配置 git hook 自动同步
+### 9.2 自动同步：post-commit hook
 
-配置 post-commit hook，每次提交后自动更新索引，无需手动操作：
+项目已内置 post-commit hook（`.githooks/post-commit`），每次 `git commit` 后自动增量更新 codegraph 索引，无需手动操作。
+
+**首次使用**（也可以不做，git 已自动配置为使用 `.githooks/`）：
 
 ```bash
-# 在项目根目录执行
-cat > .git/hooks/post-commit << 'EOF'
-#!/bin/sh
-codegraph sync --quiet
-EOF
-chmod +x .git/hooks/post-commit
+# 确保 git 使用 .githooks/ 目录（已通过 git config 配置，克隆后可能需要重新激活）
+git config core.hooksPath .githooks
 ```
 
-配置后，任何 `git commit` 都会自动触发 `codegraph sync --quiet`，索引始终是最新的。
+**验证生效**：
+
+```bash
+# 查看 hook 内容
+cat .githooks/post-commit
+# 输出：#!/bin/sh\ncodegraph sync --quiet
+
+# 或直接提交一次测试
+git commit --allow-empty -m "test: verify post-commit hook"
+# 如果无报错，说明 hook 已生效
+```
 
 ## 10. 常见问题
 
