@@ -48,7 +48,7 @@
        ▼
   推送代码与 tag
        │
-       ├──→ GitHub Actions CI 自动测试 + 发布到 PyPI
+       ├──→ GitHub Actions CI 自动测试 + 发布到 PyPI + 发布到 npm
        │
        ├──→ 手动同步到 GitCode / AtomGit（三仓同步）
        │
@@ -82,7 +82,7 @@ codegraph sync --quiet
 # ⑦ 打注解 tag
 git tag -a v1.2.0 -m "release: v1.2.0"
 
-# ⑧ 推送（GitHub 自动触发 CI 测试 + PyPI 发布）
+# ⑧ 推送（GitHub 自动触发 CI 测试 + PyPI 发布 + npm 发布）
 git push origin master
 git push origin v1.2.0
 
@@ -124,6 +124,7 @@ gh release view v1.2.0 --json assets
 - [ ] 三仓库远程配置正确（origin / gc / atomgit）
 - [ ] GitHub Actions CI 配置正确（`.github/workflows/ci.yml`）
 - [ ] PyPI API Token 有效（`PYPI_API_TOKEN` secrets 存在）
+- [ ] npm Token 有效（`NPM_TOKEN` secrets 存在，见 §5.2）
 - [ ] 本地构建验证：`python -m build` 成功
 - [ ] codegraph 索引已更新：`codegraph sync --quiet`
 
@@ -140,6 +141,7 @@ gh release view v1.2.0 --json assets
 | 测试 | `test` | Python 3.10–3.14 矩阵，`pytest --cov-fail-under=20` |
 | 代码风格 | `lint` | `pycodestyle --max-line-length=120` |
 | 发布到 PyPI | `publish` | 依赖 `test` + `lint`，推送 `v*` tag 时触发；使用 `pypa/gh-action-pypi-publish` 上传 wheel + sdist |
+| 发布到 npm | `publish-npm` | 依赖 `test` + `lint`，推送 `v*` tag 时触发；使用 `npm publish --access public` 发布 DSH 插件包 |
 
 **CI 产物**：
 - `dist/gongwen_skill-X.Y.Z-py3-none-any.whl`（纯 Python wheel）
@@ -147,7 +149,21 @@ gh release view v1.2.0 --json assets
 
 > **OIDC 说明**：README 中提及 OIDC trusted publishing，但当前 CI 实际使用 `PYPI_API_TOKEN` secrets 认证。如需切换，需在 PyPI 项目设置页面配置 publisher，并修改 CI 配置。
 
-### 5.1 本地构建
+### 5.2 npm 发布说明
+
+CI 自动将 DSH 插件包发布到 npm（包名 `gongwen-skill`），版本号取自 `package.json`。
+
+**前置条件**：
+
+1. 在 [npmjs.com](https://www.npmjs.com/settings/linhut/tokens) 生成 **Automation token**（`npm profile create-token --read-only=false`）
+2. 将 token 添加到 GitHub 仓库 Secrets：**Settings → Secrets and variables → Actions → New repository secret**
+   - Name: `NPM_TOKEN`
+   - Value: 粘贴生成的 token
+3. 确保 npm 包名未被占用（已注册 `gongwen-skill`）
+
+> **注意**：npm 版本与 PyPI 版本**同步递增**，均来自同一版本号（`package.json`）。CI 中 `publish-npm` 与 `publish` 并行执行，互不依赖。
+
+### 5.1 本地构建（PyPI）
 
 ```bash
 # 本地构建 wheel 和 sdist
@@ -168,6 +184,10 @@ gh release view vX.Y.Z --json assets         # 确认 CI 自动创建了 Release
 # 验证 PyPI
 pip install gongwen-skill==X.Y.Z             # 安装新版本
 python -m gongwen --version                  # 确认版本号正确
+
+# 验证 npm
+npm view gongwen-skill versions --json        # 确认新版本在列表中
+npm install gongwen-skill@latest              # 安装最新版
 
 # 验证 DSH 集成
 dsh skill list                               # 确认 gongwen-skill 可发现
@@ -277,6 +297,10 @@ git commit --allow-empty -m "test: verify post-commit hook"
 | 构建产物版本号不对 | 检查 §3 的 2 处版本号是否一致 |
 | 测试覆盖率低于门槛 | CI 覆盖率门槛为 20%，本地开发时需确保不低于此值；若确实因测试不在仓库而跳过，CI 不阻断 |
 | `codegraph sync` 命令不存在 | 确认已安装 codegraph：`npm install -g @liustack/codegraph`（或项目级依赖） |
+| npm 发布失败（403 Unauthorized） | 检查 `NPM_TOKEN` secrets 是否有效，在 npmjs.com 重新生成 Automation token 后更新 GitHub Secrets |
+| npm 发布失败（404 Not Found） | 确认包名 `gongwen-skill` 已在 npmjs.com 注册，且 `package.json` 中 `name` 字段正确 |
+| npm 与 PyPI 版本号不一致 | 检查 `package.json` 和 `pyproject.toml` 的版本号是否一致（§3） |
+| npm 发布后版本未更新 | 检查 CI 中 `publish-npm` job 是否运行成功（GitHub Actions 日志），确认 tag 格式为 `vX.Y.Z` |
 
 ## 11. 快速参考（速查表）
 

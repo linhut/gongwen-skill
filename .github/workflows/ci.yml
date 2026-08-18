@@ -24,10 +24,6 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-cov
       - name: Run tests with coverage
-        # 覆盖度门槛 20%：CLI 层（gongwen/_legacy.py ~1600 行）为 argparse 分发，未纳入单测，
-        # 50% 门槛自 v1.12.58 引入后从未可达，导致 CI 发布链路（publish: needs test）长期被阻断。
-        # 20% 保留覆盖度守护（低于则失败），同时使发布通道可用。
-        # v1.12.69：测试用例改为本地保留、不推送仓库，CI 在 tests/ 缺失时优雅跳过（不阻断发布）。
         if: hashFiles('tests/**') != ''
         run: pytest tests/ -v --tb=short --cov=gongwen --cov=engine --cov-report=term-missing --cov-fail-under=20
       - name: Skip notice (tests not synced)
@@ -61,8 +57,21 @@ jobs:
           python -m build
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        # API token 模式：使用 GitHub Actions secret（PYPI_API_TOKEN，已迁移自 variable）
-        # OIDC trusted publishing 需在 PyPI 项目级页面配置 publisher，暂未启用：
-        #   https://pypi.org/manage/project/gongwen-skill/settings/publishing/
         with:
           password: ${{ secrets.PYPI_API_TOKEN }}
+
+  publish-npm:
+    name: Publish to npm
+    needs: [test, lint]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org/'
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
