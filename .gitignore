@@ -5,6 +5,10 @@ __pycache__/
 .venv/
 venv/
 env/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # 运行时可写数据（用户/自定义规则、日志）
 .gongwen-skill/
@@ -19,11 +23,7 @@ tests/
 /tmp/
 *.tmp
 engine/tmp.py
-.coverage
-htmlcov/
 .coverage.*
-
-# 运行时生成的会话文件（gongwen.py 模块级会话追踪）
 engine/session.py
 engine/sessions/
 
