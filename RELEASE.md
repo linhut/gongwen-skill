@@ -40,6 +40,9 @@
   提交版本更新
        │
        ▼
+  更新 codegraph 索引
+       │
+       ▼
   打 tag（git tag -a vX.Y.Z -m "release: vX.Y.Z"）
        │
        ▼
@@ -73,20 +76,23 @@ pycodestyle --max-line-length=120 --exclude=__pycache__,.git,dist,build .  # 代
 git add -A
 git commit -m "chore: bump version to X.Y.Z"
 
-# ⑥ 打注解 tag
+# ⑥ 更新 codegraph 索引（增量更新，供 AI 工具索引）
+codegraph sync --quiet
+
+# ⑦ 打注解 tag
 git tag -a v1.2.0 -m "release: v1.2.0"
 
-# ⑦ 推送（GitHub 自动触发 CI 测试 + PyPI 发布）
+# ⑧ 推送（GitHub 自动触发 CI 测试 + PyPI 发布）
 git push origin master
 git push origin v1.2.0
 
-# ⑧ 三仓同步（手动）
+# ⑨ 三仓同步（手动）
 git push gc master
 git push gc v1.2.0
 git push atomgit master
 git push atomgit v1.2.0
 
-# ⑨ 验证 Release（见 §5）
+# ⑩ 验证 Release（见 §5）
 gh release list
 gh release view v1.2.0 --json assets
 ```
@@ -119,6 +125,7 @@ gh release view v1.2.0 --json assets
 - [ ] GitHub Actions CI 配置正确（`.github/workflows/ci.yml`）
 - [ ] PyPI API Token 有效（`PYPI_API_TOKEN` secrets 存在）
 - [ ] 本地构建验证：`python -m build` 成功
+- [ ] codegraph 索引已更新：`codegraph sync --quiet`
 
 ### 4.1 关于测试用例
 
@@ -222,7 +229,34 @@ git push gc master && git push gc vX.Y.Z
 git push atomgit master && git push atomgit vX.Y.Z
 ```
 
-## 9. 常见问题
+## 9. codegraph 索引管理
+
+项目使用 [codegraph](https://github.com/linhut/codegraph) 维护代码索引，供 AI 工具（如 DSH 代码理解）查询。
+
+### 9.1 索引更新时机
+
+| 时机 | 命令 | 说明 |
+|------|------|------|
+| 每次提交后 | `codegraph sync --quiet` | 增量更新索引，记录最新代码结构 |
+| 发布前（§2 步骤⑥） | `codegraph sync --quiet` | 确保发布时的索引是最新的 |
+| 日常开发按需 | `codegraph sync` | 不带 `--quiet` 可查看同步进度 |
+
+### 9.2 推荐：配置 git hook 自动同步
+
+配置 post-commit hook，每次提交后自动更新索引，无需手动操作：
+
+```bash
+# 在项目根目录执行
+cat > .git/hooks/post-commit << 'EOF'
+#!/bin/sh
+codegraph sync --quiet
+EOF
+chmod +x .git/hooks/post-commit
+```
+
+配置后，任何 `git commit` 都会自动触发 `codegraph sync --quiet`，索引始终是最新的。
+
+## 10. 常见问题
 
 | 问题 | 处理 |
 |------|------|
@@ -234,8 +268,9 @@ git push atomgit master && git push atomgit vX.Y.Z
 | Release list 有 Draft 重复条目 | `gh api -X DELETE repos/<owner>/<repo>/releases/<id>` 删除草稿 |
 | 构建产物版本号不对 | 检查 §3 的 2 处版本号是否一致 |
 | 测试覆盖率低于门槛 | CI 覆盖率门槛为 20%，本地开发时需确保不低于此值；若确实因测试不在仓库而跳过，CI 不阻断 |
+| `codegraph sync` 命令不存在 | 确认已安装 codegraph：`npm install -g @liustack/codegraph`（或项目级依赖） |
 
-## 10. 快速参考（速查表）
+## 11. 快速参考（速查表）
 
 ```bash
 # 完整发布流程（一行执行）
@@ -243,6 +278,7 @@ git status && \
   # 手动更新 package.json + pyproject.toml 版本号 + CHANGELOG.md 后 && \
   git add -A && \
   git commit -m "chore: bump version to X.Y.Z" && \
+  codegraph sync --quiet && \
   git tag -a vX.Y.Z -m "release: vX.Y.Z" && \
   git push origin master && \
   git push origin vX.Y.Z && \
