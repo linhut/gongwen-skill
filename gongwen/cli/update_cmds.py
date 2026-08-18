@@ -144,6 +144,8 @@ def cmd_check_update(args):
             print("     pip install --upgrade gongwen-skill")
         if git_ok:
             print("     cd <gongwen-skill目录> && git pull && git fetch --tags")
+        print(f"⏱️  自检耗时 {time.time() - t0:.1f}s")
+        return 1
     elif _parse_version(latest) == _parse_version(local_ver):
         print(f"✅ 已是最新版本：v{local_ver}（多渠道一致）")
     else:

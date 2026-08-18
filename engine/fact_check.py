@@ -252,8 +252,8 @@ _LLM_EXTRACT_PROMPT = (
     "1. 人名（含其职务描述，如\"省民宗委党组成员、副主任XXX\"）\n"
     "2. 组织机构名（含完整全称）\n"
     "3. 发文字号、关键数据\n"
-    "输出 JSON 数组，格式：[{\"type\": \"person|org|doc_no|data\", \"name\": \"实体名\", "
-    "\"title\": \"职务描述(仅person)\", \"paragraph_index\": 段落序号}]。\n"
+    "输出 JSON 数组，格式：[{{\"type\": \"person|org|doc_no|data\", \"name\": \"实体名\", "
+    "\"title\": \"职务描述(仅person)\", \"paragraph_index\": 段落序号}}]。\n"
     "只输出 JSON，不要其他文字。\n\n"
     "公文内容：\n{content}"
 )

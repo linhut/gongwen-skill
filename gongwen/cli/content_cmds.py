@@ -317,7 +317,7 @@ def cmd_optimize_content(args):
         print("加 --apply 生成差异对比文档。")
         print("示例:")
         print(f"  python -m gongwen optimize-content {args.input} --changes {args.changes} --apply")
-        return
+        return 0
 
     # 执行模式
     out_name = args.output or _build_output_name(args.input, "B", _extract_dominant_style(changes))

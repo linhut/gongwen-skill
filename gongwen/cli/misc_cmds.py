@@ -228,6 +228,7 @@ def cmd_style_learn(args):
     print()
     print("💡 提示：可修改该 YAML 文件微调样式（字体/字号/字间距等），或")
     print("   再次上传不同标准文档生成其他命名模板。")
+    return 0
 
 
 def cmd_style_list(args):
