@@ -1,3 +1,15 @@
+## v1.12.72 (2026-08-19)
+
+### Changed
+- RELEASE.md 完全重写：基于 gongwen-skill 实际发布流程重新组织，新增版本号更新点（4 处代码+文档）、发布前检查清单、三仓库镜像同步策略、tests/ 本地策略说明、常见问题与回滚指南
+- 修复版本漂移：`gongwen/__init__.py` 和 `gongwen/_legacy.py` 的 `__version__` 从 1.12.69 同步至 1.12.72，与 `pyproject.toml` 和 `package.json` 一致
+
+### Fixed
+- CI 中配置 NPM_TOKEN secret，npm 自动发布功能恢复正常
+
+### Removed
+- 移除旧版 RELEASE.md 中与 gongwen-skill 实际流程不符的 dsh-manager 发布内容
+
 ## v1.12.71 (2026-08-19)
 
 ### Changed
