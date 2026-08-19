@@ -28,7 +28,7 @@ const CONFIG_FILE = join(APP_DATA_DIR, "dsh-config.json");
 const DEFAULTS_FILE = join(resolve(__dirname, ".."), "etc", "dsh-config-defaults.json");
 
 // AI 工作指引
-const GONGWEN_GUIDANCE = `本机已安装 gongwen-skill 插件（中文公文全流程处理工具）。能力：.docx 公文按 GB/T 9704 国家标准做格式检查（check）、自动修复（optimize）、行内内容修订（optimize-content）、模板生成（template）、Markdown 转公文（md2docx）、版头/版记/页码注入。覆盖通知/请示/报告/函/会议纪要等 24 类公文。完全自包含，克隆即用，无需数据库或后端服务。用户提到「公文 / 红头文件 / 版式 / 排版 / 格式检查 / 公文模板 / 党政机关公文」时即指本插件。DSH 插件支持配置化排版参数（页边距/行距/字体等），配置文件位于 ~/.gongwen-skill/dsh-config.json，可通过 config 命令或 DSH 系统设置→插件配置管理。`;
+const GONGWEN_GUIDANCE = `本机已安装 gongwen-skill 插件（中文公文全流程处理工具）。能力：.docx 公文全流程——列出公文类型（list-types）、解析文档（parse）、格式检查（check）、自动修复（optimize）、内容修订对比版（optimize-content）、模板生成（template）、样式学习（style-learn/style-list，从标准文档学习排版样式）、Markdown 转公文（md2docx）、JSON 模型生成（generate）、版头/版记/页码注入（header/footer/pagenum）、首句加粗（bold-first）、一键格式修复（fix-common）、桌签生成（table-signs）、审稿流转单（review）、完整审校（full-review）、文档审计（audit）、规则管理（rule-export/import/list）、版本自检（check-update）、会话交接（handoff）、字体管理（font）。覆盖通知/请示/报告/函/会议纪要等 24 类公文。完全自包含，克隆即用，无需数据库或后端服务。用户提到「公文 / 红头文件 / 版式 / 排版 / 格式检查 / 公文模板 / 样式学习 / 自定义模板 / 党政机关公文」时即指本插件。DSH 插件支持配置化排版参数（页边距/行距/字体等），配置文件位于 ~/.gongwen-skill/dsh-config.json，可通过 config 命令或 DSH 系统设置→插件配置管理。`;
 
 // Web API 路由前缀
 const API_PREFIX = "/plugins/gongwen-skill/api";

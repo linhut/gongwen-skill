@@ -1,7 +1,7 @@
 ---
 name: gongwen-skill
-description: 中文公文全流程处理助手。支持 .docx 公文按 GB/T 9704 国家标准做格式检查（check）、自动修复（optimize）、行内内容修订（optimize-content，红色标注+删除线+修改说明）、模板生成（template）、Markdown 转公文（md2docx），以及版头/版记/页码注入。覆盖通知/请示/报告/函/会议纪要等 24 类公文。完全自包含，克隆即用，无需数据库或后端服务。
-whenToUse: 当用户需要处理中文公文（.docx格式）时，包括格式检查、自动修复、内容润色、模板生成、Markdown转公文、版头版记注入等场景。适用于通知/请示/报告/函/会议纪要/新闻稿/讲话稿等24种公文类型。
+description: 中文公文全流程处理助手。支持 .docx 公文按 GB/T 9704 国家标准做格式检查（check）、自动修复（optimize）、行内内容修订（optimize-content，红色标注+删除线+修改说明）、模板生成（template）、样式学习（style-learn，从标准文档学习排版样式生成自定义模板）、Markdown 转公文（md2docx），以及版头/版记/页码注入。覆盖通知/请示/报告/函/会议纪要等 24 类公文。完全自包含，克隆即用，无需数据库或后端服务。
+whenToUse: 当用户需要处理中文公文（.docx格式）时，包括格式检查、自动修复、内容润色、模板生成、样式学习（从标准文档学习排版样式生成自定义模板）、Markdown转公文、版头版记注入等场景。适用于通知/请示/报告/函/会议纪要/新闻稿/讲话稿等24种公文类型。
 user-invocable: true
 metadata:
   author: Jose AI
@@ -191,6 +191,7 @@ python -m gongwen handoff --latest --summary # 最新交接文档（Markdown 摘
 - **路径 B - 内容优化**：用户有文档，需要润色文字并生成修订对比版（原稿 vs 优化稿，红色标注修改处）
 - **路径 C - 生成公文**：用户没有文档，根据背景和要求从零生成新的公文。四步流程：编写 Markdown 草稿 → md2docx 转换 → 引用路径 A optimize 套国标格式 → check 验证交付。
 - **路径 D - 一键格式修复**（`fix-common` 新增）：用户有文档，只需快速规范化常见格式问题（段落类型修正/编号拆分/首句加粗/加粗范围修复），一步到位，输出不含 AI 声明段的干净文档。与路径 A 的区别：不依赖规则引擎、不追加 AI 声明段，适合对"干净中间稿"做最终格式规范化。
+- **路径 E - 样式学习**（`style-learn` 新增）：用户提供一份**标准文档**（如本单位定稿的红头公文/排版规范的样例），要求"学习排版样式""按这个格式生成模板""做成模板以后都用这个格式"。Agent 应调用 `style-learn` 解析文档的字体/字号/字间距/行距/缩进/页边距，生成命名自定义模板（注册到 user_rules），后续所有文档可用 `optimize -t 模板名` 套用该格式。
 
 ### 路径判断规则
 
@@ -201,6 +202,7 @@ python -m gongwen handoff --latest --summary # 最新交接文档（Markdown 摘
 | 上传/指定了文档 + 明确要改内容 | "优化"/"调一下"（需先追问消歧） | **B** |
 | 没有文档 | "写一份"/"生成"/"起草"/"帮我写" + 公文类型 | **C** |
 | 上传/指定了文档 + 只要格式规范化 | "规范一下"/"整理格式"/"格式不对"/"一键修复" | **D**（fix-common） |
+| 上传标准文档 | "学习排版"/"做成模板"/"按这个格式"/"学这个样式"/"提取格式" | **E**（style-learn） |
 
 **「优化」消歧强制规则**：
 用户说"优化一下""帮我改改""调整内容"等模糊表述时，Agent **必须先追问**：
@@ -215,11 +217,12 @@ python -m gongwen handoff --latest --summary # 最新交接文档（Markdown 摘
 
 **前置步骤（不可跳过）**：Agent 必须先向用户介绍四条路径的能力范围，使用以下简洁模板：
 
-> 本工具支持四种处理方式：
+> 本工具支持五种处理方式：
 > - **格式优化**（路径 A）：不改文字，只修排版——字体/字号/页边距/行距/缩进按国标标准化，输出干净成品
 > - **内容优化**（路径 B）：润色文字表达，生成带红色标注+删除线的对比版，每段附修改说明
 > - **生成公文**（路径 C）：从零生成新的公文，四步流程：草稿→转换→套格式→验证
 > - **一键格式修复**（路径 D）：快速规范化常见格式问题（段落类型/编号拆分/首句加粗/加粗范围），一步到位，输出不含 AI 声明段的干净文档
+> - **样式学习**（路径 E）：上传一份标准文档，自动学习其排版样式（字体/字号/字间距/行距/页边距），生成命名模板，后续所有文档可用 `optimize -t 模板名` 套用该格式
 
 介绍完毕后再按以下决策树判断路径：
 
@@ -844,6 +847,67 @@ python -m gongwen fix-common 文件.docx -o 成品.docx
 | `md2docx` | `--no-ai-declaration` | 生成的文档不追加 AI 声明段 |
 | `optimize` | `--remove-ai-declaration` | 修复输出的文档不追加 AI 声明段 |
 | `fix-common` | （内置） | 固定不追加 AI 声明段 |
+
+---
+
+## 附录：全部命令速查（24 个，按用途分组）
+
+> Agent 遇到用户需求时，先在此表定位对应命令；命令用法不明确时运行 `python -m gongwen <命令> --help` 查看完整参数。
+
+### 🏗️ 生成与模板
+
+| 命令 | 用途 | 最小用法 |
+|------|------|---------|
+| `list-types` | 列出 24 种支持的公文类型 | `python -m gongwen list-types` |
+| `template` | 按类型生成 GB/T 9704 空白模板 | `python -m gongwen template notice -o 通知.docx` |
+| `generate` | 从 DocumentModel JSON 生成 .docx | `python -m gongwen generate 模型.json -o 公文.docx` |
+| `md2docx` | Markdown 草稿 → 格式化公文 | `python -m gongwen md2docx 草稿.md -o 公文.docx -t notice` |
+| `style-learn` | 从标准文档学习排版样式生成模板 | `python -m gongwen style-learn 标准.docx -n 模板名` |
+| `style-list` | 列出已学习的自定义样式模板 | `python -m gongwen style-list` |
+
+### 🔍 解析与检查
+
+| 命令 | 用途 | 最小用法 |
+|------|------|---------|
+| `parse` | .docx → 结构化 DocumentModel JSON | `python -m gongwen parse 公文.docx` |
+| `check` | 按国标检查格式（只读，分级 P0/P1/P2） | `python -m gongwen check 公文.docx -t notice` |
+| `audit` | 审计文档：检查删除线/加粗/AI 声明等痕迹 | `python -m gongwen audit 公文.docx` |
+
+### 🔧 修复与优化
+
+| 命令 | 用途 | 最小用法 |
+|------|------|---------|
+| `optimize` | 检查+修复+生成（默认预览，--apply 执行） | `python -m gongwen optimize 公文.docx -o 成品.docx --apply` |
+| `fix-common` | 一键修复常见格式问题（路径 D） | `python -m gongwen fix-common 公文.docx -o 成品.docx` |
+| `optimize-content` | 内容优化：修订+批注对比版（路径 B） | `python -m gongwen optimize-content 原文.docx --changes 修订.json --apply` |
+| `full-review` | 完整审校：格式修复→内容优化→批注，一条命令 | `python -m gongwen full-review 公文.docx -o 成品.docx` |
+| `bold-first` | 正文段落首句加粗（公文规范） | `python -m gongwen bold-first 公文.docx -o 成品.docx` |
+
+### 📄 版式注入
+
+| 命令 | 用途 | 最小用法 |
+|------|------|---------|
+| `header` | 注入版头：机关标志+发文字号+签发人+红色反线 | `python -m gongwen header 公文.docx --org-name "XX单位"` |
+| `footer` | 注入版记：抄送+印发机关+印发日期+分隔线 | `python -m gongwen footer 公文.docx --cc "各单位"` |
+| `pagenum` | 注入 Word PAGE 域动态页码 | `python -m gongwen pagenum 公文.docx --alignment right` |
+
+### 🧰 特殊工具
+
+| 命令 | 用途 | 最小用法 |
+|------|------|---------|
+| `table-signs` | 从名单批量生成会议桌签 | `python -m gongwen table-signs 名单.txt -o 桌签.docx` |
+| `review` | 生成公文审稿流转单（五/三角色） | `python -m gongwen review report -o 审稿单.docx` |
+| `handoff` | 跨会话交接（长任务收尾必写） | `python -m gongwen handoff --write` |
+| `check-update` | 多渠道版本自检 | `python -m gongwen check-update` |
+| `font` | 公文标准字体管理（安装/检查/列出） | `python -m gongwen font install` |
+
+### ⚙️ 规则管理
+
+| 命令 | 用途 | 最小用法 |
+|------|------|---------|
+| `rule-export` | 导出合并后的规则 YAML | `python -m gongwen rule-export -o 规则.yaml` |
+| `rule-list` | 列出三层规则（官方/单位/用户） | `python -m gongwen rule-list` |
+| `rule-import` | 导入/保存自定义规则 YAML | `python -m gongwen rule-import 规则.yaml` |
 
 若文档中已存在 AI 声明段，`generate_docx` 会先**去重**（保留最后一段）再统一格式；未传上述参数时默认行为不变（保留 AI 声明段），向后兼容。
 

@@ -23,6 +23,10 @@ MANIFEST.in
 .DS_Store
 Thumbs.db
 
+# 大文件/静态资源（npm 包不应包含，package.json files 字段已排除，此处显式保险）
+assets/
+logo/
+
 # 临时文件
 *.tmp
 *.log

@@ -43,7 +43,7 @@ Licensed under the MIT License. See the LICENSE file for details.
 | 📋 桌签生成 | `table-signs` | 批量生成 A5 横版会议桌签 |
 | 🔍 审稿生成 | `review` | 按五角色审稿机制生成审稿意见 |
 | 🧩 完整审校 | `full-review` | 修订+批注联合命令（句子级差异修订 + 分类批注） |
-| 🎨 样式学习 | `style-learn` / `style-list` | 从标准文档学习 Run/段落/页面三级样式，生成命名模板持久化 |
+| 🎨 样式学习 | `style-learn` / `style-list` | 上传标准文档学习 Run/段落/页面三级样式（字体/字号/字间距/行距/缩进/页边距），生成命名模板持久化，后续用 `optimize -t 模板名` 套用 |
 | 🔄 版本自检 | `check-update` | 多渠道版本自检（GitHub/GitCode/AtomGit 三仓库比对取最新） |
 | 🕵️ 文档审计 | `audit` | 检查删除线/加粗/AI 声明等痕迹 |
 | 🤝 会话交接 | `handoff` | 跨会话上下文传递（`--list` / `--latest` / Agent 长任务收尾必写） |
@@ -88,6 +88,7 @@ Licensed under the MIT License. See the LICENSE file for details.
    | Markdown 转公文 | `python -m gongwen md2docx 草稿.md -o 正式公文.docx -t report` |
    | 内容润色（修订+批注） | `python -m gongwen optimize-content 原文.docx --changes 修订内容.json --apply --mode tracked` |
    | 注入版头/版记/页码 | `python -m gongwen header/footer/pagenum 公文.docx ...` |
+   | 从标准文档学样式做模板 | `python -m gongwen style-learn 标准公文.docx -n 模板名`，之后用 `optimize -t 模板名` 套用 |
    | 安装标准字体 | `python -m gongwen font install` |
 
 4. **解释输出**：用户执行后，把命令输出结果（问题清单、修复报告、生成文件等）发给你时，你能继续帮助解读、判断下一步操作。
@@ -154,6 +155,10 @@ python -m gongwen check-update
 python -m gongwen font install          # 安装字体到系统
 python -m gongwen font check            # 检查字体安装状态
 python -m gongwen font list             # 列出字体清单
+
+# 从标准文档学习排版样式，生成自定义模板（后续用 optimize -t 模板名 套用）
+python -m gongwen style-learn 标准公文.docx -n 模板名
+python -m gongwen style-list            # 列出已学习的模板
 ```
 
 ### 🔤 字体管理

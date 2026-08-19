@@ -1,3 +1,9 @@
 #!/bin/sh
 # Auto-update codegraph index after every commit
 codegraph sync --quiet
+
+# Sync SKILL.md to .dsh/skills/ copies (DSH 技能注册目录)
+if [ -f SKILL.md ] && [ -d .dsh/skills ]; then
+  cp SKILL.md .dsh/skills/gongwen-skill.md 2>/dev/null
+  cp SKILL.md .dsh/skills/gongwen-skill/SKILL.md 2>/dev/null
+fi

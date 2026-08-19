@@ -1,3 +1,15 @@
+## v1.12.71 (2026-08-19)
+
+### Changed
+- 功能入口全面优化：DSH 系统提示词（GONGWEN_GUIDANCE）覆盖全部 24 个命令，新增「样式学习」关键词，AI 首次加载即可发现 style-learn
+- SKILL.md 新增「路径 E - 样式学习」路由、路径判断规则表、五种处理方式决策树，以及「附录：全部命令速查」分组表（24 命令按 6 类归类，附最小用法）
+- README 快速开始新增 style-learn 示例；纯对话 LLM 指引表、能力表同步加详样式学习说明
+- 新增 post-commit 钩子：每次提交自动同步根 SKILL.md 到 `.dsh/skills/` 副本，解决 DSH 技能注册加载旧版描述的问题
+- `.npmignore` 显式排除 `assets/`（12MB 字体）与 `logo/`（宣传图），npm 包保持 471.8 kB 轻量；npm pack 验证通过
+
+### Fixed
+- `.dsh/skills/` 中 SKILL.md 副本过时（停留在 8-18 旧版，缺失路径 E 与命令附录），已同步至最新版
+
 ## v1.12.70 (2026-08-19)
 
 ### Fixed
