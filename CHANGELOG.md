@@ -1,3 +1,16 @@
+## v1.12.74 (2026-08-20)
+
+### Changed
+- DSH 插件规范严格遵守官方文档（https://dsh.hicyou.com/zh/docs/user-guide/plugins）
+  - `dsh` 字段仅保留 `dsh.bundle.patch`，移除不合规的 `dsh.client` 声明
+  - `exports` 新增 `"./cordis.patch.yml"` 导出，使 bundle patch 文件可通过模块解析访问（与官方 `dsh-base` 一致）
+  - `dsh.bundle` 声明保持 `./cordis.patch.yml`，`cordis.patch.yml` 已列入 npm 包 files 白名单
+- DSH skill 自动激活：`dsh/index.js` 的 `apply(ctx)` 中调用 `ctx.skills.register()`，插件安装并加载后自动注册 `gongwen-skill` 到 DSH 技能目录，AI 无需手动导入即可自动发现并触发使用；`resourceBase` 指向项目根目录，支持按路径加载规则/模板等资源
+- SKILL.md 标准 Anthropic Agent Skills 格式（YAML frontmatter：name/description/whenToUse/user-invocable），跨平台兼容 WorkBuddy、Thelagnet、Claude Code、AtomCode 等
+
+### Fixed
+- 修复 DSH 插件被识别为"没有 dsh.bundle 声明/不是合法 bundle"的问题：补齐 `exports["./cordis.patch.yml"]` 并移除合同外字段 `dsh.client`
+
 ## v1.12.73 (2026-08-19)
 
 ### Added

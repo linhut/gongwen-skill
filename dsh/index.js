@@ -454,6 +454,27 @@ export function apply(ctx) {
       }
     }
 
+    // 4. 注册 runtime skill（自动激活，使 AI 可在安装后自动发现并使用）
+    if (ctx?.skills?.register) {
+      try {
+        const skillPath = join(resolve(__dirname, ".."), "SKILL.md");
+        if (existsSync(skillPath)) {
+          const skillContent = readFileSync(skillPath, "utf-8");
+          const skillD = ctx.skills.register({
+            name: "gongwen-skill",
+            description: "中文公文全流程处理：格式检查/自动修复/content润色/模板生成/样式学习/Markdown转公文/版头版记注入",
+            content: skillContent,
+            resourceBase: { kind: "directory", path: resolve(__dirname, "..") },
+            invocation: { modelInvocable: true, userInvocable: true },
+          });
+          if (skillD) disposers.push(skillD);
+          if (ctx?.logger) ctx.logger.info("gongwen-skill: runtime skill registered");
+        }
+      } catch (e) {
+        if (ctx?.logger) ctx.logger.warn(`gongwen-skill: runtime skill registration skipped: ${e.message}`);
+      }
+    }
+
     if (ctx?.logger) {
       ctx.logger.info(`gongwen-skill plugin loaded (projectRoot=${projectRoot})`);
     }
