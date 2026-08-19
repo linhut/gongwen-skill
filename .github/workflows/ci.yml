@@ -56,17 +56,17 @@ jobs:
         run: python -m gongwen font install
       - name: Run doctor self-diagnosis
         run: |
-          python -m gongwen doctor --json | python -c "
-import sys, json
-d = json.load(sys.stdin)
-print(f'Total: {d[\"summary\"][\"total\"]}, OK: {d[\"summary\"][\"ok\"]}, FAIL: {d[\"summary\"][\"failed\"]}')
-if d['summary']['failed'] > 0:
-    for c in d['checks']:
-        if not c['ok']:
-            print(f'  FAIL: {c[\"name\"]} - {c.get(\"detail\", \"\")}')
-    sys.exit(1)
-print('All checks passed')
-"
+          python -m gongwen doctor --json 2>&1 | python -c "
+          import sys, json
+          d = json.load(sys.stdin)
+          print(f'Total: {d[\"summary\"][\"total\"]}, OK: {d[\"summary\"][\"ok\"]}, FAIL: {d[\"summary\"][\"failed\"]}')
+          if d['summary']['failed'] > 0:
+              for c in d['checks']:
+                  if not c['ok']:
+                      print(f'  FAIL: {c[\"name\"]} - {c.get(\"detail\", \"\")}')
+              sys.exit(1)
+          print('All checks passed')
+          "
 
   publish:
     name: Publish to PyPI
