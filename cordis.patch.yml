@@ -2,4 +2,3 @@
 - insert:
     - id: gongwen-skill
       name: gongwen-skill
-      client: true
