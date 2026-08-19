@@ -107,10 +107,8 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Publish to GitHub Packages
         run: |
-          # 临时修改包名为 scoped 格式供 GitHub Packages 使用
-          sed -i 's|"name": "gongwen-skill"|"name": "@linhut/gongwen-skill"|' package.json
+          # GITHUB_TOKEN 发布到仓库命名空间（linhut/gongwen-skill/pkgs/npm/gongwen-skill）
+          # 包名保留为 gongwen-skill（与仓库名一致），无需 scoped 格式
           npm publish --registry=https://npm.pkg.github.com --access public
-          # 恢复包名（不影响后续操作）
-          sed -i 's|"name": "@linhut/gongwen-skill"|"name": "gongwen-skill"|' package.json
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
