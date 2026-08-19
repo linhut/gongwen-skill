@@ -8,17 +8,18 @@
 
 ## 1. 版本规范
 
-项目当前使用 `1.12.x` 序列（历史延续，非严格 SemVer）：
+项目当前使用 `2.0.x` 序列（**v2.0.0 大版本重置**：从 1.12.x 序列迁移至 2.x，采用标准 SemVer）：
 
 | 段 | 含义 | 示例 |
 |----|------|------|
-| `MAJOR` | 重大重构 / 架构变更（极少） | `1.0.0` → `2.0.0` |
-| `MINOR` | 功能迭代 / 拆分 / 修复（当前主节奏） | `1.12.70` → `1.12.71` |
-| `PATCH` | 紧急缺陷修复 | `1.12.71` → `1.12.71.1` |
+| `MAJOR` | 重大重构 / 架构变更（不向后兼容） | `1.12.74` → `2.0.0` |
+| `MINOR` | 功能迭代 / 拆分 / 修复（向后兼容） | `2.0.0` → `2.1.0` |
+| `PATCH` | 紧急缺陷修复 | `2.1.0` → `2.1.1` |
 
 **规则**：
-- 每次发布 `MINOR+1`（当前节奏：功能/修复/拆分均走 `1.12.x+1`）
+- 每次常规发布 `MINOR+1`（当前节奏：功能/修复/拆分均走 `2.x+1`）
 - **禁止重复使用同一版本号**；已发布到 PyPI 的版本不可覆盖
+- **版本重置说明**：v2.0.0 从 1.12.74 迁移到 2.x 序列，作为新的大版本起点；1.12.x 历史版本仍可通过 PyPI 安装（pip 会优先选择最高版本，PyPI 上 1.12.74 仍存在，2.x 与 1.12.x 按 SemVer 排序互不冲突）
 - 版本号需在 **4 处代码位置 + CHANGELOG** 保持一致（见 §3）
 - 预发布后缀（`rc`/`dev`）不用于正式发布，仅内部验证
 
@@ -50,10 +51,10 @@ python -m pycodestyle --max-line-length=120 --exclude=__pycache__,.git,dist,buil
 
 # ④ 提交版本更新
 git add pyproject.toml gongwen/__init__.py gongwen/_legacy.py package.json CHANGELOG.md README.md
-git commit -m "chore: bump version to 1.12.X"
+git commit -m "chore: bump version to 2.0.X"
 
 # ⑤ 打注解 tag
-git tag -a v1.12.X -m "v1.12.X - 发布说明摘要"
+git tag -a v2.0.X -m "v2.0.X - 发布说明摘要"
 
 # ⑥ 推送（触发 CI 自动发布）
 git push origin master --tags
@@ -69,11 +70,11 @@ git push atomgit master --tags
 
 | # | 文件 | 位置 |
 |---|------|------|
-| 1 | `pyproject.toml` | `version = "1.12.X"`（`[project]`） |
-| 2 | `gongwen/__init__.py` | `__version__ = "1.12.X"` |
-| 3 | `gongwen/_legacy.py` | `__version__ = "1.12.X"`（第 13 行，须与 #2 同步） |
-| 4 | `package.json` | `"version": "1.12.X"` |
-| 5 | `CHANGELOG.md` | 顶部新增 `## v1.12.X (YYYY-MM-DD)` 条目 |
+| 1 | `pyproject.toml` | `version = "2.0.X"`（`[project]`） |
+| 2 | `gongwen/__init__.py` | `__version__ = "2.0.X"` |
+| 3 | `gongwen/_legacy.py` | `__version__ = "2.0.X"`（须与 #2 同步） |
+| 4 | `package.json` | `"version": "2.0.X"` |
+| 5 | `CHANGELOG.md` | 顶部新增 `## v2.0.X (YYYY-MM-DD)` 条目 |
 | 6 | `README.md`（可选但建议） | PyPI badge / Skill 版本示例 / `--version` 示例 |
 
 **⚠️ 历史教训**：曾出现 `pyproject.toml`/`package.json` 为 1.12.71 而 `__init__.py`/`_legacy.py` 停留在 1.12.69 的版本漂移，导致 `check-update` 比对错误。发布前必须逐项核对全部位置。
@@ -81,7 +82,7 @@ git push atomgit master --tags
 **核对命令**：
 
 ```bash
-grep -h "1\.12\.X" pyproject.toml gongwen/__init__.py gongwen/_legacy.py package.json | grep -oP "1\.12\.\d+" | sort | uniq -c
+grep -h "2\.0\.X" pyproject.toml gongwen/__init__.py gongwen/_legacy.py package.json | grep -oP "2\.0\.\d+" | sort | uniq -c
 # 期望输出：4 行全部为同一版本号
 ```
 

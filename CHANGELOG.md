@@ -1,4 +1,7 @@
-## v1.12.74 (2026-08-20)
+## v2.0.0 (2026-08-20)
+
+### Major
+- **大版本重置**：从 1.12.x 序列重置为 **2.0.0**，清理历史版本号膨胀
 
 ### Architecture
 - Migrate all legacy `from core.xxx` imports to `from engine.core.xxx` for proper Python packaging (files: `_legacy.py`, `content_cmds.py`, `review_cmds.py`, `helpers.py`, `misc_cmds.py`, `live_edit.py`)
@@ -6,6 +9,8 @@
 
 ### Performance
 - Reduce verbose logging: change `_dedup_extend` rollup messages from `logger.info` to `logger.debug`, eliminating 50+ lines of noisy "同键覆盖" logs per command
+
+## v1.12.74 (2026-08-20)
 
 ### Changed
 - DSH 插件规范严格遵守官方文档（https://dsh.hicyou.com/zh/docs/user-guide/plugins）
