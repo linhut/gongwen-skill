@@ -113,7 +113,7 @@ def parse_config_overrides(raw: str) -> dict | None:
 
 def load_rules_with_overrides(doc_type: str, overrides_raw: str) -> dict:
     """加载合并规则并应用 DSH 配置覆盖（优先级最高）。"""
-    from core.rules.manager import load_rules_merged, apply_config_overrides
+    from engine.core.rules.manager import load_rules_merged, apply_config_overrides
     rules = load_rules_merged(doc_type)
     overrides = parse_config_overrides(overrides_raw)
     if overrides:

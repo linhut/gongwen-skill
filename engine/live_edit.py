@@ -28,7 +28,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List
 
-# ARCH-03 修复：engine/ 自身就是搜索路径根，模块内 from core... import 已生效
+# ARCH-03 修复：engine/ 自身就是搜索路径根，模块内 from engine.core... import 已生效
 # 不再需要 sys.path.insert（engine/ 已通过 _bootstrap 或 __init__.py 正确注册）
 
 

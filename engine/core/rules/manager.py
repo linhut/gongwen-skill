@@ -130,7 +130,7 @@ def _dedup_extend(base_list: list, new_items: list, dedup_key) -> None:
         if k is not None and k in existing_keys:
             # P2-23 修复：同 field/键去重覆盖属于隐式依赖（如 speech.yaml 覆盖 _common.yaml），
             # 覆盖发生时记录日志，避免静默覆盖导致规则丢失难以排查
-            logger.info(f"_dedup_extend: 同键覆盖 {k}（新规则覆盖基础规则）")
+            logger.debug(f"_dedup_extend: 同键覆盖 {k}（新规则覆盖基础规则）")
             # Replace existing item with same key
             for i, existing in enumerate(base_list):
                 if dedup_key(existing) == k:

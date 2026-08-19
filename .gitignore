@@ -22,6 +22,7 @@ tests/
 *_template.docx
 /tmp/
 *.tmp
+tmp_*
 engine/tmp.py
 .coverage.*
 engine/session.py

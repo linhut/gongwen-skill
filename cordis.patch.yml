@@ -1,4 +1,4 @@
-# dsh bundle layer: mount the gongwen-skill plugin (host + client)
+# dsh bundle layer: 公文全流程处理工具 (gongwen-skill, host + client)
 - insert:
     - id: gongwen-skill
       name: gongwen-skill

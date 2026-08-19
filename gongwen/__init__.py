@@ -4,7 +4,7 @@
 # (c) 2026 Jose AI (https://www.linhut.cn)
 # Licensed under the MIT License. See the LICENSE file for details.
 #
-# gongwen-skill Python package - 中文公文全流程处理工具
+# 公文全流程处理工具 - gongwen-skill Python package
 
 __version__ = "1.12.74"
 

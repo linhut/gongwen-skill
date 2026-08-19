@@ -24,11 +24,11 @@ _logger = logging.getLogger(__name__)
 
 def cmd_full_review(args):
     """完整审校流程：格式修复（路径A）→ 内容优化（路径B）→ 批注输出。"""
-    from core.document.parser import parse_docx
-    from core.document.generator import generate_docx
-    from core.rules.engine import RuleEngine
+    from engine.core.document.parser import parse_docx
+    from engine.core.document.generator import generate_docx
+    from engine.core.rules.engine import RuleEngine
     from optimizer import load_changes_from_json
-    from core.document.annotator import GongwenAnnotator, CommentSuggestion
+    from engine.core.document.annotator import GongwenAnnotator, CommentSuggestion
 
     input_path = Path(args.input)
     # P1-1 修复：统一传 None
@@ -78,9 +78,9 @@ def cmd_full_review(args):
 def cmd_bold_first(args):
     """正文段落首句加粗（符合公文规范）。"""
     import shutil
-    from core.document.parser import parse_docx
-    from core.document.generator import generate_docx
-    from core.document.modifier import bold_first_sentence_of_body
+    from engine.core.document.parser import parse_docx
+    from engine.core.document.generator import generate_docx
+    from engine.core.document.modifier import bold_first_sentence_of_body
 
     input_path = Path(args.input)
     out = Path(args.output) if args.output else input_path.with_stem(input_path.stem + "_加粗首句")
@@ -140,14 +140,14 @@ def cmd_fix_common(args):
     """
     import time
     import copy as _copy
-    from core.document.parser import parse_docx
-    from core.document.generator import generate_docx
-    from core.document.modifier import (
+    from engine.core.document.parser import parse_docx
+    from engine.core.document.generator import generate_docx
+    from engine.core.document.modifier import (
         clean_path_b_markers, split_numbered_paragraphs,
         bold_first_sentence_of_body, fix_bold_range,
     )
-    from core.rules.manager import load_rules_merged
-    from core.rules.fixer import apply_fixes
+    from engine.core.rules.manager import load_rules_merged
+    from engine.core.rules.fixer import apply_fixes
 
     t0 = time.time()
     input_path = Path(args.input)

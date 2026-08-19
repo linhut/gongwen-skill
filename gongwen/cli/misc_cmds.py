@@ -15,7 +15,7 @@ _logger = logging.getLogger(__name__)
 
 def cmd_rule_export(args):
     """导出某类型的合并规则为 YAML。"""
-    from core.rules.manager import load_rules_merged
+    from engine.core.rules.manager import load_rules_merged
     import yaml
 
     rules = load_rules_merged(args.type)
@@ -29,7 +29,7 @@ def cmd_rule_export(args):
 
 def cmd_rule_list(args):
     """列出三层规则。"""
-    from core.rules.manager import list_rule_files
+    from engine.core.rules.manager import list_rule_files
     files = list_rule_files(args.source)
     if args.json:
         print(json.dumps(files, ensure_ascii=False, indent=2))
@@ -40,7 +40,7 @@ def cmd_rule_list(args):
 
 def cmd_rule_import(args):
     """导入/保存自定义规则 YAML。"""
-    from core.rules.manager import save_rule, validate_rule
+    from engine.core.rules.manager import save_rule, validate_rule
     import yaml
 
     key = args.key
@@ -117,7 +117,7 @@ def cmd_table_signs(args):
 
 def cmd_audit(args):
     """审计文档处理链：检查文档格式合规性、删除线问题、bold-first 影响。"""
-    from core.document.parser import parse_docx
+    from engine.core.document.parser import parse_docx
     from pathlib import Path
 
     model = parse_docx(args.input)

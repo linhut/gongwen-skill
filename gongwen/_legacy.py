@@ -98,7 +98,7 @@ _logger = logging.getLogger(__name__)
 
 # ARCH-03 修复：通过 _bootstrap 统一管理 engine/ 路径和编码设置
 # 消除各入口点重复的 sys.path.insert hack
-from gongwen._bootstrap import _ENGINE_DIR  # noqa: F401, E402
+import gongwen._bootstrap  # noqa: F401, E402  # 触发编码设置和路径引导
 
 # 阶梯2：从 cli.helpers 导入提取的辅助函数（逐步消除单文件膨胀）
 
@@ -125,7 +125,7 @@ from gongwen._bootstrap import _ENGINE_DIR  # noqa: F401, E402
 
 def cmd_list_types(args):
     """列出所有支持的公文类型。"""
-    from core.rules.loader import list_available_types
+    from engine.core.rules.loader import list_available_types
     types = list_available_types()
     if args.json:
         print(json.dumps(types, ensure_ascii=False, indent=2))
@@ -137,7 +137,7 @@ def cmd_list_types(args):
 def cmd_template(args):
     """生成标准公文模板。"""
     from datetime import date as _dt
-    from core.document.generator import generate_docx
+    from engine.core.document.generator import generate_docx
     from template_builder import create_template_document
 
     doc_type = args.type
@@ -155,7 +155,7 @@ def cmd_template(args):
 
 def cmd_parse(args):
     """解析文档为结构化 JSON。"""
-    from core.document.parser import parse_docx
+    from engine.core.document.parser import parse_docx
 
     model = parse_docx(args.input)
     data = model.model_dump()
@@ -169,8 +169,8 @@ def cmd_parse(args):
 
 def cmd_check(args):
     """检查文档格式（只读）。"""
-    from core.document.parser import parse_docx
-    from core.rules.engine import RuleEngine
+    from engine.core.document.parser import parse_docx
+    from engine.core.rules.engine import RuleEngine
 
     engine = RuleEngine()
     overrides = _parse_config_overrides(getattr(args, "config_overrides", ""))
@@ -206,9 +206,9 @@ def cmd_optimize(args):
     默认预览模式：检测类型 → 检查问题 → 列出摘要 → 提示下一步。
     加 --apply 才真正执行修复并生成文件。
     """
-    from core.document.parser import parse_docx
-    from core.document.generator import generate_docx
-    from core.rules.engine import RuleEngine
+    from engine.core.document.parser import parse_docx
+    from engine.core.document.generator import generate_docx
+    from engine.core.rules.engine import RuleEngine
 
     engine = RuleEngine()
     # 应用 DSH 配置覆盖到规则引擎
@@ -260,7 +260,7 @@ def cmd_optimize(args):
     selected = args.selected_rules.split(",") if args.selected_rules else None
     _, fixed = engine.check_and_fix(model, doc_type, selected)
     # 清理路径 B 遗留的修改说明段落和删除线标记（确保干净成品）
-    from core.document.modifier import clean_path_b_markers, bold_first_sentence_of_body
+    from engine.core.document.modifier import clean_path_b_markers, bold_first_sentence_of_body
     cleaned = clean_path_b_markers(fixed)
     # B-03（方案八）：optimize 增加首句加粗能力——修复后补齐缺失的首句加粗，
     # 与 fix-common 行为对齐（speech 文种跳过：整段加粗为朗读件规范）
@@ -269,8 +269,8 @@ def cmd_optimize(args):
         n_bold = bold_first_sentence_of_body(fixed)
     # 改动9：按 blank_line_rules 配置主动插入必要空行（省筹委会规范：标题前后/落款前/附件后）
     try:
-        from core.document.modifier import _insert_blank_lines
-        from core.rules.manager import load_rules_merged as _lrm
+        from engine.core.document.modifier import _insert_blank_lines
+        from engine.core.rules.manager import load_rules_merged as _lrm
         n_blank = _insert_blank_lines(fixed, _lrm(doc_type))
     except Exception:
         n_blank = 0
@@ -302,8 +302,8 @@ def cmd_optimize(args):
 
 def cmd_generate(args):
     """从 DocumentModel JSON 生成 .docx。"""
-    from core.document.models import DocumentModel
-    from core.document.generator import generate_docx
+    from engine.core.document.models import DocumentModel
+    from engine.core.document.generator import generate_docx
 
     data = json.loads(Path(args.input).read_text(encoding="utf-8"))
     model = DocumentModel(**data)
@@ -329,12 +329,12 @@ def cmd_md2docx(args):
     - doc_type: 公文类型（默认 notice）
     """
     from datetime import date as _dt
-    from core.document.generator import generate_docx
-    from core.document.models import (
+    from engine.core.document.generator import generate_docx
+    from engine.core.document.models import (
         DocumentModel, DocumentMetadata, PageSetup,
         Paragraph, ParagraphFormat, Run, RunFormat,
     )
-    from core.document.modifier import convert_markdown
+    from engine.core.document.modifier import convert_markdown
 
     # 解析参数
     doc_type = args.doc_type or "notice"
@@ -519,7 +519,7 @@ def cmd_md2docx(args):
 
     # 生成 docx（P1: --no-ai-declaration 跳过 AI 声明段）
     # AI 生成内容通病修复：去除句前空格 + 统一文字颜色为黑色（md2docx 不走规则引擎，手动调用）
-    from core.document.modifier import remove_extra_spaces, unify_text_color
+    from engine.core.document.modifier import remove_extra_spaces, unify_text_color
     remove_extra_spaces(model)
     unify_text_color(model)
     if args.output:
@@ -654,11 +654,11 @@ FONTS_DOWNLOAD_BASE = "https://raw.githubusercontent.com/linhut/document-ai-assi
 def main():
     parser = argparse.ArgumentParser(
         prog="gongwen",
-        description="中文公文全流程处理工具（GB/T 9704）—— 格式检查/内容优化/模板生成/版式注入  (c) 2026 Jose AI  https://www.linhut.cn",
+        description="公文全流程处理工具（GB/T 9704）—— 格式检查/内容优化/模板生成/版式注入  (c) 2026 Jose AI  https://www.linhut.cn",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    parser.add_argument("--version", action="version", version=f"gongwen-skill v{__version__}",
+    parser.add_argument("--version", action="version", version=f"公文全流程处理工具 v{__version__}",
                         help="显示版本号并退出")
     sub = parser.add_subparsers(dest="command", help="子命令")
 

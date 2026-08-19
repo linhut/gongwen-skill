@@ -1,5 +1,5 @@
 {
-  "_comment": "gongwen-skill DSH 插件默认配置。复制到 ~/.gongwen-skill/dsh-config.json 后修改生效。",
+  "_comment": "公文全流程处理工具（gongwen-skill）DSH 插件默认配置。复制到 ~/.gongwen-skill/dsh-config.json 后修改生效。",
   "_doc": "此文件是默认模板，不要直接修改。运行 `python -m gongwen config --init` 可创建用户配置。",
   "default_doc_type": "notice",
   "page_setup": {

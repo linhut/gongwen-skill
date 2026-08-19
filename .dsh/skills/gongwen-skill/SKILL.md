@@ -1,6 +1,6 @@
 ---
 name: gongwen-skill
-description: 中文公文全流程处理助手。支持 .docx 公文按 GB/T 9704 国家标准做格式检查（check）、自动修复（optimize）、行内内容修订（optimize-content，红色标注+删除线+修改说明）、模板生成（template）、样式学习（style-learn，从标准文档学习排版样式生成自定义模板）、Markdown 转公文（md2docx），以及版头/版记/页码注入。覆盖通知/请示/报告/函/会议纪要等 24 类公文。完全自包含，克隆即用，无需数据库或后端服务。
+description: 公文全流程处理工具。支持 .docx 公文按 GB/T 9704 国家标准做格式检查（check）、自动修复（optimize）、行内内容修订（optimize-content，红色标注+删除线+修改说明）、模板生成（template）、样式学习（style-learn，从标准文档学习排版样式生成自定义模板）、Markdown 转公文（md2docx），以及版头/版记/页码注入。覆盖通知/请示/报告/函/会议纪要等 24 类公文。完全自包含，克隆即用，无需数据库或后端服务。
 whenToUse: 当用户需要处理中文公文（.docx格式）时，包括格式检查、自动修复、内容润色、模板生成、样式学习（从标准文档学习排版样式生成自定义模板）、Markdown转公文、版头版记注入等场景。适用于通知/请示/报告/函/会议纪要/新闻稿/讲话稿等24种公文类型。
 user-invocable: true
 metadata:

@@ -446,7 +446,7 @@ def cmd_doctor(args):
         return 0 if report["summary"]["failed"] == 0 else 1
 
     s = report["summary"]
-    print(f"🔍 gongwen-skill 健康诊断")
+    print(f"🔍 公文全流程处理工具 健康诊断")
     print(f"   项目根目录: {report['project_root']}")
     print(f"   诊断时间: {report['timestamp']}")
     print(f"   耗时: {report['elapsed_seconds']}s")
@@ -478,7 +478,7 @@ def cmd_repair(args):
     """修复常见问题：自动修复 + 提示修复。"""
     import subprocess as _sp
 
-    print(f"gongwen-skill 修复工具")
+    print(f"公文全流程处理工具 修复工具")
     print(f"{'-' * 60}")
 
     fixes = 0

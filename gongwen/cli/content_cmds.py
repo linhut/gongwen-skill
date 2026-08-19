@@ -76,7 +76,7 @@ def cmd_optimize_content(args):
         Path(args.input), getattr(args, 'doc_type', None))
     content_rules: dict = {}
     try:
-        from core.rules.manager import load_rules_merged
+        from engine.core.rules.manager import load_rules_merged
         rules = load_rules_merged(doc_type)
         content_rules = _extract_content_rules(rules)
         if getattr(args, 'show_rules', False):
@@ -336,7 +336,7 @@ def cmd_optimize_content(args):
         try:
             from auto_optimizer import style_enhance_changes, llm_configured
             if llm_configured():
-                from core.document.parser import parse_docx
+                from engine.core.document.parser import parse_docx
                 _se_model = parse_docx(str(args.input))
                 _se_paras = [p.text for p in _se_model.paragraphs if p.text and p.text.strip()]
                 style_changes = style_enhance_changes(_se_paras, style_prompt, changes)
@@ -353,8 +353,8 @@ def cmd_optimize_content(args):
 
     # --comment-mode：Word 原生批注模式（可审阅→接受/拒绝）
     if getattr(args, 'comment_mode', False):
-        from core.document.annotator import GongwenAnnotator, CommentSuggestion
-        from core.document.reviewer_comments import resolve_role
+        from engine.core.document.annotator import GongwenAnnotator, CommentSuggestion
+        from engine.core.document.reviewer_comments import resolve_role
 
         # P1 修复：comment_mode 路径共用 resolve_role（category 优先，角色真正区分）
         suggestions = []
@@ -382,7 +382,7 @@ def cmd_optimize_content(args):
 
     # --tracked-change：Word 原生修订标记模式（审阅面板逐条接受/拒绝）
     if getattr(args, 'tracked_change', False):
-        from core.document.tracked_changes import inject_tracked_changes
+        from engine.core.document.tracked_changes import inject_tracked_changes
         tc_changes = [{
             "para_index": c.get("paragraph_index", 0),
             "original_text": c.get("original_text", ""),
@@ -398,9 +398,9 @@ def cmd_optimize_content(args):
     # --mode tracked：Word 原生修订（del/ins）+ 批注（修改说明）统一模式
     mode = getattr(args, 'mode', 'tracked')
     if mode == 'tracked':
-        from core.document.tracked_annotator import inject_tracked_with_comments
-        from core.document.annotator import CommentSuggestion
-        from core.document.reviewer_comments import REVIEWER_MAP, resolve_role, get_author
+        from engine.core.document.tracked_annotator import inject_tracked_with_comments
+        from engine.core.document.annotator import CommentSuggestion
+        from engine.core.document.reviewer_comments import REVIEWER_MAP, resolve_role, get_author
 
         # F1 + D3 修复：修订作者 = skill 英文名 + "-修订"（与 skill 英文标识统一，保留中文后缀便于中文 Word 用户理解）
         REVISION_AUTHOR = "GongWen-Skill修订"
@@ -486,7 +486,7 @@ def cmd_optimize_content(args):
                 # P2-7 修复：顶层已导入 json，删除冗余 import json as _json
                 # 实体提取（不做互联网核验，交 Agent）
                 from fact_check import extract_entities_hybrid
-                from core.document.parser import parse_docx as _fc_parse
+                from engine.core.document.parser import parse_docx as _fc_parse
                 _fc_model = _fc_parse(str(args.input))
                 _fc_paras = [p.text for p in _fc_model.paragraphs]
                 _entities = extract_entities_hybrid(_fc_paras)
@@ -632,7 +632,7 @@ def cmd_optimize_content(args):
             # R2 修复：按实体名在段落文本中的偏移精确锚定（而非 offset=0 锚定段落起始）
             fc_para_texts: dict[int, str] = {}
             try:
-                from core.document.parser import parse_docx
+                from engine.core.document.parser import parse_docx
                 _m = parse_docx(str(args.input))
                 fc_para_texts = {i: p.text for i, p in enumerate(_m.paragraphs)}
             except Exception as e:
@@ -675,7 +675,7 @@ def cmd_optimize_content(args):
         if _m is None:
             # P3-21 修复：移除无效的 '_m = None' 赋值（_m 已确定为 None，赋值无意义）
             try:
-                from core.document.parser import parse_docx
+                from engine.core.document.parser import parse_docx
                 _m = parse_docx(str(args.input))
             except Exception as e:
                 _logger.warning(f"文档结构解析失败: {e}")
