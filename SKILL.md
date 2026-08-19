@@ -14,10 +14,9 @@ metadata:
 ---
 
 <!--
-公文文档格式化 Skill
-(c) 2026 Jose AI (https://www.linhut.cn)
-项目出处：AI 公文智能优化助手（https://github.com/linhut/document-ai-assistant）
-Licensed under the MIT License. See the LICENSE file for details.
+  (c) 2026 Jose AI (https://www.linhut.cn)
+  https://github.com/linhut/gongwen-skill
+  Licensed under the MIT License. See the LICENSE file for details.
 -->
 
 # 公文文档格式化 Skill（GB/T 9704）

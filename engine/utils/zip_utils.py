@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+#
+# (c) 2026 Jose AI (https://www.linhut.cn)
+# https://github.com/linhut/gongwen-skill
+# Licensed under the MIT License. See the LICENSE file for details.
+#
 """
 公共 ZIP / OOXML 工具（优化方案 v1.12.25 E3）。
 

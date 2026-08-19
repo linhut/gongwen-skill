@@ -1,3 +1,9 @@
+<!--
+  (c) 2026 Jose AI (https://www.linhut.cn)
+  https://github.com/linhut/gongwen-skill
+  Licensed under the MIT License. See the LICENSE file for details.
+-->
+
 ---
 name: 功能请求
 about: 为本项目提出一个新想法

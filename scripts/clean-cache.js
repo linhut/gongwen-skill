@@ -1,3 +1,7 @@
+// (c) 2026 Jose AI (https://www.linhut.cn)
+// https://github.com/linhut/gongwen-skill
+// Licensed under the MIT License. See the LICENSE file for details.
+
 // 打包前清理 __pycache__ 目录（prepack 钩子使用）
 // 单独文件避免 package.json 内联转义问题
 import { readdirSync, rmSync, statSync, existsSync } from "node:fs";

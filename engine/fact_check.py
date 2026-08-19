@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+#
+# (c) 2026 Jose AI (https://www.linhut.cn)
+# https://github.com/linhut/gongwen-skill
+# Licensed under the MIT License. See the LICENSE file for details.
+#
 """
 事实核验模块 —— 对用户文档中的关键人事信息做主动交叉核验。
 

@@ -3,6 +3,7 @@
 # 公文文档格式化 Skill —— 模板生成器（独立发行版）
 #
 # (c) 2026 Jose AI (https://www.linhut.cn)
+# https://github.com/linhut/gongwen-skill
 # Licensed under the MIT License. See the LICENSE file for details.
 #
 # 本模块从原项目 backend/api/routes/template_download.py 中抽取纯逻辑，

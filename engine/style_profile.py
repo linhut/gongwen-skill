@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+#
+# (c) 2026 Jose AI (https://www.linhut.cn)
+# https://github.com/linhut/gongwen-skill
+# Licensed under the MIT License. See the LICENSE file for details.
+#
 """
 样式学习引擎 —— 从标准 .docx 文档提取完整排版样式，生成自定义命名模板。
 

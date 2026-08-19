@@ -4,7 +4,7 @@
 # 公文文档格式化 Skill —— 中文公文全流程处理工具
 #
 # (c) 2026 Jose AI (https://www.linhut.cn)
-# 项目出处：AI 公文智能优化助手 (https://www.linhut.cn)
+# https://github.com/linhut/gongwen-skill
 # Licensed under the MIT License. See the LICENSE file for details.
 #
 # 本文件为独立发行版的入口，任何人克隆仓库后即可运行，

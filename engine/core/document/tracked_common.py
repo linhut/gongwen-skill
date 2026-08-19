@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+#
+# (c) 2026 Jose AI (https://www.linhut.cn)
+# https://github.com/linhut/gongwen-skill
+# Licensed under the MIT License. See the LICENSE file for details.
+#
 """
 tracked 修订公共工具（P2-10 修复：消除 tracked_changes / tracked_annotator 重复代码）。
 

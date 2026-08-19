@@ -1,3 +1,9 @@
+<!--
+  (c) 2026 Jose AI (https://www.linhut.cn)
+  https://github.com/linhut/gongwen-skill
+  Licensed under the MIT License. See the LICENSE file for details.
+-->
+
 # gongwen-skill 发布流程（Release Process）
 
 本文档定义 gongwen-skill 的**版本规范、发布流程与验证清单**。所有发布操作遵循本流程，保证版本可追溯、构建可复现、发布可验证。

@@ -1,3 +1,9 @@
+<!--
+  (c) 2026 Jose AI (https://www.linhut.cn)
+  https://github.com/linhut/gongwen-skill
+  Licensed under the MIT License. See the LICENSE file for details.
+-->
+
 # 公文格式优化助手 · 使用提示词
 
 > 给 AI Agent 的指令模板，用于处理中文公文格式检查和优化任务。

@@ -1,5 +1,7 @@
 // 公文全流程处理工具 - DSH plugin bridge (gongwen-skill, v2.0.0+)
-// (c) 2026 Jose AI (https://www.linhut.cn)  MIT License
+// (c) 2026 Jose AI (https://www.linhut.cn)
+// https://github.com/linhut/gongwen-skill
+// Licensed under the MIT License. See the LICENSE file for details.
 //
 // 分层架构：
 // - Python CLI：纯工具层，通过 --config-overrides 接收规则覆盖 JSON

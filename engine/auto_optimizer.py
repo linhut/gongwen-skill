@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+#
+# (c) 2026 Jose AI (https://www.linhut.cn)
+# https://github.com/linhut/gongwen-skill
+# Licensed under the MIT License. See the LICENSE file for details.
+#
 """
 内置 LLM 内容优化建议生成（v1.12.30 内容优化架构改进方案 改进 E）。
 

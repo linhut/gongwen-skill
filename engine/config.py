@@ -3,6 +3,7 @@
 # 公文文档格式化 Skill —— 独立引擎配置
 #
 # (c) 2026 Jose AI (https://www.linhut.cn)
+# https://github.com/linhut/gongwen-skill
 # Licensed under the MIT License. See the LICENSE file for details.
 #
 # 本文件为独立发行版专用配置，替代原项目中依赖 PyInstaller / Electron /

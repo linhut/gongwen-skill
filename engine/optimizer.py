@@ -3,7 +3,7 @@
 # 公文文档格式化 Skill —— 内容优化差异对比引擎
 #
 # (c) 2026 Jose AI (https://www.linhut.cn)
-# 项目出处：AI 公文智能优化助手 (https://www.linhut.cn)
+# https://github.com/linhut/gongwen-skill
 # Licensed under the MIT License. See the LICENSE file for details.
 #
 # 功能：将原文段落与优化后段落进行句子级 diff，生成带标注的 .docx 文档。

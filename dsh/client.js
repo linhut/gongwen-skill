@@ -1,5 +1,7 @@
 // 公文全流程处理工具 DSH client — 可视化配置面板（gongwen-skill，不做皮肤，仅设置面板）
-// (c) 2026 Jose AI (https://www.linhut.cn)  MIT License
+// (c) 2026 Jose AI (https://www.linhut.cn)
+// https://github.com/linhut/gongwen-skill
+// Licensed under the MIT License. See the LICENSE file for details.
 //
 // 在 DSH Web GUI 系统设置 → 插件配置 中渲染公文排版参数编辑界面。
 // 通过 /plugins/gongwen-skill/api/config (GET/POST) 与宿主端通信。
