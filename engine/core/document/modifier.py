@@ -607,13 +607,13 @@ def _extract_para_index(location: str) -> int | None:
         return None
 
 
-
 _NUMBERED_SPLIT_RE = re.compile(
     r'((?:一是|二是|三是|四是|五是|六是|七是|八是|九是|'
     r'一要|二要|三要|四要|五要|'
     r'第[一二三四五六七八九十百]+\s*[、，,]|'
     r'[（(]\s*\d+\s*[）)]))'
 )
+
 
 def remove_extra_blank_lines(model: DocumentModel, mode: str = 'delete_single',
                              protected_roles: set | None = None) -> None:
