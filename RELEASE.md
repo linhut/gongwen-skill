@@ -97,6 +97,7 @@ grep -h "1\.12\.X" pyproject.toml gongwen/__init__.py gongwen/_legacy.py package
 - [ ] `python -m build` 本地构建成功（sdist + wheel）
 - [ ] `python -m gongwen --version` 输出目标版本
 - [ ] 关键命令冒烟：`list-types`（24 行）、`check-update --json`（合法 JSON）
+- [ ] 全面自检通过：`python -m gongwen doctor`（20/21 OK，仅 Git 工作区因未提交文件而 FAIL 为预期）
 
 ---
 

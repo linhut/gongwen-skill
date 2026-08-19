@@ -42,9 +42,35 @@ jobs:
       - name: Check Python style
         run: pycodestyle --max-line-length=120 --exclude=__pycache__,.git,dist,build .
 
+  doctor:
+    name: Self-Diagnosis
+    needs: [lint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.10' }
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Install fonts (simulate user install path)
+        run: python -m gongwen font install
+      - name: Run doctor self-diagnosis
+        run: |
+          python -m gongwen doctor --json | python -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Total: {d[\"summary\"][\"total\"]}, OK: {d[\"summary\"][\"ok\"]}, FAIL: {d[\"summary\"][\"failed\"]}')
+if d['summary']['failed'] > 0:
+    for c in d['checks']:
+        if not c['ok']:
+            print(f'  FAIL: {c[\"name\"]} - {c.get(\"detail\", \"\")}')
+    sys.exit(1)
+print('All checks passed')
+"
+
   publish:
     name: Publish to PyPI
-    needs: [test, lint]
+    needs: [test, lint, doctor]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
@@ -62,7 +88,7 @@ jobs:
 
   publish-npm:
     name: Publish to npm
-    needs: [test, lint]
+    needs: [test, lint, doctor]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:

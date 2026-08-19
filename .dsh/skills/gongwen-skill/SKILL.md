@@ -901,6 +901,14 @@ python -m gongwen fix-common 文件.docx -o 成品.docx
 | `check-update` | 多渠道版本自检 | `python -m gongwen check-update` |
 | `font` | 公文标准字体管理（安装/检查/列出） | `python -m gongwen font install` |
 
+### 🩺 诊断与修复
+
+| 命令 | 用途 | 最小用法 |
+|------|------|---------|
+| `doctor` | 全面诊断：检查 Python 版本/依赖/版本一致性/字体/DSH 文件/代码风格等 | `python -m gongwen doctor` |
+| `doctor --json` | JSON 结构化输出（便于 Agent 解析） | `python -m gongwen doctor --json` |
+| `repair` | 修复常见问题：安装缺失依赖/字体/同步 SKILL.md 副本 | `python -m gongwen repair` |
+
 ### ⚙️ 规则管理
 
 | 命令 | 用途 | 最小用法 |

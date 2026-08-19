@@ -45,6 +45,7 @@ Licensed under the MIT License. See the LICENSE file for details.
 | 🧩 完整审校 | `full-review` | 修订+批注联合命令（句子级差异修订 + 分类批注） |
 | 🎨 样式学习 | `style-learn` / `style-list` | 上传标准文档学习 Run/段落/页面三级样式（字体/字号/字间距/行距/缩进/页边距），生成命名模板持久化，后续用 `optimize -t 模板名` 套用 |
 | 🔄 版本自检 | `check-update` | 多渠道版本自检（GitHub/GitCode/AtomGit 三仓库比对取最新） |
+| 🩺 自我诊断 | `doctor` / `repair` | 全面诊断 21 项（Python/依赖/版本一致性/字体/DSH 文件/代码风格），自动修复常见问题 |
 | 🕵️ 文档审计 | `audit` | 检查删除线/加粗/AI 声明等痕迹 |
 | 🤝 会话交接 | `handoff` | 跨会话上下文传递（`--list` / `--latest` / Agent 长任务收尾必写） |
 | ⚙️ 规则管理 | `rule-export/import/list` | YAML 规则三层定制（官方/单位/用户） |

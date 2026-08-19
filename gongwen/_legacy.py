@@ -35,13 +35,17 @@ from gongwen.cli.update_cmds import (
 from gongwen.cli.font_cmds import (
     cmd_font,
 )
+from gongwen.cli.doctor_cmds import (
+    cmd_doctor,
+    cmd_repair,
+)
 from gongwen.cli.helpers import (
     detect_doc_type as _detect_doc_type,
     build_output_name as _build_output_name,
     parse_config_overrides as _parse_config_overrides,
     load_rules_with_overrides as _load_rules_with_overrides,
 )
-__version__ = "1.12.72"
+__version__ = "1.12.73"
 # 版本号应与 gongwen/__init__.py 保持一致，每次发版同步更新
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
@@ -877,6 +881,15 @@ def main():
                    choices=["list", "check", "install"],
                    help="list=列出字体清单, check=检查安装状态, install=安装字体")
     p.set_defaults(func=cmd_font)
+
+    # ---- 自我诊断与修复 ----
+    p = sub.add_parser("doctor", help="全面诊断：检查 Python 版本/依赖/版本一致性/字体/DSH 文件/代码风格等")
+    p.add_argument("--json", action="store_true",
+                   help="输出 JSON 格式结果（便于 Agent 解析）")
+    p.set_defaults(func=cmd_doctor)
+
+    p = sub.add_parser("repair", help="修复常见问题：安装缺失依赖/字体/同步 SKILL.md 副本")
+    p.set_defaults(func=cmd_repair)
 
     args = parser.parse_args()
 

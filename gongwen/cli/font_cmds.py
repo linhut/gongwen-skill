@@ -20,15 +20,20 @@ GONGWEN_FONTS = {
 
 
 def _get_fonts_dir() -> Path:
-    """定位项目内 assets/fonts/ 目录。"""
-    return Path(__file__).resolve().parent.parent / "assets" / "fonts"
+    """定位项目内 assets/fonts/ 目录。
+
+    注意：本文件位于 gongwen/cli/font_cmds.py，项目根在 parent.parent.parent。
+    """
+    return Path(__file__).resolve().parent.parent.parent / "assets" / "fonts"
 
 
 def _download_font(ttf_file: str, dest: Path) -> bool:
     """从 GitHub 下载字体文件到 dest，返回是否成功。"""
     import urllib.request
     import urllib.error
-    url = f"{FONTS_DOWNLOAD_BASE}/{ttf_file}"
+    from urllib.parse import quote
+    # P0-1 修复：URL 中的中文字符必须百分号编码，否则 ASCII 编码失败
+    url = f"{FONTS_DOWNLOAD_BASE}/{quote(ttf_file)}"
     try:
         print(f"  ⬇️  下载 {ttf_file} ...")
         req = urllib.request.Request(url, headers={"User-Agent": "gongwen-skill"})

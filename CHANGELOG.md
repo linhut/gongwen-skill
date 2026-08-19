@@ -1,3 +1,20 @@
+## v1.12.73 (2026-08-19)
+
+### Added
+- `doctor` 命令：全面诊断 21 项（Python 版本/核心依赖/版本号一致性/必需目录/字体文件/DSH 插件文件/SKILL.md 同步/Git 工作区/代码风格/npm 包），支持 `--json` 结构化输出
+- `repair` 命令：自动修复常见问题（安装缺失 Python 依赖/安装缺失字体/同步 SKILL.md 到 .dsh/skills/ 副本）
+- 汲取教训：npm install 中断后 `--offline` 仍显示 "up to date" 但实际文件残缺，doctor 逐一检查不依赖"看起来正常"的状态
+
+### Fixed
+- 字体下载 URL 中文字符编码问题：`urllib.parse.quote()` 百分号编码，修复 Windows 下 ASCII 编码失败
+- 源代码风格违规：`gongwen/cli/doctor_cmds.py` 中 E501 行超长和 E741 歧义变量名
+
+### Changed
+- DSH 系统提示词（GONGWEN_GUIDANCE）新增 `doctor`/`repair` 关键词
+- SKILL.md 命令速查附录新增「诊断与修复」分组（doctor、doctor --json、repair）
+- README 能力表新增「自我诊断」行
+- npm 包检查增强：`shutil.which()` 三级回退探测 npm/pnpm/yarn，未检测到时明确跳过说明
+
 ## v1.12.72 (2026-08-19)
 
 ### Changed
