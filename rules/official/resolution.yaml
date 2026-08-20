@@ -21,4 +21,13 @@ check_rules:
     expected: 注明会议名称和日期
     message: 决议应注明通过的会议名称和日期
     category: content
+
+  - id: CHK-RS003
+    name: 决议标题格式检查
+    severity: P2
+    field: title.pattern
+    expected: 包含"决议"字样
+    message: 决议标题应包含"关于……的决议"格式
+    category: format
+
 fix_rules: []

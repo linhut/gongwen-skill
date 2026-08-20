@@ -2,6 +2,8 @@
 # https://github.com/linhut/gongwen-skill
 # Licensed under the MIT License. See the LICENSE file for details.
 
+template_name: 新闻稿/简报
+document_type: news
 name: news
 display: 新闻稿/简报
 description: 报道会议、活动、工作进展等新闻事实的文稿
@@ -110,6 +112,7 @@ skip_checks:
   - 标题字数严格限制
 
 # 新闻稿重点检查项
+# 新闻稿重点检查项
 focus_checks:
   - 人名/职务/机构名准确性
   - 时间一致性
@@ -117,3 +120,46 @@ focus_checks:
   - 事实表述客观克制
   - 稿源/编辑信息完整性
   - 简称定义规范（首次出现时定义）
+
+check_rules:
+  - id: CHK-NW001
+    name: 导语段检查
+    severity: P1
+    field: content.lead
+    expected: 包含导语
+    message: 新闻稿应包含导语段（含日期、地点、会议全称、主持领导、参会单位等要素）
+    category: content
+
+  - id: CHK-NW002
+    name: 稿源信息检查
+    severity: P1
+    field: content.source
+    expected: 包含稿源和编辑信息
+    message: 新闻稿末尾应包含稿源单位和编辑姓名
+    category: content
+
+  - id: CHK-NW003
+    name: 标题风格检查
+    severity: P1
+    field: title.style
+    expected: event_statement
+    message: 新闻稿标题应采用事件陈述式（非事由+文种式），完整陈述事件事实
+    category: format
+
+  - id: CHK-NW004
+    name: 标题字数检查
+    severity: P2
+    field: title.max_length
+    expected: 35
+    message: 新闻稿标题建议不超过35字
+    category: format
+
+  - id: CHK-NW005
+    name: 听取/通报段检查
+    severity: P2
+    field: content.report_section
+    expected: 包含听取/通报段
+    message: 新闻稿应包含听取/通报段，记录会议汇报内容
+    category: content
+
+fix_rules: []

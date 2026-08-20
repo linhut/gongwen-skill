@@ -13,4 +13,26 @@ check_rules:
     expected: 包含规范结语
     message: 通知应以"特此通知"等规范结语结尾
     category: content
-fix_rules: []
+
+  - id: CHK-N002
+    name: 标题格式检查
+    severity: P1
+    field: title.pattern
+    expected: 包含"关于"和"通知"
+    message: 通知标题应为"关于……的通知"格式
+    category: format
+
+  - id: CHK-N003
+    name: 通知事项检查
+    severity: P1
+    field: content.notice_items
+    expected: 通知事项明确
+    message: 通知应明确告知事项、时间、地点、要求等要素
+    category: content
+
+fix_rules:
+  - id: FIX-N001
+    ref_check: CHK-N001
+    action: normalize_headings
+    target: all
+    value: true

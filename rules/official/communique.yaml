@@ -13,4 +13,21 @@ check_rules:
     expected: 事项完整
     message: 公报应内容完整、表述准确
     category: content
+
+  - id: CHK-CG002
+    name: 公报签署检查
+    severity: P1
+    field: signature.signer
+    expected: 包含签署信息
+    message: 公报应注明发布机关和日期
+    category: content
+
+  - id: CHK-CG003
+    name: 公报标题格式检查
+    severity: P2
+    field: title.pattern
+    expected: 包含"公报"字样
+    message: 公报标题应包含"公报"字样
+    category: format
+
 fix_rules: []

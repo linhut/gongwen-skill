@@ -21,4 +21,13 @@ check_rules:
     expected: 包含施行日期
     message: 制度应注明施行日期
     category: content
+
+  - id: CHK-REG003
+    name: 制度适用范围检查
+    severity: P2
+    field: content.scope
+    expected: 明确适用范围
+    message: 制度应明确适用范围和对象
+    category: content
+
 fix_rules: []

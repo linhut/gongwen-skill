@@ -21,4 +21,13 @@ check_rules:
     expected: 议定事项明确
     message: 纪要应明确议定事项和责任分工
     category: content
+
+  - id: CHK-MN003
+    name: 纪要格式检查
+    severity: P2
+    field: title.pattern
+    expected: 包含"纪要"字样
+    message: 纪要标题应包含"纪要"字样
+    category: format
+
 fix_rules: []

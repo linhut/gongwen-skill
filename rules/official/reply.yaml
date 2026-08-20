@@ -21,4 +21,13 @@ check_rules:
     expected: 包含规范结语
     message: 批复应以"此复"、"特此批复"等结语结尾
     category: content
+
+  - id: CHK-RP003
+    name: 批复态度检查
+    severity: P1
+    field: content.attitude
+    expected: 态度明确
+    message: 批复应明确表态（同意/不同意/部分同意）
+    category: content
+
 fix_rules: []

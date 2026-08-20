@@ -1,0 +1,49 @@
+#!/bin/sh
+# Version consistency check for gongwen-skill
+# (c) 2026 Jose AI (https://www.linhut.cn)
+# https://github.com/linhut/gongwen-skill
+# Licensed under the MIT License. See the LICENSE file for details.
+
+# 检查 4 处代码版本号文件是否一致（pyproject.toml / __init__.py / _legacy.py / package.json）
+# 不一致时阻止提交（可用 git commit --no-verify 跳过）
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [ -z "$ROOT" ]; then
+  exit 0
+fi
+
+# 提取各文件版本号
+PYPROJECT_VER="$(grep -oP 'version\s*=\s*"\K\d+\.\d+\.\d+' "$ROOT/pyproject.toml" 2>/dev/null | head -1)"
+INIT_VER="$(grep -oP '__version__\s*=\s*"\K\d+\.\d+\.\d+' "$ROOT/gongwen/__init__.py" 2>/dev/null | head -1)"
+LEGACY_VER="$(grep -oP '__version__\s*=\s*"\K\d+\.\d+\.\d+' "$ROOT/gongwen/_legacy.py" 2>/dev/null | head -1)"
+PKG_VER="$(grep -oP '"version"\s*:\s*"\K\d+\.\d+\.\d+' "$ROOT/package.json" 2>/dev/null | head -1)"
+
+# 检查是否所有版本号都提取成功
+MISSING=0
+[ -z "$PYPROJECT_VER" ] && echo "⚠️  pre-commit: pyproject.toml 版本号未找到" && MISSING=1
+[ -z "$INIT_VER" ] && echo "⚠️  pre-commit: gongwen/__init__.py 版本号未找到" && MISSING=1
+[ -z "$LEGACY_VER" ] && echo "⚠️  pre-commit: gongwen/_legacy.py 版本号未找到" && MISSING=1
+[ -z "$PKG_VER" ] && echo "⚠️  pre-commit: package.json 版本号未找到" && MISSING=1
+
+if [ "$MISSING" -eq 1 ]; then
+  echo "❌ pre-commit: 版本号文件缺失，请检查后再提交"
+  echo "   如需强制提交请使用: git commit --no-verify"
+  exit 1
+fi
+
+# 比较版本号是否一致
+if [ "$PYPROJECT_VER" != "$INIT_VER" ] || [ "$INIT_VER" != "$LEGACY_VER" ] || [ "$LEGACY_VER" != "$PKG_VER" ]; then
+  echo "❌ pre-commit: 版本号不一致，已阻止提交"
+  echo ""
+  echo "   文件版本号："
+  echo "     pyproject.toml:        $PYPROJECT_VER"
+  echo "     gongwen/__init__.py:   $INIT_VER"
+  echo "     gongwen/_legacy.py:    $LEGACY_VER"
+  echo "     package.json:          $PKG_VER"
+  echo ""
+  echo "   请统一修改为同一版本号后再提交"
+  echo "   强制提交: git commit --no-verify"
+  exit 1
+fi
+
+exit 0

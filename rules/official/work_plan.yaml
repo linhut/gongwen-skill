@@ -21,4 +21,13 @@ check_rules:
     expected: 有时间节点
     message: 工作方案应明确时间节点和进度安排
     category: content
+
+  - id: CHK-WP003
+    name: 责任分工检查
+    severity: P1
+    field: content.responsibilities
+    expected: 明确责任分工
+    message: 工作方案应明确责任单位和责任人
+    category: content
+
 fix_rules: []

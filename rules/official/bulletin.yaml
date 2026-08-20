@@ -21,4 +21,13 @@ check_rules:
     expected: 明确通报目的
     message: 通报应明确表彰、批评或传达的目的
     category: content
+
+  - id: CHK-BT003
+    name: 通报标题格式检查
+    severity: P2
+    field: title.pattern
+    expected: 包含"通报"字样
+    message: 通报标题应包含"关于……的通报"格式
+    category: format
+
 fix_rules: []

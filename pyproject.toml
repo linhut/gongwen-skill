@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gongwen-skill"
-version = "2.0.0"
+version = "2.1.0"
 description = "公文全流程处理工具 - GB/T 9704 格式检查/修复/内容优化/模板生成/版式注入"
 readme = "README.md"
 license = {text = "MIT"}

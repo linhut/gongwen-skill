@@ -21,4 +21,13 @@ check_rules:
     expected: 措施具体可行
     message: 指示应提出具体可行的措施和要求
     category: content
+
+  - id: CHK-I003
+    name: 指示涉及范围检查
+    severity: P2
+    field: content.scope
+    expected: 明确适用范围
+    message: 指示应明确适用对象和范围
+    category: content
+
 fix_rules: []

@@ -21,4 +21,13 @@ check_rules:
     expected: 议定事项明确
     message: 会议纪要应明确议定事项、责任人和完成时限
     category: content
+
+  - id: CHK-M003
+    name: 会议纪要结语检查
+    severity: P2
+    field: ending.check
+    expected: 包含规范结语
+    message: 会议纪要可以"会议明确"、"会议要求"等收尾
+    category: content
+
 fix_rules: []

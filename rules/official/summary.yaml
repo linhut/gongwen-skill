@@ -21,4 +21,13 @@ check_rules:
     expected: 有具体数据支撑
     message: 总结应有具体数据和实例支撑
     category: content
+
+  - id: CHK-SUM003
+    name: 总结结语检查
+    severity: P2
+    field: ending.check
+    expected: 包含规范结语
+    message: 总结可以"特此总结"等收尾，或自然的总结性段落结尾
+    category: content
+
 fix_rules: []

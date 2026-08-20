@@ -21,4 +21,13 @@ check_rules:
     expected: 注明提案人
     message: 议案应注明提案人或提案单位
     category: content
+
+  - id: CHK-BL003
+    name: 议案结语检查
+    severity: P1
+    field: ending.check
+    expected: 包含规范结语
+    message: 议案应以"请予审议"等规范结语结尾
+    category: content
+
 fix_rules: []

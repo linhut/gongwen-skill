@@ -14,7 +14,7 @@
 
 ## 1. 版本规范
 
-项目当前使用 `2.0.x` 序列（**v2.0.0 大版本重置**：从 1.12.x 序列迁移至 2.x，采用标准 SemVer）：
+项目当前使用 `2.1.x` 序列（**v2.0.0 大版本重置**：从 1.12.x 序列迁移至 2.x，采用标准 SemVer）：
 
 | 段 | 含义 | 示例 |
 |----|------|------|
@@ -57,10 +57,10 @@ python -m pycodestyle --max-line-length=120 --exclude=__pycache__,.git,dist,buil
 
 # ④ 提交版本更新
 git add pyproject.toml gongwen/__init__.py gongwen/_legacy.py package.json CHANGELOG.md README.md
-git commit -m "chore: bump version to 2.0.X"
+git commit -m "chore: bump version to 2.1.X"
 
 # ⑤ 打注解 tag
-git tag -a v2.0.X -m "v2.0.X - 发布说明摘要"
+git tag -a v2.1.X -m "v2.1.X - 发布说明摘要"
 
 # ⑥ 推送（触发 CI 自动发布）
 git push origin master --tags
@@ -72,25 +72,42 @@ git push atomgit master --tags
 
 ---
 
-## 3. 版本号更新点（4 处代码 + 文档）
+## 3. 版本号更新点（9 处代码 + 文档，doctor 仅检查前 4 项）
 
-| # | 文件 | 位置 |
-|---|------|------|
-| 1 | `pyproject.toml` | `version = "2.0.X"`（`[project]`） |
-| 2 | `gongwen/__init__.py` | `__version__ = "2.0.X"` |
-| 3 | `gongwen/_legacy.py` | `__version__ = "2.0.X"`（须与 #2 同步） |
-| 4 | `package.json` | `"version": "2.0.X"` |
-| 5 | `CHANGELOG.md` | 顶部新增 `## v2.0.X (YYYY-MM-DD)` 条目 |
-| 6 | `README.md`（可选但建议） | PyPI badge / Skill 版本示例 / `--version` 示例 |
+| # | 文件 | 位置 | 类型 |
+|---|------|------|------|
+| 1 | `pyproject.toml` | `version = "2.1.X"`（`[project]`） | 代码版本 |
+| 2 | `gongwen/__init__.py` | `__version__ = "2.1.X"` | 代码版本 |
+| 3 | `gongwen/_legacy.py` | `__version__ = "2.1.X"`（须与 #2 同步） | 代码版本 |
+| 4 | `package.json` | `"version": "2.1.X"` | 代码版本 |
+| 5 | `CHANGELOG.md` | 顶部新增 `## v2.1.X (YYYY-MM-DD)` 条目 | 文档 |
+| 6 | `README.md` | PyPI 徽章（已自动：`https://img.shields.io/pypi/v/gongwen-skill`）/ 版本示例 / `--version` 示例 | 文档 |
+| 7 | `prompts/usage-prompts.md` | `Skill 版本: v2.1.X` | 文档 |
+| 8 | `dsh/index.js` | 注释 `v2.1.X+`（运行时版本从 pyproject.toml 动态读取） | 文档 |
+| 9 | `RELEASE.md` | 本文档中的版本示例和验证命令 | 文档 |
 
 **⚠️ 历史教训**：曾出现 `pyproject.toml`/`package.json` 为 1.12.71 而 `__init__.py`/`_legacy.py` 停留在 1.12.69 的版本漂移，导致 `check-update` 比对错误。发布前必须逐项核对全部位置。
 
-**核对命令**：
+**快速核对命令（4 处代码版本）**：
 
 ```bash
 grep -h "2\.0\.X" pyproject.toml gongwen/__init__.py gongwen/_legacy.py package.json | grep -oP "2\.0\.\d+" | sort | uniq -c
 # 期望输出：4 行全部为同一版本号
 ```
+
+**完整核对命令（9 处全部）**：
+
+```bash
+# 在发布前检查所有含版本号的文件
+echo "=== 代码版本 ==="
+grep -h "2\.0\.\(0\|1\)" pyproject.toml gongwen/__init__.py gongwen/_legacy.py package.json
+echo "=== 文档版本查看（手动确认） ==="
+grep -n "v2\.0\.\(0\|1\)" README.md prompts/usage-prompts.md dsh/index.js
+```
+
+**pre-commit hook 自动检查**：已配置 `.githooks/pre-commit`，提交前自动检查 4 处代码版本号一致性，不一致时提示并阻止提交。
+
+> **提示**：README.md 的 PyPI 徽章已改为动态版本号（`https://img.shields.io/pypi/v/gongwen-skill`），自动显示 PyPI 最新版本，无需手动更新。但其他文档中的版本示例文字仍需手动同步。
 
 ---
 
@@ -99,7 +116,8 @@ grep -h "2\.0\.X" pyproject.toml gongwen/__init__.py gongwen/_legacy.py package.
 - [ ] `git status` 干净（无未提交改动）
 - [ ] 本地测试通过：`python -m pytest tests/ -q --no-header`（tests/ 为本地目录，CI 会自动跳过缺失）
 - [ ] pycodestyle 0 违规：`python -m pycodestyle --max-line-length=120 --exclude=__pycache__,.git,dist,build .`
-- [ ] 4 处版本号一致且已递增（§3 核对命令）
+- [ ] 4 处代码版本号一致且已递增（§3 快速核对命令）
+- [ ] 文档版本号同步：README.md / prompts/usage-prompts.md / dsh/index.js（§3 完整核对命令）
 - [ ] CHANGELOG 顶部已有新版本条目
 - [ ] `python -m build` 本地构建成功（sdist + wheel）
 - [ ] `python -m gongwen --version` 输出目标版本
@@ -121,7 +139,7 @@ grep -h "2\.0\.X" pyproject.toml gongwen/__init__.py gongwen/_legacy.py package.
 | publish | `python -m build` + gh-action-pypi-publish | 仅 tag `v*` 触发；凭据 `secrets.PYPI_API_TOKEN`（token 模式） |
 | publish-npm | `npm publish --access public`（DSH 插件包） | 仅 tag `v*` 触发；凭据 `secrets.NPM_TOKEN` |
 
-> **⚠️ npm 发布现状（2026-08-19）**：ci.yml 已配置 `publish-npm` job，但 GitHub 仓库 **secrets 中尚无 `NPM_TOKEN`**（仅 `PYPI_API_TOKEN`），且 npm registry 最新版本停在 1.12.69（落后 PyPI 的 1.12.71）——npm 通道实际未跑通。启用 npm 发布前需先添加 `NPM_TOKEN` secret（见 §5.2）。若暂不启用，可移除或注释该 job。
+> **📢 npm 发布现状（2026-08-20）**：npm 通道已启用，`NPM_TOKEN` secret 已配置。`publish-npm` job 自动将 DSH 插件包发布到 npmjs.com（包名 `gongwen-skill`）和 GitHub Packages（`@linhut/gongwen-skill`，仓库命名空间）。
 
 ### 5.2 npm 发布（DSH 插件包，可选）
 
@@ -150,15 +168,15 @@ python -m twine upload dist/*.whl dist/*.tar.gz
 ```bash
 # ① PyPI JSON API
 curl -s https://pypi.org/pypi/gongwen-skill/json | python -c "import sys,json;print(json.load(sys.stdin)['info']['version'])"
-# 期望：1.12.X
+# 期望：2.1.X
 
 # ② pip index（权威渠道）
 pip index versions gongwen-skill
-# 期望：LATEST = 1.12.X
+# 期望：LATEST = 2.1.X
 
 # ③ 干净 venv 安装验证
-python -m venv /tmp/verify && /tmp/verify/Scripts/pip install gongwen-skill==1.12.X
-/tmp/verify/Scripts/python -m gongwen --version   # 期望 v1.12.X
+python -m venv /tmp/verify && /tmp/verify/Scripts/pip install gongwen-skill==2.1.X
+/tmp/verify/Scripts/python -m gongwen --version   # 期望 v2.1.X
 /tmp/verify/Scripts/python -m gongwen list-types  # 期望 24 行（规则完整）
 ```
 
@@ -197,10 +215,18 @@ git ls-remote $r HEAD  # 核对三仓库 HEAD 一致
 ### 6.4 DSH 技能与 npm 分发
 
 - 项目同时作为 **DSH Skill** 分发（`.dsh/skills/gongwen-skill/` 目录技能 + `.dsh/skills/gongwen-skill.md` 单文件技能 + `dsh/index.js` 桥接），DSH 分发跟随 git 仓库（克隆即用）
-- **npm 发布**：ci.yml 已配置 `publish-npm` job（包名 `gongwen-skill`，`dsh/index.js` + `cordis.patch.yml` 打包），但 **NPM_TOKEN secret 尚未配置**，npm 通道当前未跑通（npm 最新 1.12.69 落后 PyPI 1.12.71）；启用方式见 §5.2
+- **npm 发布**：ci.yml 已配置 `publish-npm` job（包名 `gongwen-skill`，`dsh/index.js` + `cordis.patch.yml` 打包），推送 `v*` tag 时自动发布到 npmjs.com 和 GitHub Packages 两个通道
 - 版本号同步：SKILL.md frontmatter、`package.json`、PyPI 三处保持一致（§3 核对）
 
-### 6.5 codegraph 索引
+### 6.5 版本号自动检查（pre-commit hook）
+
+- 已配置 pre-commit hook（`.githooks/pre-commit`），每次提交前自动检查 4 处代码版本号一致性
+- 不一致时输出详细差异信息并阻止提交（可使用 `git commit --no-verify` 跳过）
+- 检查内容：
+  - `pyproject.toml`、`gongwen/__init__.py`、`gongwen/_legacy.py`、`package.json` 版本号是否一致
+  - 不一致时显示各文件实际版本号
+
+### 6.6 codegraph 索引
 
 - 项目使用 [codegraph](https://github.com/linhut/codegraph) 维护代码索引，供 AI 工具查询
 - 已配置 post-commit hook（`.githooks/post-commit`，`git config core.hooksPath .githooks`），每次 commit 自动增量同步 `codegraph sync --quiet`
@@ -213,7 +239,7 @@ git ls-remote $r HEAD  # 核对三仓库 HEAD 一致
 每次发布前在 `CHANGELOG.md` **顶部**新增条目：
 
 ```markdown
-## v1.12.X (YYYY-MM-DD)
+## v2.1.X (YYYY-MM-DD)
 
 ### Added
 - 新功能描述
@@ -254,10 +280,10 @@ git ls-remote $r HEAD  # 核对三仓库 HEAD 一致
 
 ## 9. 发布检查总表（DoD）
 
-1. ✅ 4 处版本号一致且已递增，CHANGELOG 有对应条目
+1. ✅ 4 处代码版本号一致且已递增，文档版本号已同步，CHANGELOG 有对应条目
 2. ✅ 本地测试通过（tests/ 存在时）+ pycodestyle 0 违规
-3. ✅ tag `v1.12.X` 已打并推送三 remote，三仓库 HEAD 一致
+3. ✅ tag `v2.1.X` 已打并推送三 remote，三仓库 HEAD 一致
 4. ✅ CI（test/lint/publish）全绿，或本地 twine 直传成功
-5. ✅ PyPI 查询到 `1.12.X`（JSON API + `pip index` 双确认）
+5. ✅ PyPI 查询到 `2.1.X`（JSON API + `pip index` 双确认）
 6. ✅ 干净 venv 安装后 `--version` 与 `list-types` 正常
 7. ⬜ npm 发布（可选）：`NPM_TOKEN` 已配置时，`npm view gongwen-skill versions` 确认新版本（当前未启用则跳过）

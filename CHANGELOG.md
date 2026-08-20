@@ -4,6 +4,22 @@
   Licensed under the MIT License. See the LICENSE file for details.
 -->
 
+## v2.1.0 (2026-08-20)
+
+### Added
+- **格式规则完善**：为 24 种公文类型新增 30+ 条 check/fix 规则，提升规则覆盖率
+  - `news.yaml`：从 0 条规则扩展至 5 条（导语段/稿源信息/标题风格/标题字数/听取通报段检查）
+  - `notice.yaml`：新增标题格式和通知事项检查
+  - `communique.yaml`：新增公报签署和标题格式检查
+  - 12 个原只有 2 条规则的类型各新增 1 条检查规则（bill/bulletin/instruction/meeting/minutes/opinion/regulation/reply/report/resolution/summary/work_plan）
+- **版本发布清单**：RELEASE.md 扩展版本号检查点从 4 处代码→9 处（含文档/提示词/DSH 桥接）
+- **pre-commit hook**：`.githooks/pre-commit` 自动检查 4 处代码版本号一致性，阻止版本漂移的提交
+- **动态 PyPI 徽章**：README.md 的 PyPI 徽章改为动态版本号（`https://img.shields.io/pypi/v/gongwen-skill`），自动显示最新版本
+
+### Changed
+- RELEASE.md 全面更新：修复 12 处残留 1.12.x 引用，更新 npm 发布状态，新增 pre-commit hook 说明
+- 规则文件统一添加 `template_name` 和 `document_type` 字段（news.yaml 补齐）
+
 ## v2.0.0 (2026-08-20)
 
 ### Major
