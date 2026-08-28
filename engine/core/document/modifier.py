@@ -74,19 +74,33 @@ def _select_paragraphs(model: DocumentModel, target: str) -> list[Paragraph]:
         return [p for p in model.paragraphs
                 if not p.is_heading and p.text.strip() and id(p) not in sig_set]
     elif target == "signature":
-        # 优先使用 role 字段
-        role_sig = [p for p in model.paragraphs if p.role in ('signature', 'date')]
+        # P2-24 修复：signature target 只匹配署名段（role='signature'），不再包含 date——
+        # 此前匹配 role in ('signature','date') 会把落款日期段一并选中，
+        # 导致 FIX-C013（署名居中）把日期改成 center、FIX-C013b（18pt）把日期改成 18pt，
+        # 违反 GB/T 9704 成文日期"右空四字、三号仿宋(16pt)"的规范。
+        # 日期段由 target="date" 分支独立处理（右对齐 + right_indent 保留）。
+        role_sig = [p for p in model.paragraphs if p.role == 'signature']
         if role_sig:
             return role_sig
-        non_empty = [p for p in model.paragraphs if p.text.strip()]
-        return non_empty[-2:] if len(non_empty) >= 2 else non_empty
+        # 仅当无署名 role 时，才允许位置回退（末两段：署名+日期）；
+        # 回退时仍只修署名语义的段落，不影响日期段对齐
+        non_empty = [p for p in model.paragraphs if p.text.strip() and p.role != 'date']
+        if len(non_empty) >= 2:
+            last = non_empty[-1].text.strip()
+            if re.match(r'^\d{4}年\d{1,2}月\d{1,2}日$', last) or re.match(r'^\d{4}[.\-/]\d{1,2}[.\-/]\d{1,2}$', last):
+                return non_empty[-1:]
+        return []
     elif target == "date":
         # 同 signature 的处理逻辑
         role_date = [p for p in model.paragraphs if p.role == 'date']
         if role_date:
             return role_date
         non_empty = [p for p in model.paragraphs if p.text.strip()]
-        return non_empty[-1:] if non_empty else []
+        if non_empty:
+            last = non_empty[-1].text.strip()
+            if re.match(r'^\d{4}年\d{1,2}月\d{1,2}日$', last) or re.match(r'^\d{4}[.\-/]\d{1,2}[.\-/]\d{1,2}$', last):
+                return non_empty[-1:]
+        return []
     elif target in ('salutation', 'introduction', 'transition', 'meeting_date', 'numbered_body'):
         # N2: 段落类型 target —— 使用 detect_paragraph_type 内容匹配
         return [p for p in model.paragraphs if detect_paragraph_type(p.text, p.role) == target]

@@ -92,6 +92,16 @@ def check_document(model: DocumentModel, rules: dict[str, Any]) -> list[CheckIss
         elif field_path.startswith("ending."):
             # FIX-V153-02：ending.check 结语检查（CHK-N001/R001/RPT001/RP002/L002 等）
             issues.extend(_check_ending(model, rule_id, severity, name, expected, message))
+        elif field_path.startswith("content."):
+            # P2-22 修复：content.* 内容要素检查（CHK-N003 等 37 条规则此前无分发分支，
+            # 全部"定义但从不执行"且每次 check 刷"未支持字段"告警）
+            issues.extend(_check_content_field(model, rule_id, severity, name, field_path,
+                                               expected, message))
+        elif field_path.startswith("header."):
+            # P2-23 修复：header.* 版头检查（CHK-CM002 令号、CHK-R003 主送机关）
+            # 此前无分发分支，规则定义但从不执行
+            issues.extend(_check_header_field(model, rule_id, severity, name, field_path,
+                                              expected, message))
         else:
             # P1-6 修复：删除 generic else 中的硬编码索引逻辑（model.paragraphs[0]/[1]
             # 不一定是标题/正文，检查结果会指向错误段落），未识别的 field 直接 skip + warning
@@ -313,10 +323,32 @@ def _check_heading_level(model, rule_id, severity, name, field_path, expected, m
     return issues
 
 
+# P2-17：CHK-C030 辅助——纯标点 run 判定（不含任何正文内容的 run）
+# 用字符集判断替代正则，避免 r'...\[...]' 无效转义 SyntaxWarning，且匹配更可靠
+_PUNCT_ONLY_CHARS = set('。！？：；，、.…!?:;,()（）""''《》〈〉【】[]')
+
+
+def _is_punct_only(text: str) -> bool:
+    """判断 run 是否只含标点/空白（用于整段加粗判定时忽略标点 run）。"""
+    t = (text or "").strip()
+    if not t:
+        return True
+    return all(ch in _PUNCT_ONLY_CHARS or ch.isspace() for ch in t)
+
+
+def _count_sentence_end(text: str) -> int:
+    """统计句末标点（。！？ 以及英文 . ! ?）的数量，用于判断单句/多句段落。"""
+    if not text:
+        return 0
+    return sum(1 for ch in text if ch in '。！？.!?')
+
+
 def _check_body(model, rule_id, severity, name, field_path, expected, message) -> list[CheckIssue]:
-    """Check body paragraph formatting (excluding signature/date)."""
+    """Check body paragraph formatting (excluding signature/date/annotation/recipient)."""
     issues = []
-    _EXCLUDE_ROLES = {'signature', 'date'}
+    # 顶格左对齐的段落（主送机关/称呼段、署名、日期、AI 声明批注）不属于正文，
+    # 不应套用正文的缩进/对齐/字体检查
+    _EXCLUDE_ROLES = {'signature', 'date', 'annotation', 'notes', 'recipient', 'salutation'}
     body_paras = [p for p in model.paragraphs
                   if not p.is_heading and p.text.strip() and p.role not in _EXCLUDE_ROLES]
     if not body_paras:
@@ -403,12 +435,22 @@ def _check_body(model, rule_id, severity, name, field_path, expected, message) -
         elif sub_field == "bold_range":
             # 检查正文段落是否整段加粗（通常只有首句/点题词应加粗）
             if para.runs and para.text.strip():
-                all_bold = all(r.format.bold for r in para.runs if r.text.strip())
+                # P2-17 修复：忽略纯标点 run（句号/逗号等不含正文的 run），
+                # 避免"首句加粗含句号"时标点 run 加粗触发整段加粗误报
+                _CONTENT_RUNS = [r for r in para.runs
+                                 if r.text.strip() and not _is_punct_only(r.text)]
+                if not _CONTENT_RUNS:
+                    continue
+                all_bold = all(r.format.bold for r in _CONTENT_RUNS)
                 if all_bold:
                     # B-09（方案三）：排除不应加粗的段落类型（称呼/导语/过渡/署名/会议日期等），
                     # 避免这些段落被误标为 body 后报告"整段加粗"问题造成噪音
                     from engine.core.document.modifier import should_bold_first_sentence
                     if not should_bold_first_sentence(para.text, para.role):
+                        continue
+                    # P2-17 修复：单句段落（仅 1 个句末标点）的首句加粗=整段加粗，
+                    # 属于合理排版（首句即整段），不报；多句段落整段加粗才报
+                    if _count_sentence_end(para.text) <= 1:
                         continue
                     issues.append(CheckIssue(
                         rule_id=rule_id, check_type="content", severity=severity,
@@ -463,17 +505,32 @@ def _check_page_setup(model, rule_id, severity, name, field_path, expected, mess
 
 
 def _check_signature_area(model, rule_id, severity, name, field_path, expected, message, rules) -> list[CheckIssue]:
-    """Check signature/date area formatting. Only check last 2 non-empty paragraphs (落款+日期)."""
+    """Check signature/date area formatting.
+
+    仅检查落款/日期段落（默认取最后 2 个非空段落）：
+    - signature.* 字段只检查署名段（角色 signature，通常是倒数第 2 段）
+    - date.* 字段只检查日期段（角色 date，通常是最后 1 段）
+    避免把署名/日期规则同时套在两个段落上造成误报。
+    """
     issues = []
-    paras = [p for p in model.paragraphs if not p.is_heading and p.text.strip()]
+    paras = [p for p in model.paragraphs if not p.is_heading and p.text.strip()
+             and p.role not in ('annotation', 'notes')]
     if not paras:
         return issues
 
-    # Signature area: only last 2 paragraphs (落款单位 + 日期)
-    sig_paras = paras[-2:] if len(paras) >= 2 else paras
     sub_field = field_path.split(".", 1)[1] if "." in field_path else ""
+    is_date = field_path.startswith("date.")
 
-    for para in sig_paras:
+    # 按角色取签名段/日期段。仅当文档确实存在落款/日期时才检查，
+    # 避免把无落款的正文末段误判为签名/日期造成误报（位置回退不再使用）。
+    if is_date:
+        target = [p for p in paras if p.role == 'date']
+    else:
+        target = [p for p in paras if p.role == 'signature']
+    if not target:
+        return issues
+
+    for para in target:
         if sub_field == "align":
             if para.format.alignment and para.format.alignment != str(expected).lower():
                 issues.append(CheckIssue(
@@ -561,8 +618,11 @@ def _check_paragraph_type_field(model, rule_id, severity, name, field_path, expe
                     ))
                     break
         elif sub_field == "bold":
-            for run in para.runs:
-                if bool(run.format.bold) != bool(expected):
+            # 编号正文（一是/二是…）：仅要求首句（首 run）加粗，其余正文不应加粗。
+            # 其余段落类型：按首 run 判断即可（段落级加粗风格由 bold_range 规则另行检查）。
+            _runs_to_check = para.runs[:1] if target == 'numbered_body' else para.runs[:1]
+            for run in _runs_to_check:
+                if run.format.bold is not None and bool(run.format.bold) != bool(expected):
                     issues.append(CheckIssue(
                         rule_id=rule_id, check_type="format", severity=severity,
                         name=name, location=f"paragraph:{para.index}",
@@ -646,8 +706,9 @@ def _check_ending(model, rule_id: str, severity: str, name: str,
             text = text.strip()
             role = getattr(p, 'role', '') or ''
             # 排除标题、落款（signature/date）、批注（annotation）段——这些不是正文结语
-            if text and not getattr(p, 'is_title', False) \
-                    and role not in ('signature', 'date', 'annotation'):
+            # P2-22 修复：模型属性是 is_heading 而非 is_title，标题段不应纳入结语统计
+            if text and not getattr(p, 'is_heading', False) and role not in (
+                    'signature', 'date', 'annotation'):
                 body_paras.append(text)
 
         if not body_paras:
@@ -684,6 +745,159 @@ def _check_ending(model, rule_id: str, severity: str, name: str,
     return issues
 
 
+# P2-22：content.* 内容要素检查——字段名 → 要素关键词组（宽松匹配，高召回低误报）
+_CONTENT_FIELD_KEYWORDS = {
+    "notice_items":     ["时间", "地点", "要求", "请", "须", "要", "参加", "召开", "举办",
+                         "组织", "开展", "落实", "遵守", "上报", "报送", "日期", "人员", "对象"],
+    "scope":            ["范围", "适用于", "各", "单位", "部门", "地区", "辖区"],
+    "effective_date":   ["自", "起施行", "施行", "生效", "即日", "之日起", "起执行"],
+    "validity":         ["有效", "期限", "至", "自", "起"],
+    "meeting_elements": ["会议", "时间", "地点", "参加", "人员", "议题", "议程"],
+    "meeting_info":     ["会议", "时间", "地点", "参加", "纪要", "议题"],
+    "reason":           ["因", "由于", "为了", "鉴于", "依据", "根据"],
+    "basis":            ["依据", "根据", "按照", "遵照"],
+    "purpose":          ["为了", "为", "目的", "促进", "推动"],
+    "measures":         ["措施", "办法", "方案", "要求", "应当", "应", "须"],
+    "proposer":         ["提出", "建议", "提议", "呈报", "申报"],
+    "facts":            ["事实", "情况", "经查", "查明", "核实"],
+    "items":            ["事项", "内容", "如下", "包括", "如下"],
+    "legal_basis":      ["依据", "根据", "依照", "按照", "法规", "条例"],
+    "decision_items":   ["决定", "如下", "事项", "内容"],
+    "clauses":          ["条", "款", "项", "规定", "如下"],
+    "structure":        ["结构", "如下", "部分", "章节"],
+    "data":             ["数据", "统计", "指标", "数字", "情况"],
+    "suggestions":      ["建议", "意见", "应", "应当", "建议如下"],
+    "report_items":     ["情况", "报告", "如下", "内容"],
+    "reply_to":         ["关于", "收悉", "来函", "贵", "你"],
+    "attitude":         ["同意", "不同意", "原则同意", "批准"],
+    "single_topic":     ["一", "单一", "专项"],
+    "resolution_items": ["决定", "如下", "事项"],
+    "procedure":        ["程序", "步骤", "按照", "流程"],
+    "background":       ["背景", "概述", "现状", "问题"],
+    "alternatives":     ["方案", "备选", "比较", "选项"],
+    "implementation_plan": ["实施", "计划", "进度", "安排", "时间表"],
+    "objectives":       ["目标", "目的", "要求"],
+    "timeline":         ["时间", "阶段", "进度", "月", "年", "日"],
+    "responsibilities": ["责任", "负责", "分工", "单位"],
+    "lead":             ["导语", "开头", "首先"],
+    "source":           ["来源", "据", "报道"],
+    "report_section":   ["部分", "章节", "如下"],
+}
+
+
+def _check_content_field(model, rule_id: str, severity: str, name: str,
+                         field_path: str, expected: str, message: str) -> list[CheckIssue]:
+    """P2-22 修复：content.* 内容要素检查（此前所有该前缀规则被跳过并告警）。
+
+    策略：按字段名尾部映射要素关键词组，检查正文（body 段落）是否包含任一组关键词。
+    - 宽松匹配：命中任一关键词即通过（避免误报）
+    - 无法映射的字段名保持跳过（返回空列表，不产生告警噪音）
+    """
+    issues = []
+    field_name = field_path.split(".", 1)[1] if "." in field_path else ""
+    keywords = _CONTENT_FIELD_KEYWORDS.get(field_name)
+    if not keywords:
+        return issues
+
+    try:
+        # 收集正文文本（排除标题/落款/日期/批注/称呼段）
+        body_texts = []
+        for p in model.paragraphs:
+            text = (getattr(p, 'text', '') or '').strip()
+            role = getattr(p, 'role', '') or ''
+            # P2-22 修复：模型属性是 is_heading 而非 is_title——原 is_title 永远为
+            # False，导致标题段被误纳入正文统计（标题中的"召开/组织"等词会使
+            # 空壳通知误判为"有要素"而漏报 CHK-N003）
+            if text and not getattr(p, 'is_heading', False) and role not in (
+                    'signature', 'date', 'annotation', 'recipient', 'salutation'):
+                body_texts.append(text)
+        joined = ''.join(body_texts)
+        if not joined:
+            return issues
+
+        found = any(kw in joined for kw in keywords)
+        if not found:
+            issues.append(CheckIssue(
+                rule_id=rule_id,
+                check_type="content",
+                severity=severity,
+                name=name,
+                location="正文",
+                original_text=joined[-80:] if joined else "",
+                suggested_fix=expected,
+                reason=message or f"文档正文缺少相关要素（期望: {expected}）",
+            ))
+    except Exception as e:
+        logger.warning(f"_check_content_field 检查失败: {e}")
+
+    return issues
+
+
+def _check_header_field(model, rule_id: str, severity: str, name: str,
+                        field_path: str, expected: str, message: str) -> list[CheckIssue]:
+    """P2-23 修复：header.* 版头检查（此前规则定义但从不执行）。
+
+    支持字段：
+    - header.doc_number（CHK-CM002 命令）：检查文档是否标注令号（如"〔2026〕1号"、"第1号"）
+    - header.recipient（CHK-R003 请示）：检查是否含主送机关段，且只写一个主送机关
+    """
+    import re
+    issues = []
+    field_name = field_path.split(".", 1)[1] if "." in field_path else ""
+
+    try:
+        if field_name == "doc_number":
+            # 令号模式：〔2026〕1号 / 第1号 / （2026）1号 / 2026年1号 等
+            all_text = ''.join((getattr(p, 'text', '') or '') for p in model.paragraphs)
+            has_doc_number = re.search(
+                r'[〔（(]?\d{4}[〕）)]?\s*\d+号|[第]\d+号|令\d+号|\d+号令',
+                all_text,
+            ) is not None
+            if not has_doc_number:
+                issues.append(CheckIssue(
+                    rule_id=rule_id, check_type="content", severity=severity,
+                    name=name, location="文档开头",
+                    original_text=all_text[:60] if all_text else "",
+                    suggested_fix=expected,
+                    reason=message or "命令（令）应标注令号",
+                ))
+        elif field_name == "recipient":
+            # 主送机关：存在 recipient 角色的段，且应只有一个主送机关
+            recips = [p for p in model.paragraphs
+                      if getattr(p, 'role', '') == 'recipient' and (p.text or '').strip()]
+            if not recips:
+                issues.append(CheckIssue(
+                    rule_id=rule_id, check_type="content", severity=severity,
+                    name=name, location="文档开头",
+                    original_text="",
+                    suggested_fix=expected,
+                    reason=message or "请示应写明主送机关",
+                ))
+                return issues
+            # 只写一个主送机关：一个 recipient 段 + 段内无多个机关分隔符
+            first = recips[0].text
+            if len(recips) > 1:
+                issues.append(CheckIssue(
+                    rule_id=rule_id, check_type="content", severity=severity,
+                    name=name, location=f"paragraph:{recips[0].index}",
+                    original_text=first[:60],
+                    suggested_fix="仅保留一个主送机关",
+                    reason="请示一般只写一个主送机关（发现多个主送机关段）",
+                ))
+            elif re.search(r'[、，,s]{2,}', first.strip().rstrip('：:')) and len(first.strip().rstrip('：:')) > 5:
+                issues.append(CheckIssue(
+                    rule_id=rule_id, check_type="content", severity=severity,
+                    name=name, location=f"paragraph:{recips[0].index}",
+                    original_text=first[:60],
+                    suggested_fix="仅保留一个主送机关",
+                    reason="请示一般只写一个主送机关（段内含多个机关）",
+                ))
+    except Exception as e:
+        logger.warning(f"_check_header_field 检查失败: {e}")
+
+    return issues
+
+
 def _check_page_number(model, rule_id, severity, name, field_path, expected, message) -> list[CheckIssue]:
     """检查页脚页码域格式（P3-10：CHK-C023/024/029）。
 
@@ -711,7 +925,9 @@ def _check_page_number(model, rule_id, severity, name, field_path, expected, mes
                         break
             elif sub_field == "alignment" or sub_field == "align":
                 actual = para.format.alignment
-                if actual and actual != str(expected).lower():
+                # GB/T 9704 允许"居中"或"翻页模式（单右双左，默认 footer 为 right/left）"。
+                # 翻页模式下默认 footer 对齐为 right（单页右空一字），不再强制 center。
+                if actual and actual not in ('center', 'left', 'right'):
                     issues.append(CheckIssue(
                         rule_id=rule_id, check_type="format", severity=severity,
                         name=name, location=f"footer:{hf.section_index}:paragraph:{para.index}",

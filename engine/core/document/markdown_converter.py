@@ -51,6 +51,32 @@ _MD_CODE_BLOCK_RE = re.compile(r'^`{3,}')
 # 行内代码 `code`
 _MD_INLINE_CODE_RE = re.compile(r'`([^`]+)`')
 
+# 加粗标记（**text** 或 __text__）
+_MD_BOLD_SEG_RE = re.compile(r'(\*\*[^*]+\*\*|__[^_]+__)')
+
+
+def _reconstruct_bold_segments(raw: str, cleaned: str):
+    """把含 **..** 的原始文本映射为 [(文本, 是否加粗), ...] 片段。
+
+    片段拼接结果与 cleaned 一致时才返回片段列表；否则（含链接/代码等被清理、
+    或文本被折叠）回退为整段（避免丢失文本）。
+    """
+    if not raw or ('**' not in raw and '__' not in raw):
+        return [(cleaned or "", False)]
+    segments = []
+    for part in _MD_BOLD_SEG_RE.split(raw):
+        if not part:
+            continue
+        if part.startswith('**') and part.endswith('**') and len(part) > 4:
+            segments.append((part[2:-2], True))
+        elif part.startswith('__') and part.endswith('__') and len(part) > 4:
+            segments.append((part[2:-2], True))
+        else:
+            segments.append((part, False))
+    if ''.join(s[0] for s in segments).strip() == (cleaned or "").strip():
+        return segments
+    return [(cleaned or "", False)]
+
 
 def convert_markdown(model: DocumentModel) -> int:
     """
@@ -201,6 +227,7 @@ def convert_markdown(model: DocumentModel) -> int:
         # --- 识别加粗标记 **text** ---
 
         has_bold = False
+        raw_before_bold = text  # 保存剥离 ** 前的原始文本，用于加粗段重构
         if _MD_BOLD_RE.search(text) or _MD_BOLD_UNDER_RE.search(text):
             has_bold = True
             text = _MD_BOLD_RE.sub(r'\1', text)
@@ -257,8 +284,35 @@ def convert_markdown(model: DocumentModel) -> int:
                         r.text = ""
 
                 if has_bold and not para.is_heading:
-                    for r in para.runs:
-                        r.format.bold = True
+                    # 仅加粗 **..** 标记的片段，避免整段误加粗（CHK-C030 修复）
+                    _segments = _reconstruct_bold_segments(raw_before_bold, para.text)
+                    if len(_segments) > 1:
+                        # 重建片段时继承原 run 的字体/字号，避免丢失字体（I20 修复）
+                        _base_format = None
+                        for _r in para.runs:
+                            if _r.text and (_r.format.font_name or _r.format.font_size_pt):
+                                _base_format = _r.format
+                                break
+                        _new_runs = []
+                        for _t, _b in _segments:
+                            if not _t:
+                                continue
+                            _nr = Run(index=len(_new_runs), text=_t,
+                                      format=RunFormat(
+                                          font_name=_base_format.font_name if _base_format else None,
+                                          font_size_pt=_base_format.font_size_pt if _base_format else 16.0,
+                                      ))
+                            if _b:
+                                _nr.format.bold = True
+                            _new_runs.append(_nr)
+                        para.runs = _new_runs
+                    else:
+                        # 单片段：按其自身 bold 标志处理——纯粗体段（**全段**）整段加粗；
+                        # raw/cleaned 不匹配回退的单片段 bold=False 保持不加粗（I20 修复：
+                        # 此前把回退也整段加粗，导致"加粗+链接/代码"段落整段变粗）
+                        if _segments and _segments[0][1]:
+                            for r in para.runs:
+                                r.format.bold = True
 
                 if is_list and list_indent_pt > 0 and not para.is_heading:
                     para.format.left_indent_pt = list_indent_pt

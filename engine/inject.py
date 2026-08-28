@@ -485,7 +485,13 @@ def _apply_page_number_elements(para_elem, elements: list) -> None:
 
 
 def _inject_even_page_footer_direct(output_path: str, fmt: str, font_name: str, size_pt: int) -> None:
-    """直接操作 ZIP，添加偶数页页脚和 evenAndOddHeaders（单双页奇偶排版）。"""
+    """直接操作 ZIP，添加偶数页页脚和 evenAndOddHeaders（单双页奇偶排版）。
+
+    幂等性（I19 修复）：重复调用（如 md2docx 后再跑 pagenum/optimize --layout）
+    不会累积 even footerReference / 关系条目 / footer2.xml 重复条目——
+    此前重复调用会在 document.xml 留下多个 even footerReference、rels 关系缺失、
+    ZIP 出现重复 word/footer2.xml，导致 Word 报"文档损坏"。
+    """
     import zipfile
     import io
     from lxml import etree
@@ -502,6 +508,7 @@ def _inject_even_page_footer_direct(output_path: str, fmt: str, font_name: str, 
     elems = _build_page_number_xml(fmt, font_name, size_pt)
     _apply_page_number_elements(even_p, elems)
 
+    even_rid = 'rIdFtrEven'
     buf = io.BytesIO()
     with zipfile.ZipFile(output_path, 'r') as zin:
         with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zout:
@@ -516,8 +523,12 @@ def _inject_even_page_footer_direct(output_path: str, fmt: str, font_name: str, 
                     root = etree.fromstring(data)
                     ns_w = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
                     ns_r = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+                    # I19 幂等：先移除所有已有的 even footerReference，避免重复累积
+                    for sp in root.findall('.//{%s}sectPr' % ns_w):
+                        for ref in list(sp.findall('{%s}footerReference' % ns_w)):
+                            if ref.get('{%s}type' % ns_w) == 'even':
+                                sp.remove(ref)
                     # NS11 修复：动态分配偶数页页脚关系 ID，避免与已有 ID 冲突
-                    even_rid = 'rIdFtrEven'
                     used_ids = {ref.get('{%s}id' % ns_r) for sp in root.findall('.//{%s}sectPr' % ns_w)
                                 for ref in sp.findall('{%s}footerReference' % ns_w)}
                     n = 0
@@ -549,14 +560,21 @@ def _inject_even_page_footer_direct(output_path: str, fmt: str, font_name: str, 
                     # I15 修复：结构化 XML 编辑（替代纯文本替换，避免破坏结构）
                     rel_root = etree.fromstring(data)
                     rel_ns = 'http://schemas.openxmlformats.org/package/2006/relationships'
-                    existing_ids = [r.get('Id') for r in rel_root]
-                    if 'rIdFtrEven' not in existing_ids:
-                        rel = etree.SubElement(rel_root, '{%s}Relationship' % rel_ns)
-                        rel.set('Id', 'rIdFtrEven')
-                        rel.set('Type', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer')
-                        rel.set('Target', 'footer2.xml')
+                    # I19 幂等：清理本工具遗留的偶数页页脚关系（rIdFtrEven / rIdFtrEvenN），
+                    # 避免残留关系堆积；再按实际 even_rid 写入唯一关系
+                    for rel in list(rel_root):
+                        rid = rel.get('Id') or ''
+                        if rid == 'rIdFtrEven' or rid.startswith('rIdFtrEven'):
+                            rel_root.remove(rel)
+                    rel = etree.SubElement(rel_root, '{%s}Relationship' % rel_ns)
+                    rel.set('Id', even_rid)
+                    rel.set('Type', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer')
+                    rel.set('Target', 'footer2.xml')
                     zout.writestr(item.filename,
                                   etree.tostring(rel_root, xml_declaration=True, encoding='UTF-8', standalone=True))
+                elif item.filename == 'word/footer2.xml':
+                    # I19 幂等：跳过旧 footer2.xml，避免 ZIP 出现重复条目
+                    continue
                 else:
                     zout.writestr(item.filename, data)
             zout.writestr('word/footer2.xml',

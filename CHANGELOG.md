@@ -4,6 +4,25 @@
   Licensed under the MIT License. See the LICENSE file for details.
 -->
 
+## v2.2.0 (2026-08-28)
+
+### Added
+- **内容要素检查规则真正生效**：修复 37 条 `content.*` 规则（通知事项/会议要素/请示理由等）此前"定义但从不执行"的问题，新增 `_check_content_field` 按字段名映射要素关键词做宽松检查，消除每次 check 的"未支持检查字段"告警
+- **版头检查规则生效**：修复 `header.*` 规则（CHK-CM002 令号检查、CHK-R003 主送机关检查）此前无分发分支的问题，新增 `_check_header_field`
+- **成文日期"右空四字"**：md2docx 渲染日期段新增右缩进 4em（GB/T 9704 规范），消除 CHK-C017 长期存在的日期右空四字检查项
+
+### Changed
+- **signature 段落选择器修正**：`_select_paragraphs` 的 `signature` target 不再包含 `date` 段落——修复 FIX-C013（署名居中）与 FIX-C013b（18pt）误把成文日期强制居中/放大字号的问题，日期段独立按"右对齐 + 右空四字 + 16pt"处理
+- **页码重复注入幂等化**：`_inject_even_page_footer_direct` 重写为幂等版，多次注入仅保留一个 even footerReference 与完整关系，杜绝 Word 打开报"文档损坏"（BUG-1）
+- **加粗+链接/代码组合不再整段加粗**：markdown_converter 单片段按自身 bold 标志处理，重建片段继承原 run 字体字号（BUG-2）
+- **标题启发式误判修复**：黑体/楷体/仿宋加粗正文句不再误判为标题（新增 `_SENTENCE_END` 句末标点保护，Level 1/2/3 三级判定）
+- **CHK-C030 整段加粗误报修复**：忽略纯标点 run、单句段落不报，多句整段加粗仍正确检出
+
+### Fixed
+- `is_title` vs `is_heading` 属性引用错误：`_check_ending`/`_check_content_field` 此前用不存在的 `is_title` 属性，导致标题段被误纳入正文统计
+- 一是/二是 领句段改用仿宋_GB2312（原误用楷体触发标题误判/正文字体误报）
+- 令号正则 `\d` 被 JS 转义破坏（`d`），导致含令号命令误报 CHK-CM002
+
 ## v2.1.0 (2026-08-20)
 
 ### Added

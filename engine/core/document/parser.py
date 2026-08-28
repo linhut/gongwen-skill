@@ -51,6 +51,10 @@ _H1_WESTERN_PATTERN = re.compile(r'^[IVXLCDM]+\.\s+')
 _H2_WESTERN_PATTERN = re.compile(r'^[A-Z]\.\s+')
 _H4_WESTERN_PATTERN = re.compile(r'^[a-z]\.\s+')
 
+# 句末标点（P2-16 修复：标题不以这些标点结尾，正文强调句/引用句通常会以它们结尾，
+# 用于排除"黑体/楷体/仿宋加粗的正文短句"被误判为标题）
+_SENTENCE_END = ('。', '！', '？', '：', '；', '，', '.', '!', '?', ':', ';', ',')
+
 
 def _detect_heading_heuristic(
     text: str, runs: list[Run], para_format: ParagraphFormat
@@ -103,7 +107,13 @@ def _detect_heading_heuristic(
 
     # --- Level 1: 一级标题（黑体）---
     if has_font_signal and ("黑体" in font_lower or font_lower in ("simhei",)):
-        if alignment == "center" or is_bold or len(text_stripped) < 30:
+        # P2-16 修复：排除以句末标点结尾的正文强调句（如"重要提示：…"）。
+        # 一级标题通常较短且不以句号/冒号等结尾。
+        if alignment == "center":
+            return True, 1
+        if len(text_stripped) < 30 and not text_stripped.endswith(_SENTENCE_END):
+            return True, 1
+        if is_bold and not text_stripped.endswith(_SENTENCE_END):
             return True, 1
 
     # 格式信号："一、" + 加粗或黑体
@@ -115,9 +125,15 @@ def _detect_heading_heuristic(
     if _H1_WESTERN_PATTERN.match(text_stripped) and len(text_stripped) < 50:
         return True, 1
 
-    # --- Level 2: 二级标题（楷体 + 加粗）---
-    if has_font_signal and ("楷体" in font_lower or font_lower in ("kaiti", "楷体_gb2312")) and is_bold:
-        return True, 2
+    # --- Level 2: 二级标题（楷体，无需加粗）---
+    # GB/T 9704 二级标题为楷体，不加粗。若段落字体为楷体（含 楷体_GB2312），
+    # 即使内容为 "2.1" 等数字编号，也优先识别为二级标题而非三级标题，
+    # 避免 converter 的 "###"→二级标题与 check 的 "2.1"→三级标题启发式冲突。
+    # P2-16 修复：增加"不以句末标点结尾"约束，排除正文楷体引用句
+    # （如"会议指出，…。"）被误判为二级标题。
+    if has_font_signal and ("楷体" in font_lower or font_lower in ("kaiti", "楷体_gb2312")):
+        if len(text_stripped) < 40 and not text_stripped.endswith(_SENTENCE_END):
+            return True, 2
 
     # "（一）" 格式（无论字体如何，此模式足够唯一）
     if _H2_PATTERN.match(text_stripped) and len(text_stripped) < 50:
@@ -128,7 +144,8 @@ def _detect_heading_heuristic(
 
     # --- Level 3: 三级标题（仿宋加粗 或 "1." + 加粗）---
     if has_font_signal and ("仿宋" in font_lower or font_lower in ("fangsong", "仿宋_gb2312")) and is_bold:
-        if len(text_stripped) < 50:
+        # P2-16 修复：排除以句末标点结尾的仿宋加粗正文短句被误判为三级标题
+        if len(text_stripped) < 50 and not text_stripped.endswith(_SENTENCE_END):
             return True, 3
 
     if _H3_PATTERN.match(text_stripped) and is_bold and len(text_stripped) < 60:
@@ -339,6 +356,13 @@ def _assign_paragraph_roles(paragraphs: list[Paragraph]) -> None:
     for idx, para in non_empty:
         if not para.role and _ATTACHMENT_RE.match(para.text.strip()):
             para.role = 'attachment'
+
+    # AI 声明段（末尾批注，如"（内容由GongWen-skill-AI生成，仅供参考）"）
+    # 标记为 annotation 角色，避免 check 将其误判为正文并报格式违规
+    _AI_DECL_MARKERS = ("由GongWen-skill-AI生成", "由AI生成", "仅供参考")
+    for idx, para in non_empty:
+        if not para.role and any(m in para.text for m in _AI_DECL_MARKERS):
+            para.role = 'annotation'
 
     # 其余非空段落默认为 body
     for idx, para in non_empty:

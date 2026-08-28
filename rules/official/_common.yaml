@@ -538,7 +538,7 @@ check_rules:
     severity: P1
     field: page_number.alignment
     expected: "center"
-    message: "页码应居中标注，格式为- X -（半角短横线）（GB/T 9704标准）"
+    message: "页码应居中标注，或多页文档采用翻页模式（单页码居右、双页码居左），格式为- X -（半角短横线）（GB/T 9704标准）"
 
   - id: CHK-C029
     name: "页码字号检查"
@@ -792,8 +792,8 @@ fix_rules:
     value:
       font: "宋体"
       size: 14pt
-      alignment: "center"
-      format: "- {PAGE} -"   # 改动4：半角短横线（PDF 规范），原全角破折号
+      alignment: "right"
+      format: "- {PAGE} -"   # 改动4：半角短横线（PDF 规范），原全角破折号；翻页模式（单右双左）
 
   # --- 段落类型格式修复 (P4/P5/P8: FIX-C013b/FIX-C041~C044) ---
   - id: FIX-C013b

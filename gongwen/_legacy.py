@@ -45,7 +45,7 @@ from gongwen.cli.helpers import (
     parse_config_overrides as _parse_config_overrides,
     load_rules_with_overrides as _load_rules_with_overrides,
 )
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 # 版本号应与 gongwen/__init__.py 保持一致，每次发版同步更新
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
@@ -329,7 +329,10 @@ def cmd_md2docx(args):
     - doc_type: 公文类型（默认 notice）
     """
     from datetime import date as _dt
-    from engine.core.document.generator import generate_docx
+    # 既定方案：md2docx 改用 python-docx 直接按 GB/T 9704 生成初稿，
+    # 不再走 DocumentModel → generate_docx 管线（规避技能版本不一致导入错误，
+    # 并保证初稿正文即三号仿宋 16pt，而非回退 11pt）
+    from gongwen.md2docx_render import render_model_to_docx as _render_docx
     from engine.core.document.models import (
         DocumentModel, DocumentMetadata, PageSetup,
         Paragraph, ParagraphFormat, Run, RunFormat,
@@ -455,8 +458,11 @@ def cmd_md2docx(args):
 
     # 领句加粗（路径 C 生成公文时，Markdown 中的"一是/二是/第一/第二"等领句自动加粗）
     _BOLD_LEADIN = {
-        '一是': '楷体_GB2312', '二是': '楷体_GB2312', '三是': '楷体_GB2312',
-        '四是': '楷体_GB2312', '五是': '楷体_GB2312',
+        # P2-18 修复：一是/二是 领句段是"编号列举正文"，字体保持仿宋_GB2312（正文字体），
+        # 仅领句加粗；不再使用楷体（楷体是二级标题字体，正文领句用楷体会触发
+        # parser 楷体标题判定 / CHK-C004 正文字体误报）
+        '一是': '仿宋_GB2312', '二是': '仿宋_GB2312', '三是': '仿宋_GB2312',
+        '四是': '仿宋_GB2312', '五是': '仿宋_GB2312',
         '第一，': '仿宋_GB2312', '第二，': '仿宋_GB2312', '第三，': '仿宋_GB2312',
         '一要': '仿宋_GB2312', '二要': '仿宋_GB2312', '三要': '仿宋_GB2312',
     }
@@ -475,9 +481,11 @@ def cmd_md2docx(args):
         para.runs[0].format.bold = True
         para.runs[0].format.font_name = _BOLD_LEADIN[matched]
         para.runs[0].format.font_size_pt = 16.0
+        # 领句加粗的余下部分沿用领句字体（一律仿宋_GB2312 正文字体），
+        # 使整段字体统一且保持正文字体，符合 CHK-C004 正文字体要求
         para.runs.append(Run(
             index=len(para.runs), text=remaining,
-            format=RunFormat(font_name='仿宋_GB2312', font_size_pt=16.0),
+            format=RunFormat(font_name=_BOLD_LEADIN[matched], font_size_pt=16.0),
         ))
 
     # 落款与日期（P10: 署名前增加2个空行；P4: 署名段居中 18pt）
@@ -527,18 +535,29 @@ def cmd_md2docx(args):
     else:
         today = _dt.today().strftime("%Y-%m-%d")
         out = Path(f"修订版+{doc_type}-草稿+{today}+v1.docx")
-    generate_docx(model, str(out), no_ai_declaration=getattr(args, "no_ai_declaration", False))
+    # 既定方案：直接按 GB/T 9704 渲染初稿（python-docx 直写，不走通用管线）
+    _render_docx(model, str(out), rules=rules,
+                 no_ai_declaration=getattr(args, "no_ai_declaration", False))
 
-    # FIX-B002：md2docx 补充页码注入（默认居中，- X - 格式，省筹委会规范）
+    # FIX-B002：md2docx 补充页码注入（默认从 rules 读取，回退到省筹委会规范）
     try:
-        from inject import inject_page_number
-        inject_page_number(str(out), {
-            "enabled": True,
+        # 页码默认样式取自 rules（FIX-C025 修复规则的值），若 rules 未定义则用硬编码回退
+        _pn = {
             "font": "宋体",
             "size": 14,
-            "alignment": "center",
+            "alignment": "right",  # 翻页模式（单右双左），GB/T 9704
             "format": "- {PAGE} -",
-        })
+        }
+        for fr in (rules or {}).get("fix_rules", []):
+            if fr.get("action") == "set_page_number" and isinstance(fr.get("value"), dict):
+                _pv = fr["value"]
+                _pn["font"] = _pv.get("font", _pn["font"])
+                _pn["size"] = int(str(_pv.get("size", _pn["size"])).replace("pt", ""))
+                _pn["alignment"] = _pv.get("alignment", _pn["alignment"])
+                _pn["format"] = _pv.get("format", _pn["format"])
+                break
+        from inject import inject_page_number
+        inject_page_number(str(out), {"enabled": True, **_pn})
     except Exception as e:
         print(f"  ⚠️ 页码注入失败（{e}），跳过", file=sys.stderr)
 

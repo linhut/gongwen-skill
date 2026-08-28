@@ -201,7 +201,7 @@ python -m gongwen optimize 文件.docx -o 优化版.docx
 **Agent 响应**：
 ```
 📋 合规自检报告
-Skill 版本: v2.1.0
+Skill 版本: v2.2.0
 路径判定: B（内容优化）
 依据: 用户提供纯文本+优化要求，无已有文档
 命令调用: 将原文保存为临时文件后执行 optimize-content --apply --paragraphs "1-3"
