@@ -4,6 +4,18 @@
   Licensed under the MIT License. See the LICENSE file for details.
 -->
 
+## v2.3.0 (2026-08-31)
+
+### Added
+- **doctor 自检新增「DSH 技能 frontmatter」检查项**（21 项 → 22 项）：按 DSH 最新技能规范校验 SKILL.md frontmatter——`name` 必填且为 kebab-case、与 `.dsh/skills/<name>` 目录/文件名一致；`description` 必填非空且足够自描述（模型在会话目录只能看到它）；`whenToUse` 建议存在；`user-invocable`/`disable-model-invocation` 若存在必须为布尔值；frontmatter 必须 `---` 包裹且 YAML 可解析
+
+### Changed
+- **技能名动态化**：新增 `_get_skill_name()` 从 SKILL.md frontmatter 读取技能名，`_check_skill_sync`/`cmd_repair` 不再硬编码 `gongwen-skill`，技能改名后检查与修复仍准确
+- **纯 pip 环境不再误报**：frontmatter 目录一致性校验仅在 `.dsh/skills` 存在时执行（非 DSH 环境跳过）
+
+### Fixed
+- **SKILL.md 编码读取修复**：读取编码 `utf-8` → `utf-8-sig`（自动剥离 BOM，兼容带/无 BOM）；修复 Windows 下默认 locale 编码（cp936/GBK）读 UTF-8 无 BOM 的 SKILL.md 抛 `UnicodeDecodeError` 的隐患
+
 ## v2.2.0 (2026-08-28)
 
 ### Added

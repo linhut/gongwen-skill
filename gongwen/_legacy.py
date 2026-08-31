@@ -45,7 +45,7 @@ from gongwen.cli.helpers import (
     parse_config_overrides as _parse_config_overrides,
     load_rules_with_overrides as _load_rules_with_overrides,
 )
-__version__ = "2.2.0"
+__version__ = "2.3.0"
 # 版本号应与 gongwen/__init__.py 保持一致，每次发版同步更新
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。

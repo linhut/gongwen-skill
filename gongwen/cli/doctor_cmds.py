@@ -162,11 +162,45 @@ def _check_fonts() -> dict:
     }
 
 
+def _get_skill_name() -> str:
+    """从 SKILL.md frontmatter 读取技能名（DSH 规范：name 即目录名）。
+
+    供 _check_skill_sync / _check_skill_frontmatter / cmd_repair 共用，
+    避免硬编码技能名导致改名后检查失准。无法解析时返回空串。
+    """
+    skill_path = _PROJECT_ROOT / "SKILL.md"
+    try:
+        # P2-29：utf-8-sig 自动剥离 BOM，兼容带 BOM/无 BOM 的 UTF-8；
+        # 若用默认编码（Windows 下 cp936/GBK）读 UTF-8 无 BOM 文件会抛 UnicodeDecodeError
+        text = skill_path.read_text(encoding="utf-8-sig")
+        if not text.startswith("---"):
+            return ""
+        end = text.index("\n---", 4)
+        fm_text = text[4:end]
+    except Exception:
+        return ""
+    try:
+        import yaml
+        fm = yaml.safe_load(fm_text) or {}
+        name = fm.get("name")
+        return str(name).strip() if name else ""
+    except Exception:
+        # 回退：简单键值解析
+        for line in fm_text.splitlines():
+            line = line.strip()
+            if line.startswith("name:"):
+                return line.split(":", 1)[1].strip()
+        return ""
+
+
 def _check_skill_sync() -> dict:
     """检查 .dsh/skills/ 中的 SKILL.md 副本是否与根目录一致。"""
     root_skill = _PROJECT_ROOT / "SKILL.md"
-    dsh_skill = _PROJECT_ROOT / ".dsh" / "skills" / "gongwen-skill.md"
-    dsh_skill2 = _PROJECT_ROOT / ".dsh" / "skills" / "gongwen-skill" / "SKILL.md"
+    # P2-26：技能名从 frontmatter 动态读取（DSH 规范 name 即目录名），
+    # 避免硬编码 gongwen-skill 导致改名后同步检查失准；SKILL.md 缺失时回退默认名
+    skill_name = _get_skill_name() or "gongwen-skill"
+    dsh_skill = _PROJECT_ROOT / ".dsh" / "skills" / f"{skill_name}.md"
+    dsh_skill2 = _PROJECT_ROOT / ".dsh" / "skills" / skill_name / "SKILL.md"
 
     if not root_skill.exists():
         return {
@@ -202,6 +236,122 @@ def _check_skill_sync() -> dict:
         "ok": ok,
         "detail": "; ".join(details),
         "hint": None if ok else "运行: python -m gongwen repair",
+    }
+
+
+def _check_skill_frontmatter() -> dict:
+    """（P2-25）检查 SKILL.md frontmatter 是否符合 DSH 技能规范。
+
+    依据 DSH 最新技能编写规范（writing-skills）：
+      - name 必须存在、为 kebab-case、且与技能目录名一致
+      - description 必须存在、非空，是模型在会话目录中看到的唯一自描述
+      - whenToUse 建议存在（触发条件，便于模型匹配）
+      - user-invocable / disable-model-invocation 若存在必须为布尔值
+    frontmatter 必须以 --- 包裹且可被 YAML 解析。
+    """
+    import re as _re
+
+    skill_path = _PROJECT_ROOT / "SKILL.md"
+    if not skill_path.exists():
+        return {
+            "name": "DSH 技能 frontmatter",
+            "ok": False,
+            "detail": "根目录 SKILL.md 不存在",
+            "hint": "项目文件不完整",
+        }
+
+    # P2-29：utf-8-sig 自动剥离 BOM，兼容带 BOM/无 BOM 的 UTF-8；
+    # 若用默认编码（Windows 下 cp936/GBK）读 UTF-8 无 BOM 文件会抛 UnicodeDecodeError
+    text = skill_path.read_text(encoding="utf-8-sig")
+    if not text.startswith("---"):
+        return {
+            "name": "DSH 技能 frontmatter",
+            "ok": False,
+            "detail": "缺少 frontmatter（内容未以 --- 开头）",
+            "hint": "为 SKILL.md 添加 --- 包裹的 frontmatter",
+        }
+
+    # 解析 frontmatter（用 pyyaml 若可用，否则回退简单键值解析）
+    fm = None
+    try:
+        end = text.index("\n---", 4)
+        fm_text = text[4:end]
+    except ValueError:
+        fm_text = None
+
+    parse_ok = False
+    error_detail = ""
+    if fm_text is not None:
+        try:
+            import yaml
+            fm = yaml.safe_load(fm_text) or {}
+            parse_ok = isinstance(fm, dict)
+        except Exception as e:
+            error_detail = f"{str(e)[:80]}"
+            # 回退：简单键值解析
+            kv = {}
+            for line in fm_text.splitlines():
+                line = line.strip()
+                if line and ":" in line and not line.startswith("#"):
+                    k, v = line.split(":", 1)
+                    kv[k.strip()] = v.strip()
+            if kv:
+                fm = kv
+                parse_ok = True
+
+    if not parse_ok:
+        return {
+            "name": "DSH 技能 frontmatter",
+            "ok": False,
+            "detail": f"frontmatter 未找到或解析失败（{error_detail or '缺少 --- 闭合'}）",
+            "hint": "修正 SKILL.md 的 frontmatter YAML",
+        }
+
+    problems = []
+
+    # 1. name：存在、kebab-case
+    name = fm.get("name")
+    if not name:
+        problems.append("缺少 name 字段")
+    else:
+        if not _re.match(r"^[a-z0-9]+(-[a-z0-9]+)*$", str(name)):
+            problems.append(f"name '{name}' 不是 kebab-case")
+        # 与技能目录名一致（.dsh/skills/<name>/ 或 .dsh/skills/<name>.md）
+        # P2-27：仅当 .dsh/skills 目录存在时才校验，纯 pip 安装（非 DSH 环境）
+        # 不携带 .dsh/skills，不应误报目录缺失
+        dsh_skills = _PROJECT_ROOT / ".dsh" / "skills"
+        if dsh_skills.is_dir():
+            dir_candidates = [
+                str(dsh_skills / str(name)),
+                str(dsh_skills / f"{name}.md"),
+            ]
+            if not any(Path(c).exists() for c in dir_candidates):
+                problems.append(f"name '{name}' 与 .dsh/skills 下无对应目录/文件")
+
+    # 2. description：存在、非空、自描述
+    desc = fm.get("description")
+    if not desc or not str(desc).strip():
+        problems.append("description 为空（模型只能看到 description，必须自描述）")
+    elif len(str(desc)) < 30:
+        problems.append(f"description 过短（{len(str(desc))} 字），应完整自描述触发条件与能力")
+
+    # 3. whenToUse：建议存在
+    when = fm.get("whenToUse")
+    if not when or not str(when).strip():
+        problems.append("缺少 whenToUse（建议写明触发场景便于模型匹配）")
+
+    # 4. 可选布尔字段类型
+    for key in ("user-invocable", "disable-model-invocation"):
+        if key in fm and not isinstance(fm[key], bool):
+            problems.append(f"{key} 应为布尔值（true/false）")
+
+    ok = not problems
+    detail = f"name={fm.get('name', '?')}, description={len(str(fm.get('description', '')))} 字"
+    return {
+        "name": "DSH 技能 frontmatter",
+        "ok": ok,
+        "detail": detail if ok else "; ".join(problems),
+        "hint": None if ok else "对照 DSH 技能规范修正 SKILL.md frontmatter",
     }
 
 
@@ -430,6 +580,7 @@ def _run_all_checks() -> dict:
     for file_result in _check_dsh_plugin_files():
         add(file_result)
     add(_check_skill_sync())
+    add(_check_skill_frontmatter())
     add(_check_git_status())
     add(_check_pycodestyle())
     add(_check_npm_package())
@@ -562,9 +713,11 @@ def cmd_repair(args):
     total += 1
     print(f"[{total}] 同步 SKILL.md 到 .dsh/skills/...")
     root_skill = _PROJECT_ROOT / "SKILL.md"
+    # P2-28：技能名从 frontmatter 动态读取，与 doctor 检查保持一致
+    repair_skill_name = _get_skill_name() or "gongwen-skill"
     dsh_targets = [
-        _PROJECT_ROOT / ".dsh" / "skills" / "gongwen-skill.md",
-        _PROJECT_ROOT / ".dsh" / "skills" / "gongwen-skill" / "SKILL.md",
+        _PROJECT_ROOT / ".dsh" / "skills" / f"{repair_skill_name}.md",
+        _PROJECT_ROOT / ".dsh" / "skills" / repair_skill_name / "SKILL.md",
     ]
 
     if not root_skill.exists():
