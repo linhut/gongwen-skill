@@ -80,6 +80,8 @@ def load_rules_merged(doc_type: str = "") -> dict[str, Any]:
     # Merge fix_rules and check_rules as distinct lists, not overwritten
     merged.setdefault("fix_rules", [])
     merged.setdefault("check_rules", [])
+    # 配置段 → 规则期望值同步：使模板/用户规则覆盖配置段后 check/optimize 自动跟随
+    _sync_style_expected(merged)
     return merged
 
 
@@ -115,6 +117,93 @@ def _deep_merge(base: dict, overlay: dict) -> None:
             _deep_merge(base[key], val)
         else:
             base[key] = copy.deepcopy(val)
+
+
+# 字段前缀 → 配置段键（配置段是样式的权威定义）
+_FIELD_CFG_SECTION = {
+    'title': 'doc_title', 'doc_title': 'doc_title', 'heading_0': 'doc_title',
+    'heading_1': 'heading_1', 'heading_2': 'heading_2',
+    'heading_3': 'heading_3', 'heading_4': 'heading_4',
+    'body': 'body', 'signature': 'signature', 'date': 'date',
+    'meeting_date': 'meeting_date', 'salutation': 'salutation',
+    'introduction': 'introduction', 'transition': 'transition',
+}
+# 可直接同名映射的样式子键
+_STYLE_KEYS = {'font', 'size', 'line_spacing', 'align', 'bold',
+               'first_line_indent', 'fill'}
+
+
+def _resolve_style_config(rules: dict[str, Any], field: str):
+    """按 field 路径取配置段的权威样式值；无法解析返回 None。
+
+    样式配置段（doc_title/body/signature/date/heading_*/table/page_setup）
+    是样式的权威定义；check_rules.expected 与 fix_rules.value 默认是它的快照副本。
+    模板/用户规则覆盖配置段后，此函数负责把覆盖值回填到检查/修复规则。
+    """
+    if not field or '.' not in field:
+        return None
+    prefix, sub = field.split('.', 1)
+
+    # table.* / page_setup.* 直接按路径取（table.header.font → table.header.font）
+    if prefix in ('table', 'page_setup'):
+        node = rules
+        for part in field.split('.'):
+            if not isinstance(node, dict) or part not in node:
+                return None
+            node = node[part]
+        if isinstance(node, (dict, list)):
+            return None
+        return node
+
+    section = _FIELD_CFG_SECTION.get(prefix)
+    if section is None or sub not in _STYLE_KEYS:
+        return None
+    cfg = rules.get(section)
+    if not isinstance(cfg, dict) or sub not in cfg:
+        return None
+    val = cfg[sub]
+    if isinstance(val, (dict, list)):
+        return None
+    return val
+
+
+def _sync_style_expected(rules: dict[str, Any]) -> None:
+    """把配置段的权威样式值同步到 CHK expected 与 FIX value（就地修改）。
+
+    使 style-learn 模板 / user_rules / config-overrides 覆盖配置段后，
+    check 与 optimize 的期望值自动跟随，而默认配置下幂等（配置段值==快照值）。
+    """
+    # 1) 同步 check_rules.expected
+    for rule in rules.get('check_rules', []):
+        resolved = _resolve_style_config(rules, rule.get('field', ''))
+        if resolved is not None:
+            rule['expected'] = resolved
+
+    # 2) 同步 fix_rules.value（经 ref_check 定位 CHK → field → 配置值）
+    # 保守策略：标量 value 可直接覆盖；复合 dict value（一次修复多属性）仅合并
+    # 格式一致的键（alignment/bold/fill），避免破坏 FIX-C013/C041 等复合修复。
+    chk_by_id = {r.get('id'): r for r in rules.get('check_rules', []) if r.get('id')}
+    for rule in rules.get('fix_rules', []):
+        ref = rule.get('ref_check')
+        if not ref or ref not in chk_by_id:
+            continue
+        resolved = _resolve_style_config(rules, chk_by_id[ref].get('field', ''))
+        if resolved is None or rule.get('value') is None:
+            continue
+        value = rule['value']
+        # 样式配置子键（如 body.align → align）→ FIX value dict 中的键名映射
+        _FIX_DICT_KEY = {
+            'align': 'alignment',
+            'bold': 'bold',
+            'fill': 'fill',
+        }
+        if isinstance(value, dict):
+            sub_field = chk_by_id[ref].get('field', '').split('.', 1)[-1]
+            dk = _FIX_DICT_KEY.get(sub_field)
+            if dk and dk in value and not isinstance(resolved, (dict, list)):
+                value[dk] = resolved
+        else:
+            rule['value'] = resolved
 
 
 def _dedup_extend(base_list: list, new_items: list, dedup_key) -> None:
@@ -327,6 +416,8 @@ def apply_config_overrides(rules: dict[str, Any], overrides: dict[str, Any]) -> 
     if not overrides or not isinstance(overrides, dict):
         return rules
     _deep_merge(rules, copy.deepcopy(overrides))
+    # 配置段 → 规则期望值同步：config-overrides 覆盖后 check/optimize 自动跟随
+    _sync_style_expected(rules)
     return rules
 
 

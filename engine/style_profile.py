@@ -110,7 +110,9 @@ def _extract_run_style(rPr) -> Dict[str, Any]:
             v = rFonts.get(f'{{{W}}}{attr}')
             if v:
                 style[f'font_{attr}'] = v
-        style['font'] = (rFonts.get(f'{{{W}}}eastAsia') or rFonts.get(f'{{{W}}}ascii') or '')
+        # font 仅取 eastAsia（中文字体）；ascii 仅用于西文 run，
+        # 避免中文 run 无 eastAsia 时误学成 Times New Roman 等默认拉丁字体
+        style['font'] = (rFonts.get(f'{{{W}}}eastAsia') or '')
 
     sz = rPr.find(f'{{{W}}}sz')
     if sz is not None:
@@ -181,6 +183,64 @@ def _extract_para_style(pPr) -> Dict[str, Any]:
     return style
 
 
+def _load_style_fonts(docx_path: str | Path) -> Dict[str, Dict[str, Any]]:
+    """解析 styles.xml，构建 styleId → 解析后的中文字体/字号映射。
+
+    沿 basedOn 样式链向上解析（含环保护），最终回退到 docDefaults，
+    供 run 未显式指定 eastAsia 字体时继承段落样式的中文字体。
+    """
+    fonts: Dict[str, Dict[str, Any]] = {}
+    with zipfile.ZipFile(docx_path) as z:
+        if 'word/styles.xml' not in z.namelist():
+            return fonts
+        styles = etree.fromstring(z.read('word/styles.xml'))
+
+    raw: Dict[str, Dict[str, Any]] = {}
+    for st in styles.findall(f'{{{W}}}style'):
+        sid = st.get(f'{{{W}}}styleId')
+        if not sid:
+            continue
+        rPr = st.find(f'{{{W}}}rPr')
+        rf = rPr.find(f'{{{W}}}rFonts') if rPr is not None else None
+        sz = rPr.find(f'{{{W}}}sz') if rPr is not None else None
+        bo = st.find(f'{{{W}}}basedOn')
+        sz_val = sz.get(f'{{{W}}}val') if sz is not None else None
+        raw[sid] = {
+            'eastAsia': rf.get(f'{{{W}}}eastAsia') if rf is not None else None,
+            'size_pt': int(sz_val) / 2.0 if sz_val else None,
+            'basedOn': bo.get(f'{{{W}}}val') if bo is not None else None,
+        }
+
+    # docDefaults（文档默认字体）
+    defaults: Dict[str, Any] = {'eastAsia': None, 'size_pt': None}
+    dd = styles.find(f'{{{W}}}docDefaults')
+    if dd is not None:
+        rf = dd.find(f'{{{W}}}rPrDefault/{{{W}}}rPr/{{{W}}}rFonts')
+        if rf is not None:
+            defaults['eastAsia'] = rf.get(f'{{{W}}}eastAsia')
+        sz = dd.find(f'{{{W}}}rPrDefault/{{{W}}}rPr/{{{W}}}sz')
+        sz_val = sz.get(f'{{{W}}}val') if sz is not None else None
+        if sz_val:
+            defaults['size_pt'] = int(sz_val) / 2.0
+
+    def resolve(sid: str, seen: frozenset) -> Dict[str, Any]:
+        if sid in fonts:
+            return fonts[sid]
+        if sid in seen or sid not in raw:
+            return dict(defaults)
+        cur = raw[sid]
+        parent = resolve(cur.get('basedOn') or '', seen | {sid}) if cur.get('basedOn') else dict(defaults)
+        return {
+            'eastAsia': cur.get('eastAsia') or parent.get('eastAsia'),
+            'size_pt': cur.get('size_pt') if cur.get('size_pt') is not None else parent.get('size_pt'),
+        }
+
+    for sid in raw:
+        if sid not in fonts:
+            fonts[sid] = resolve(sid, frozenset())
+    return fonts
+
+
 # ---------------------------------------------------------------------------
 #  主学习流程
 # ---------------------------------------------------------------------------
@@ -199,8 +259,30 @@ def learn_style_profile(docx_path: str | Path) -> StyleProfile:
 
     profile = StyleProfile()
 
+    # 加载 styles.xml 样式链字体映射（供 run 未显式指定 eastAsia 时继承段落样式字体）
+    style_fonts = _load_style_fonts(docx_path)
+
     # ---- 页面设置 ----
-    sectPr = body.find(f'{{{W}}}sectPr')
+    def _find_main_sect_pr(body_el) -> Optional[etree._Element]:
+        """定位主文档（第一节）的 sectPr。
+
+        多 section 文档（如正文纵向 + 附件横向）第一节的 sectPr 内嵌于
+        首个分节符段落 pPr；单 section 文档即 body 末尾 sectPr。
+        避免用 body.find() 只能取到最后一节（如横向附件页）而学错纸张/边距。
+        """
+        for child in body_el:
+            tag = etree.QName(child.tag).localname if child.tag else ''
+            if tag == 'p':
+                pPr = child.find(f'{{{W}}}pPr')
+                if pPr is not None:
+                    s = pPr.find(f'{{{W}}}sectPr')
+                    if s is not None:
+                        return s
+            elif tag == 'sectPr':
+                return child
+        return body_el.find(f'{{{W}}}sectPr')
+
+    sectPr = _find_main_sect_pr(body)
     if sectPr is not None:
         pgSz = sectPr.find(f'{{{W}}}pgSz')
         if pgSz is not None:
@@ -232,12 +314,33 @@ def learn_style_profile(docx_path: str | Path) -> StyleProfile:
         if not texts:
             continue
         pPr = p.find(f'{{{W}}}pPr')
+        # 段落样式 id（用于 run 无显式 eastAsia 时的样式继承解析）
+        p_style_id = None
+        if pPr is not None:
+            _ps = pPr.find(f'{{{W}}}pStyle')
+            if _ps is not None:
+                p_style_id = _ps.get(f'{{{W}}}val')
+        para_style_font = style_fonts.get(p_style_id, {}) if p_style_id else {}
+
         runs = p.findall(f'{{{W}}}r')
         run_styles = []
         for r in runs:
+            # 跳过无文本或纯空白 run（如落款/署名前导空格产生的空 run），
+            # 避免把 Word 默认 Latin 字体（Times New Roman）误学成中文样式
+            r_text = ''.join(t.text or '' for t in r.iter(f'{{{W}}}t')).strip()
+            if not r_text:
+                continue
             rPr = r.find(f'{{{W}}}rPr')
             if rPr is not None:
                 rs = _extract_run_style(rPr)
+                # 样式继承：run 未显式指定 eastAsia/字号时，从段落样式链回退
+                # （font 可能被 _extract_run_style 置为空串 ''，需用直接赋值覆盖）
+                if rs.get('font_eastAsia') is None and para_style_font.get('eastAsia'):
+                    if not rs.get('font'):
+                        rs['font'] = para_style_font['eastAsia']
+                    rs['font_eastAsia'] = para_style_font['eastAsia']
+                if rs.get('size_pt') is None and para_style_font.get('size_pt'):
+                    rs['size_pt'] = para_style_font['size_pt']
                 if rs:
                     run_styles.append(rs)
 
@@ -251,7 +354,14 @@ def learn_style_profile(docx_path: str | Path) -> StyleProfile:
         size = first_run.get('size_pt', 0)
         _font = first_run.get('font', '')  # noqa: F841
 
-        if idx == 0 and align == 'center':
+        # 红头版头：超大字号（>=36pt）居中，跳过学习（不计入 doc_title/body）
+        if size >= 36 and align == 'center':
+            role = 'letterhead'
+        # 发文字号：居中、含〔〕或【】、字小、文本短（如 民筹办函〔2026〕 号），跳过学习
+        elif align == 'center' and ('〔' in texts or '【' in texts) \
+                and size <= 18 and len(texts) < 30:
+            role = 'letterhead'
+        elif idx == 0 and align == 'center':
             role = 'doc_title'
         elif size >= 20 and align == 'center':
             role = 'doc_title'
@@ -261,9 +371,14 @@ def learn_style_profile(docx_path: str | Path) -> StyleProfile:
             role = 'heading_2'
         elif re.match(r'^\d+[\.、]', texts):
             role = 'heading_3'
-        elif align == 'right' and ('年' in texts and '月' in texts and '日' in texts):
+        # 成文日期：整段为 YYYY年M月D日（与对齐无关，优先于落款判定）
+        elif re.fullmatch(r'[\s\u3000]*\d{4}年\d{1,2}月\d{1,2}日[\s\u3000]*', texts):
             role = 'date'
         elif align == 'right':
+            role = 'signature'
+        # 落款机关名：右对齐或居中且以机关特征词结尾
+        elif align in ('right', 'center') and re.search(
+                r'(办公室|委员会|运动会|管理局|人民政府|厅|局)$', texts.strip()):
             role = 'signature'
         elif texts.endswith(('：', ':')):
             role = 'recipient'  # 与 parser 一致：冒号结尾为主送机关
@@ -341,10 +456,11 @@ def build_user_rule_yaml(profile: StyleProfile, template_name: str) -> str:
             'paper_width_mm': profile.page.get('width_mm'),
             'paper_height_mm': profile.page.get('height_mm'),
             'margins': {
-                'top': f"{profile.margins.get('top', 2.8)}cm",
-                'bottom': f"{profile.margins.get('bottom', 2.8)}cm",
-                'left': f"{profile.margins.get('left', 2.7)}cm",
-                'right': f"{profile.margins.get('right', 2.7)}cm",
+                # margins 值存的是 mm，此处换算为 cm（与 _common.yaml 单位一致）
+                'top': f"{profile.margins.get('top', 28.0) / 10.0:.1f}cm",
+                'bottom': f"{profile.margins.get('bottom', 28.0) / 10.0:.1f}cm",
+                'left': f"{profile.margins.get('left', 27.0) / 10.0:.1f}cm",
+                'right': f"{profile.margins.get('right', 27.0) / 10.0:.1f}cm",
             },
         }
 
