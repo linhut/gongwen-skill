@@ -18,6 +18,7 @@ from engine.core.document.models import DocumentModel
 from engine.core.document.modifier import (
     modify_font, modify_size, modify_alignment, modify_line_spacing,
     modify_first_line_indent, modify_margins, modify_bold,
+    modify_paper_size,  # V2.3：纸张尺寸修复（FIX-C054）
     remove_extra_spaces, remove_extra_blank_lines,
     normalize_punctuation, normalize_heading_content,
     convert_markdown, fix_bold_range,
@@ -49,6 +50,12 @@ _ACTION_MAP = {
     ),
     "set_margins": lambda model, target, value, _rules: modify_margins(model, value),
     "set_page_margins": lambda model, target, value, _rules: modify_margins(model, value),
+    "set_paper_size": lambda model, target, value, _rules: modify_paper_size(
+        model,
+        width_mm=value.get("width_mm") if isinstance(value, dict) else None,
+        height_mm=value.get("height_mm") if isinstance(value, dict) else None,
+    ),
+    "set_table_style": lambda model, target, value, _rules: _apply_table_style(model, value),
     "remove_extra_spaces": lambda model, target, value, _rules: remove_extra_spaces(model),
     "remove_extra_blank_lines": lambda model, target, value, _rules: remove_extra_blank_lines(
         model,
@@ -273,3 +280,58 @@ def _apply_fix_paragraph_type(model: DocumentModel, target: str, value: Any) -> 
         modify_size(model, target, _parse_pt_value(value["size"]))
     if value.get("first_line_indent") is not None:
         modify_first_line_indent(model, target, _parse_indent_value(value["first_line_indent"]))
+
+
+def _apply_table_style(model: DocumentModel, value: Any) -> None:
+    """应用表格具体样式（V2.3，供 FIX-C055 set_table_style）。
+
+    value 格式（dict）：
+        {
+            "header": {"font": "黑体", "size": "12pt", "bold": true,
+                       "align": "center", "fill": "D9E2F3"},
+            "body":   {"font": "仿宋_GB2312", "size": "12pt", "align": "left"},
+            "cell_margin": {"top": 0, "left": 80, "bottom": 0, "right": 80},
+        }
+    对 model 中所有表格的表头行（row==0）/数据行应用样式，并设置 cell.fill 与
+    table.cell_margin；随后由 generator（_generator_helpers）写出到 docx。
+    数字单元格按智能对齐右对齐（与 _smart_align_cell 一致）。
+    """
+    import re as _re
+    if not isinstance(value, dict) or not model.tables:
+        return
+    header = value.get("header") or {}
+    body = value.get("body") or {}
+    margin = value.get("cell_margin")
+    _num_re = _re.compile(r'^[\d.,%‰]+$')
+
+    for table in model.tables:
+        if isinstance(margin, dict) and margin:
+            base = dict(table.cell_margin or {})
+            base.update(margin)
+            table.cell_margin = base
+
+        for cell in table.cells:
+            is_header = cell.row == 0
+            style = header if is_header else body
+            # 单元格段落 run 样式
+            for p in cell.paragraphs:
+                for run in p.runs:
+                    if style.get("font"):
+                        run.format.font_name = str(style["font"])
+                    if style.get("size") is not None:
+                        run.format.font_size_pt = float(str(style["size"]).replace("pt", ""))
+                    if style.get("bold") is not None and is_header:
+                        run.format.bold = bool(style["bold"])
+                # 对齐：表头居中；数据行数字右对齐、其余按 body.align
+                if is_header:
+                    if header.get("align") and p.format is not None:
+                        p.format.alignment = str(header["align"])
+                elif body.get("align") and p.format is not None:
+                    txt = (cell.text or "").strip()
+                    if _num_re.match(txt):
+                        p.format.alignment = "right"
+                    else:
+                        p.format.alignment = str(body["align"])
+            # 表头底色
+            if is_header and header.get("fill"):
+                cell.fill = str(header["fill"])

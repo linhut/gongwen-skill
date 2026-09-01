@@ -121,7 +121,10 @@ def parse_run(run, index: int) -> Run:
         color_rgb = str(font.color.rgb)
 
     # 通过 XML 检测删除线（python-docx 1.2.0 无 font.strikethrough）
-    # 注意：必须检查 w:val 属性——<w:strike w:val="false"/> 表示无删除线
+    # V2.3 修复：w:val 布尔取值须处理 OOXML 全套写法（true/1/on 为真；
+    # false/0/off 为假）。原实现只认 'false'，导致 <w:strike w:val="0"/>
+    # （无删除线）被误判为真删除线，optimize 的 clean_path_b_markers 会
+    # 借此删掉标题/正文 run，进而丢失字体（全部回退为仿宋_GB2312）。
     _strikethrough = False
     ns = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
     rPr = run._element.find(f'{ns}rPr')
@@ -129,7 +132,7 @@ def parse_run(run, index: int) -> Run:
         strike_elem = rPr.find(f'{ns}strike')
         if strike_elem is not None:
             val = strike_elem.get(f'{ns}val', 'true')
-            _strikethrough = val.lower() != 'false'
+            _strikethrough = val.strip().lower() not in ('false', '0', 'off')
 
     return Run(
         text=run.text,

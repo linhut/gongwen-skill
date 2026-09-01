@@ -33,6 +33,14 @@ from docx.shared import Mm, Cm, Pt, RGBColor
 
 from engine.core.document.font_utils import set_run_font, BODY_FONT, LATIN_FONT
 
+# V2.3：导语/过渡词开头 → 不是主送机关/称呼段（与 modifier.detect_paragraph_type 的
+# _INTRODUCTION_RE/_TRANSITION_RE 逻辑对齐，避免"为深入贯彻落实…通知如下："短导语被
+# 误判为称呼段而丢失首行缩进）
+_SALUTATION_EXCLUDE_RE = re.compile(
+    r'^\s*(按照|根据|遵照|依据|为了|为贯彻|为落实|为认真|为深入|为切实|为全面|'
+    r'经|据|奉|针对|基于|鉴于|综上|为此|对此|结合|围绕|因此|故|由此可见|从上述)'
+)
+
 # ---------------------------------------------------------------------------
 #  小工具
 # ---------------------------------------------------------------------------
@@ -313,12 +321,20 @@ def _add_paragraph(doc: Document, para, rules: dict):
     p = doc.add_paragraph()
     pf = p.paragraph_format
 
+    # 段前分页标记（--- 附件分页）：该段从新页开始
+    if getattr(para, "page_break", False):
+        pf.page_break_before = True
+
     # 主送机关/称呼段：顶格左对齐、无首行缩进（GB/T 9704）
-    # 通过 role 或文本特征（短文本以 ：/: 结尾）识别，兼容 recipient 放正文的草稿
+    # 通过 role 或文本特征（短文本以 ：/: 结尾）识别，兼容 recipient 放正文的草稿。
+    # V2.3 修复：排除导语/过渡词开头的短段——"为深入贯彻落实…通知如下："等导语段
+    # 也以冒号结尾且常不超过 50 字，会被误判为主送机关而左对齐、丢失首行缩进。
+    _txt = (para.text or "").strip()
     _is_salutation = para.role in ("recipient", "salutation") or (
         para.role in (None, "body")
-        and len((para.text or "").strip()) <= 50
-        and (para.text or "").strip().endswith(("：", ":"))
+        and len(_txt) <= 50
+        and _txt.endswith(("：", ":"))
+        and not _SALUTATION_EXCLUDE_RE.match(_txt)
     )
 
     # 对齐：主送机关/称呼段强制左对齐；其余优先模型显式值
@@ -392,7 +408,49 @@ def _add_paragraph(doc: Document, para, rules: dict):
     return p
 
 
-def _add_table(doc: Document, tbl, anchor_elem) -> None:
+def _set_cell_shading(cell, fill: str | None) -> None:
+    """给表格单元格写入 w:shd 底色（如浅蓝灰 D9E2F3）。"""
+    if not fill:
+        return
+    tcPr = cell._tc.get_or_add_tcPr()
+    shd = tcPr.find(qn("w:shd"))
+    if shd is None:
+        shd = tcPr.makeelement(qn("w:shd"), {})
+        tcPr.append(shd)
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"), fill)
+
+
+def _set_table_cell_margins(table, margin: dict | None) -> None:
+    """写入 w:tblCellMar（单元格边距，twips）。"""
+    if not margin:
+        return
+    tblPr = table._tbl.tblPr
+    if tblPr is None:
+        tblPr = table._tbl._add_tblPr()
+    cell_mar = tblPr.find(qn("w:tblCellMar"))
+    if cell_mar is None:
+        cell_mar = tblPr.makeelement(qn("w:tblCellMar"), {})
+        tblPr.append(cell_mar)
+    for edge in ("top", "left", "bottom", "right"):
+        val = margin.get(edge)
+        if val is None:
+            continue
+        el = cell_mar.find(qn("w:" + edge))
+        if el is None:
+            el = cell_mar.makeelement(qn("w:" + edge), {})
+            cell_mar.append(el)
+        el.set(qn("w:w"), str(int(val)))
+        el.set(qn("w:type"), "dxa")
+
+
+# V2.3：md2docx 表格样式与 _common.yaml table 配置对齐——应用表头底色、
+# 单元格边距、数字列右对齐（此前仅 Table Grid 边框+字体，配置块未被读取）
+_NUM_CELL_RE = re.compile(r"^[\d.,%‰]+$")
+
+
+def _add_table(doc: Document, tbl, anchor_elem, rules=None) -> None:
     """创建 Word 表格并插到锚点段落之后。"""
     if tbl.rows <= 0 or tbl.cols <= 0:
         return
@@ -401,6 +459,14 @@ def _add_table(doc: Document, tbl, anchor_elem) -> None:
     # 把表格移动到锚点元素之后
     if anchor_elem is not None:
         anchor_elem.addnext(table._tbl)
+
+    # V2.3：从规则读取表格样式（表头底色、单元格边距、数字智能对齐）
+    tcfg = (rules or {}).get("table", {}) or {}
+    _hdr_cfg = tcfg.get("header", {}) or {}
+    _fill = _hdr_cfg.get("fill")
+    _margin = tcfg.get("cell_margin")
+    if _margin:
+        _set_table_cell_margins(table, _margin)
 
     cells_by = {}
     for c in tbl.cells:
@@ -415,6 +481,8 @@ def _add_table(doc: Document, tbl, anchor_elem) -> None:
             cell.text = ""
             para = cell.paragraphs[0]
             is_header = row == 0
+            if is_header and _fill:
+                _set_cell_shading(cell, _fill)
             run = para.add_run(text)
             if is_header:
                 set_run_font(run, "黑体")
@@ -424,7 +492,11 @@ def _add_table(doc: Document, tbl, anchor_elem) -> None:
             else:
                 set_run_font(run, "仿宋_GB2312")
                 run.font.size = Pt(12)
-                para.alignment = _align("left")
+                # V2.3：数字列右对齐（与 optimize _smart_align_cell 一致）
+                if _NUM_CELL_RE.match((text or "").strip()):
+                    para.alignment = _align("right")
+                else:
+                    para.alignment = _align("left")
 
 
 def _add_ai_declaration(doc: Document) -> None:
@@ -481,18 +553,18 @@ def render_model_to_docx(model, output_path, rules: dict | None = None,
         p = _add_paragraph(doc, para, rules)
         last_elem = p._element
         for t in table_map.get(i, []):
-            _add_table(doc, t, last_elem)
+            _add_table(doc, t, last_elem, rules)
 
     # 锚点为 -1（文档开头）的表格
     for t in table_map.get(-1, []):
         if doc.paragraphs:
-            _add_table(doc, t, doc.paragraphs[0]._element)
+            _add_table(doc, t, doc.paragraphs[0]._element, rules)
         else:
-            _add_table(doc, t, None)
+            _add_table(doc, t, None, rules)
 
     # 锚点超出末尾（最后一个段落之后）
     for t in table_map.get(len(model.paragraphs), []):
-        _add_table(doc, t, last_elem)
+        _add_table(doc, t, last_elem, rules)
 
     # AI 声明
     if not no_ai_declaration:
@@ -505,5 +577,11 @@ def render_model_to_docx(model, output_path, rules: dict | None = None,
             os.makedirs(parent, exist_ok=True)
     else:
         out = output_path
+
+    # 统一文档作者（用户要求：生成文档的作者写为 Jose AI）
+    try:
+        doc.core_properties.author = "Jose AI"
+    except Exception:
+        pass
     doc.save(out)
     return output_path

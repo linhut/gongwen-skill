@@ -98,6 +98,8 @@ class TableCell(BaseModel):
     col: int
     text: str
     paragraphs: list[Paragraph] = Field(default_factory=list)
+    # V2.3：表头单元格底色（w:shd fill，如 D9E2F3）——供表格样式检测/修复
+    fill: Optional[str] = None
 
 
 class Table(BaseModel):
@@ -107,6 +109,8 @@ class Table(BaseModel):
     cols: int
     cells: list[TableCell] = Field(default_factory=list)
     insert_after_index: int = -1  # 表格紧跟在哪个段落索引之后（-1 表示文档开头）
+    # V2.3：表格单元格边距（twips，{top,left,bottom,right}）——供表格样式检测/修复
+    cell_margin: Optional[dict] = None
 
 
 class HeaderFooter(BaseModel):

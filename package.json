@@ -7,13 +7,23 @@
   "exports": {
     ".": "./dsh/index.js",
     "./dsh": "./dsh/index.js",
-    "./client": "./dsh/client.js",
+    "./client": {
+      "default": "./dsh/client.js"
+    },
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
     }
   },
   "keywords": [

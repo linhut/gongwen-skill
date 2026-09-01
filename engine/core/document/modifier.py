@@ -101,6 +101,10 @@ def _select_paragraphs(model: DocumentModel, target: str) -> list[Paragraph]:
             if re.match(r'^\d{4}年\d{1,2}月\d{1,2}日$', last) or re.match(r'^\d{4}[.\-/]\d{1,2}[.\-/]\d{1,2}$', last):
                 return non_empty[-1:]
         return []
+    elif target == "attachment":
+        # V2.3：附件说明（role='attachment'）选择器——此前缺失，导致
+        # target=attachment 的 FIX 规则走 Unknown target 警告而静默失效
+        return [p for p in model.paragraphs if p.role == 'attachment']
     elif target in ('salutation', 'introduction', 'transition', 'meeting_date', 'numbered_body'):
         # N2: 段落类型 target —— 使用 detect_paragraph_type 内容匹配
         return [p for p in model.paragraphs if detect_paragraph_type(p.text, p.role) == target]
@@ -227,6 +231,19 @@ def modify_margins(model: DocumentModel, margins: dict[str, str | float]) -> Non
             parsed = _parse_mm_value(margins[key])
             if parsed is not None:
                 setattr(ps, attr, parsed)
+
+
+def modify_paper_size(model: DocumentModel, width_mm: float | None = None,
+                      height_mm: float | None = None) -> None:
+    """修改纸张尺寸（毫米）。V2.3 新增：供 FIX-C054 把非 A4 纸张归一为 A4。
+
+    仅当提供了对应的毫米值才修改，未提供的维度保持不变。
+    """
+    ps = model.page_setup
+    if width_mm is not None and 50 <= width_mm <= 1000:
+        ps.paper_width_mm = float(width_mm)
+    if height_mm is not None and 50 <= height_mm <= 1000:
+        ps.paper_height_mm = float(height_mm)
 
 
 def clean_path_b_markers(model: DocumentModel) -> int:
@@ -407,6 +424,11 @@ def should_bold_first_sentence(text: str | None, role: str | None = None) -> boo
     称呼/导语/过渡/署名/会议日期段 → False（不加粗）；
     编号正文/普通正文 → True（首句加粗）。
     """
+    # V2.3 修复：联系人段（"（联系人：XXX，联系电话：XXX）"）是落款区备注，
+    # 不应首句加粗——否则加粗仿宋段会被启发式误判为三级标题（CHK-C037 误报）。
+    raw = (text or "").strip()
+    if raw.startswith(("（联系人", "(联系人", "联系人：")):
+        return False
     para_type = detect_paragraph_type(text, role)
     return PARAGRAPH_TYPE_RULES.get(para_type, True)
 
@@ -719,14 +741,47 @@ def _insert_blank_lines(model: DocumentModel, rules: dict | None = None) -> int:
     def _blank_para() -> Paragraph:
         return Paragraph(index=0, text="", role="body", runs=[], format=ParagraphFormat())
 
-    # 1. 公文大标题前/后空行
+    def _insert_blank_at(pos: int) -> None:
+        """在 pos 处插入一个空行，并同步后移受影响表格的锚点。
+
+        表格锚点 insert_after_index 指向"表格所跟随的段落索引"；
+        在其位置（含）之后插入段落会使后续段落索引整体 +1，
+        因此所有锚点 >= pos 的表格都需同步 +1，否则附表会被插到错误位置
+        （如"落款后附表"被插到落款之前）。
+        """
+        nonlocal inserted
+        for _t in model.tables:
+            if getattr(_t, 'insert_after_index', -1) >= pos:
+                _t.insert_after_index += 1
+        model.paragraphs.insert(pos, _blank_para())
+        inserted += 1
+
+    def _count_blanks_before(idx: int) -> int:
+        """统计 idx 位置之前连续空行数（不含 idx 本身）。"""
+        n = 0
+        j = idx - 1
+        while j >= 0 and not model.paragraphs[j].text.strip():
+            n += 1
+            j -= 1
+        return n
+
+    def _count_blanks_after(idx: int) -> int:
+        """统计 idx 位置之后连续空行数（不含 idx 本身）。"""
+        n = 0
+        j = idx + 1
+        while j < len(model.paragraphs) and not model.paragraphs[j].text.strip():
+            n += 1
+            j += 1
+        return n
+
+    # 1. 公文大标题前/后空行（V2.3 幂等：只补差额，不叠加已有空行）
     title_indices = [i for i, p in enumerate(model.paragraphs)
                      if p.is_heading and p.heading_level == 0]
     if title_indices:
         before = int(bl.get('doc_title_before', 0) or 0)
         after = int(bl.get('doc_title_after', 0) or 0)
         first = title_indices[0]
-        # 标题前：往前找首个非空段落，在其后插入空行（避免文档开头堆空行）
+        # 标题前：往前找首个非空段落，在其后补足空行（避免文档开头堆空行）
         if before > 0:
             anchor = -1
             for j in range(first - 1, -1, -1):
@@ -734,37 +789,45 @@ def _insert_blank_lines(model: DocumentModel, rules: dict | None = None) -> int:
                     anchor = j
                     break
             if anchor >= 0:
-                for _ in range(before):
-                    model.paragraphs.insert(anchor + 1, _blank_para())
-                    inserted += 1
-                    anchor += 1
-        # 标题后：在标题段后插入空行
+                existing = first - anchor - 1  # anchor 与标题之间的已有空行数
+                shortfall = before - existing
+                if shortfall > 0:
+                    for _ in range(shortfall):
+                        anchor += 1
+                        _insert_blank_at(anchor)
+        # 标题后：在标题段后补足空行
         if after > 0:
-            for _ in range(after):
-                model.paragraphs.insert(first + 1, _blank_para())
-                inserted += 1
-                first += 1
+            existing = _count_blanks_after(first)
+            shortfall = after - existing
+            if shortfall > 0:
+                for _ in range(shortfall):
+                    first += 1
+                    _insert_blank_at(first)
 
-    # 2. 正文末尾与落款前空 N 行（body_to_signature）
+    # 2. 正文末尾与落款前空 N 行（body_to_signature，幂等）
     sig_gap = int(bl.get('body_to_signature', 0) or 0)
     if sig_gap > 0:
         sig_idx = next((i for i, p in enumerate(model.paragraphs)
                         if p.role in ('signature', 'date') and p.text.strip()), None)
         if sig_idx is not None:
-            for _ in range(sig_gap):
-                model.paragraphs.insert(sig_idx, _blank_para())
-                inserted += 1
+            existing = _count_blanks_before(sig_idx)
+            shortfall = sig_gap - existing
+            if shortfall > 0:
+                for _ in range(shortfall):
+                    _insert_blank_at(sig_idx)
 
-    # 3. 附件标题与正文间空 N 行（attachment_gap）
+    # 3. 附件标题与正文间空 N 行（attachment_gap，幂等）
     att_gap = int(bl.get('attachment_gap', 0) or 0)
     if att_gap > 0:
         att_idx = next((i for i, p in enumerate(model.paragraphs)
                         if p.role == 'attachment' and p.text.strip()), None)
         if att_idx is not None:
-            for _ in range(att_gap):
-                model.paragraphs.insert(att_idx + 1, _blank_para())
-                inserted += 1
-                att_idx += 1
+            existing = _count_blanks_after(att_idx)
+            shortfall = att_gap - existing
+            if shortfall > 0:
+                for _ in range(shortfall):
+                    att_idx += 1
+                    _insert_blank_at(att_idx)
 
     if inserted:
         for i, p in enumerate(model.paragraphs):
@@ -1116,7 +1179,11 @@ def bold_first_sentence_of_body(model: DocumentModel) -> int:
     from copy import deepcopy
 
     changes = 0
-    exclude_roles = {'signature', 'date', 'title', 'recipient', 'annotation'}
+    # V2.3 修复：附件说明/抄送等非正文段加入排除——否则"附件：xxx"会被首句加粗，
+    # 加粗的仿宋短文本被 parser 启发式误判为三级标题（CHK-C037 误报），
+    # 且破坏附件说明"左空二字、不加粗"的规范排版。
+    exclude_roles = {'signature', 'date', 'title', 'recipient', 'annotation',
+                     'attachment', 'cc'}
     for para in model.paragraphs:
         if para.is_heading:
             continue

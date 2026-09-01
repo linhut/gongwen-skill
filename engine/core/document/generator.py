@@ -377,47 +377,74 @@ def _apply_page_setup(doc: Document, model: DocumentModel):
 
 def _replace_paragraphs(doc: Document, model: DocumentModel):
     """
-    替换文档中的段落内容，同时保留表格和图片在原始位置。
+    按模型布局重建 body 中的段落与表格序列。
 
-    策略（P0-1 加固）：
-    1. 交错遍历 body 直接子元素：<w:p> 按序消耗 model.paragraphs 内容，
-       <w:tbl> 及表格内段落保持不动（表格不消耗 model 段落索引）
-    2. model 比原文多的段落，追加到 body 末尾
-    3. 原文比 model 多的 <w:p>，从 body 中移除
-    4. 图片：内联图片（<w:drawing> 在 <w:p> 内）通过段落内容替换间接保留，
-       浮动图片（锚定）不受影响。前提是源文档保留策略生效。
+    旧实现假定"源 body 段落数 == 模型段落数且一一对应"：段落只能原位替换、
+    多出的段落追加到末尾、表格停留在源位置。当优化规则在文档中间插入段落
+    （如补齐空行、插入落款/附件说明）时，多出的段落被追加到末尾而表格仍在
+    源位置，导致"落款后附表"被插到落款之前等布局错乱。
+
+    此版本以模型为唯一布局依据：
+      - 段落严格按 model.paragraphs 顺序放置（源段落元素尽量复用，保留内联图片）；
+      - 表格按其 insert_after_index 锚点放在对应段落之后（锚点 -1 置于文档最前）；
+      - 未建模的源元素（sectPr、未建模表格等）保留在末尾（保留策略）。
 
     注意：段落索引必须与模型中的 index 字段严格对齐。
-    索引错位会导致内联图片跟随错误的段落移位。
     """
     body = doc.element.body
     p_tag = qn('w:p')
+    tbl_tag = qn('w:tbl')
     model_paras = model.paragraphs
-    para_idx = 0
 
-    # 交错遍历：跳过 <w:tbl>（不消耗 model 索引），仅对 <w:p> 按序替换/移除
-    for child in list(body):
-        if child.tag == p_tag:
-            if para_idx < len(model_paras):
-                _replace_paragraph_content(doc, child, model_paras[para_idx])
-                para_idx += 1
-            else:
-                # 原文段落多于 model → 移除多余段落
-                try:
-                    body.remove(child)
-                except Exception:
-                    pass  # 已被移除则跳过
+    # 1. 收集源 body 子元素（保持原顺序）
+    src_p = [c for c in body if c.tag == p_tag]
+    src_tbl = [c for c in body if c.tag == tbl_tag]
+    src_other = [c for c in body if c.tag not in (p_tag, tbl_tag)]
 
-    # model 比原文多的段落，追加到 body 末尾
-    while para_idx < len(model_paras):
-        new_para = doc.add_paragraph()
-        _apply_paragraph_format(new_para, model_paras[para_idx])
-        _add_runs_to_paragraph(new_para, model_paras[para_idx])
-        para_idx += 1
+    # 2. 表格锚点 → 模型表格索引（保持模型顺序）
+    anchor_map: dict[int, list[int]] = {}
+    for ti, t in enumerate(model.tables):
+        anchor_map.setdefault(t.insert_after_index, []).append(ti)
+    used_tbl: set[int] = set()
 
-    logger.debug(f"Replaced {min(len(model_paras), len([c for c in body if c.tag == p_tag]))} paragraphs, "
-                 f"added {max(0, len(model_paras) - len([c for c in body if c.tag == p_tag]))}, "
-                 f"removed {max(0, len([c for c in body if c.tag == p_tag]) - len(model_paras))}")
+    # 3. 构建目标序列
+    seq: list = []
+    # 文档最前的表格（锚点 -1）；模型表格超出源文档时跳过，由 _update_tables 新建
+    for ti in anchor_map.get(-1, []):
+        if ti < len(src_tbl):
+            seq.append(src_tbl[ti])
+            used_tbl.add(ti)
+
+    for i, para_model in enumerate(model_paras):
+        # 段落元素：优先复用源元素（保留内联图片），超出则新建
+        if i < len(src_p):
+            p_elem = src_p[i]
+        else:
+            p_elem = OxmlElement('w:p')
+        _replace_paragraph_content(doc, p_elem, para_model)
+        seq.append(p_elem)
+        # 锚定在此段落之后的表格（模型表格超出源文档时跳过，由 _update_tables/_add_table 新建放置）
+        for ti in anchor_map.get(i, []):
+            if ti < len(src_tbl):
+                seq.append(src_tbl[ti])
+                used_tbl.add(ti)
+
+    # 4. 未在模型锚定的源表格保留在末尾（保留策略）
+    for ti, t in enumerate(src_tbl):
+        if ti not in used_tbl:
+            seq.append(t)
+
+    # 5. 其它未建模元素（sectPr 等）保持在末尾
+    seq.extend(src_other)
+
+    # 6. 重建 body
+    for c in list(body):
+        body.remove(c)
+    for c in seq:
+        body.append(c)
+
+    logger.debug(f"Replaced {len(model_paras)} paragraphs, "
+                 f"{len(seq)} body elements in model order")
 
 
 def _replace_paragraph_content(doc: Document, p_element, para_model: Paragraph):
@@ -635,8 +662,8 @@ def _update_metadata(doc: Document, model: DocumentModel):
         props = doc.core_properties
         if meta.title:
             props.title = meta.title
-        if meta.author:
-            props.author = meta.author
+        # 统一文档作者为 "Jose AI"（用户要求：生成文档的作者都写为 Jose AI）
+        props.author = "Jose AI"
         if meta.subject:
             props.subject = meta.subject
         if meta.category:

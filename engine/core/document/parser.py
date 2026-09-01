@@ -320,27 +320,63 @@ def _assign_paragraph_roles(paragraphs: list[Paragraph]) -> None:
             para.role = 'cc'
             continue
 
-    # 落款：日期前的短文本（< 20 字，或含机关关键词）
+    # 落款：日期前的短文本（< 20 字，或含机关关键词）——支持多行落款单位
+    # V2.3 修复：原实现只识别日期前一段；长单位名跨两行（如"XX民族传统体育运动会"换行"XX办公室"）
+    # 时只标最后一行，第一行被当 body 应用正文缩进。现从日期前一段向上连续扫描落款单位行。
+    # 收集附件说明内容（"附件：xxx"），用于把"附件标题"与"落款单位"区分开：
+    # 附件标题（heading 且带分页，或文本与附件说明一致）不是落款，扫描到此为止；
+    # 被 B-0 启发式误判为标题的居中落款单位行（如"XX民族传统体育运动会"）则照常标为 signature。
+    _att_note_items: list[str] = []
+    for _p in paragraphs:
+        _pt = (_p.text or '').strip()
+        if _pt.startswith(('附件：', '附：')):
+            _rest = re.sub(r'^附[:：]', '', _pt)
+            for _seg in re.split(r'[、，]', _rest):
+                _seg = re.sub(r'^d+[.、]', '', _seg).strip()
+                if _seg:
+                    _att_note_items.append(_seg)
+
     date_indices = [i for i, p in non_empty if p.role == 'date']
     if date_indices:
         date_idx = date_indices[-1]
-        for i in range(len(non_empty)):
-            idx, para = non_empty[i]
-            if idx == date_idx - 1:
+        date_pos = next((i for i, (idx, p) in enumerate(non_empty) if idx == date_idx), -1)
+        if date_pos > 0:
+            for i in range(date_pos - 1, -1, -1):
+                idx, para = non_empty[i]
                 text = para.text.strip()
+                # 已识别其他角色（如抄送/印发/attachment）→ 落款区到此为止
+                if para.role:
+                    break
+                # 句末标点结尾 = 正文收尾，不是落款单位
+                if not text or text[-1] in '。？！；，、':
+                    break
+                # 附件说明/附件标题（"附件："开头）不是落款
+                if text.startswith(('附件', '附：')):
+                    break
                 is_sig = False
                 if len(text) < 20:
                     is_sig = True
                 elif any(kw in text for kw in ['人民政府', '委员会', '办公厅', '办公室', '管理局', '局', '部']):
                     if len(text) < 40:
                         is_sig = True
-                if is_sig:
-                    para.role = 'signature'
-                    # P4 修复：居中署名段（如"陈龙"）可能被 B-0 启发式误判为标题，
-                    # 落款区识别后清除标题标记，避免 optimize 套用标题格式破坏署名段
-                    if para.is_heading:
-                        para.is_heading = False
-                        para.heading_level = None
+                if not is_sig:
+                    break
+                # 续行是标题段：仅当是"附件标题"（带分页 或 文本与附件说明一致）才停止，
+                # 否则（如 B-0 误判的居中落款单位）继续标为 signature 并清除标题标记
+                if i < date_pos - 1 and para.is_heading:
+                    _pb = bool(getattr(para, "page_break", False))
+                    _matches_att = any(
+                        _seg and (_seg == text or _seg.endswith(text))
+                        for _seg in _att_note_items
+                    )
+                    if _pb or _matches_att:
+                        break
+                para.role = 'signature'
+                # P4 修复：居中署名段（如"陈龙"）可能被 B-0 启发式误判为标题，
+                # 落款区识别后清除标题标记，避免 optimize 套用标题格式破坏署名段
+                if para.is_heading:
+                    para.is_heading = False
+                    para.heading_level = None
 
     # 主送机关：标题后第一段，以冒号结尾
     if len(non_empty) >= 2:
@@ -352,10 +388,15 @@ def _assign_paragraph_roles(paragraphs: list[Paragraph]) -> None:
             elif any(kw in text for kw in _RECIPIENT_KEYWORDS) and text.endswith(('：', ':')):
                 second_para.role = 'recipient'
 
-    # 附件
+    # 附件（区分附件说明 vs 附件页标题）
+    # 附件标题（# 附件：，heading level 0，如"附件：报名表"）应标为 title，
+    # 而非 attachment——否则 CHK-C027 会误把标题当附件说明查"左空二字"缩进。
     for idx, para in non_empty:
         if not para.role and _ATTACHMENT_RE.match(para.text.strip()):
-            para.role = 'attachment'
+            if para.is_heading and para.heading_level == 0:
+                para.role = 'title'
+            else:
+                para.role = 'attachment'
 
     # AI 声明段（末尾批注，如"（内容由GongWen-skill-AI生成，仅供参考）"）
     # 标记为 annotation 角色，避免 check 将其误判为正文并报格式违规
@@ -506,7 +547,10 @@ def parse_docx(file_path: Path | str) -> DocumentModel:
     from lxml import etree
     from engine.core.document.ooxml_parser import OOXMLParser  # I7: 集成 OOXMLParser
     para_count = 0
-    table_position_map = {}  # {table_element_id: last_para_index_before_it}
+    # {table_element: last_para_index_before_it}
+    # 注意：必须用 lxml 元素对象本身作 key，不能用 id(child)——body 迭代产生的
+    # 临时代理对象 id 会被复用（多表格时键冲突/错位，锚点全部落回 -1）。
+    table_position_map = {}
     ooxml = OOXMLParser()
     para_index_map = ooxml.get_paragraph_index_map(str(file_path))  # I7: 段落索引映射
     for child in doc.element.body:
@@ -514,14 +558,14 @@ def parse_docx(file_path: Path | str) -> DocumentModel:
         if tag == 'p':
             para_count += 1
         elif tag == 'tbl':
-            table_position_map[id(child)] = para_count - 1  # 紧跟在哪个段落之后
+            table_position_map[child] = para_count - 1  # 紧跟在哪个段落之后
 
     tables = []
     for idx, table in enumerate(doc.tables):
         parsed_table = _parse_table(table, idx)
-        # 计算 insert_after_index
+        # 计算 insert_after_index（用元素对象查表，与上面 body 遍历的 key 一致）
         tbl_elem = table._tbl
-        parsed_table.insert_after_index = table_position_map.get(id(tbl_elem), -1)
+        parsed_table.insert_after_index = table_position_map.get(tbl_elem, -1)
         tables.append(parsed_table)
 
     model = DocumentModel(
@@ -771,6 +815,9 @@ def _parse_paragraph(para, index: int) -> Paragraph:
                 # 公文大标题（方正小标宋简体）优先级更高
                 heading_level = 0
 
+    # 段前分页（--- 附件分页标记）：读取 w:pageBreakBefore
+    page_break = bool(getattr(para.paragraph_format, "page_break_before", False))
+
     return Paragraph(
         text=para.text,
         index=index,
@@ -779,6 +826,7 @@ def _parse_paragraph(para, index: int) -> Paragraph:
         heading_level=heading_level,
         format=para_format,
         runs=runs,
+        page_break=page_break,
     )
 
 
@@ -819,16 +867,27 @@ _PRINT_RE = re.compile(r'^印发机关|^印发日期')
 
 def _parse_table(table, index: int) -> Table:
     """Parse a table with cell-level paragraph preservation."""
+    from docx.oxml.ns import qn as _qn
     cells = []
     # P1-5 修复：合并单元格时 python-docx 对同一 XML 元素返回多个 cell 对象，
-    # 用 id(cell._element) 去重，避免重复添加破坏写回
-    seen_cells: set[int] = set()
+    # 用元素对象本身去重，避免重复添加破坏写回。
+    # V2.3 修复：此前用 id(cell._element) 去重——lxml 代理对象 id 会被 GC 复用，
+    # 非合并表格也会误丢大量单元格（实测 88 个误丢 51 个），改用元素对象做 key
+    # （与 parse_docx 的 table_position_map[child] 同法，元素对象哈希基于节点身份）。
+    seen_cells: set = set()
     for row_idx, row in enumerate(table.rows):
         for col_idx, cell in enumerate(row.cells):
-            elem_id = id(cell._element)
-            if elem_id in seen_cells:
+            cell_elem = cell._element
+            if cell_elem in seen_cells:
                 continue
-            seen_cells.add(elem_id)
+            seen_cells.add(cell_elem)
+            # V2.3：表头单元格底色（w:shd fill）——供表格样式检测/修复
+            cell_fill = None
+            _tcPr = cell._tc.tcPr
+            if _tcPr is not None:
+                _shd = _tcPr.find(_qn('w:shd'))
+                if _shd is not None:
+                    cell_fill = _shd.get(_qn('w:fill')) or None
             # Parse cell paragraphs
             cell_paras = []
             for p_idx, para in enumerate(cell.paragraphs):
@@ -839,13 +898,27 @@ def _parse_table(table, index: int) -> Table:
                 row=row_idx,
                 col=col_idx,
                 paragraphs=cell_paras,
+                fill=cell_fill,
             ))
+
+    # V2.3：单元格边距（w:tblCellMar，twips）——供表格样式检测/修复
+    cell_margin = None
+    _tblPr = table._tbl.tblPr
+    if _tblPr is not None:
+        _cm = _tblPr.find(_qn('w:tblCellMar'))
+        if _cm is not None:
+            cell_margin = {}
+            for _edge in ('top', 'left', 'bottom', 'right'):
+                _el = _cm.find(_qn('w:' + _edge))
+                if _el is not None:
+                    cell_margin[_edge] = int(_el.get(_qn('w:w'), 0) or 0)
 
     return Table(
         index=index,
         rows=len(table.rows),
         cols=len(table.columns) if table.rows else 0,
         cells=cells,
+        cell_margin=cell_margin,
     )
 
 # 已迁移至 parser_format.py

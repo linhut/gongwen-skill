@@ -58,12 +58,54 @@ def _smart_align_cell(cell_text: str, is_header: bool, col_idx: int, total_cols:
     return 'left'
 
 
+def _write_cell_shd(cell, fill: str | None) -> None:
+    """写入单元格底色（w:shd fill）。"""
+    if not fill:
+        return
+    tcPr = cell._tc.get_or_add_tcPr()
+    shd = tcPr.find(qn('w:shd'))
+    if shd is None:
+        shd = tcPr.makeelement(qn('w:shd'), {})
+        tcPr.append(shd)
+    shd.set(qn('w:val'), 'clear')
+    shd.set(qn('w:color'), 'auto')
+    shd.set(qn('w:fill'), str(fill))
+
+
+def _write_table_cell_mar(table, cell_margin: dict | None) -> None:
+    """写入表格单元格边距（w:tblCellMar，twips）。"""
+    if not cell_margin:
+        return
+    tblPr = table._tbl.tblPr
+    if tblPr is None:
+        tblPr = table._tbl._add_tblPr()
+    cell_mar = tblPr.find(qn('w:tblCellMar'))
+    if cell_mar is None:
+        cell_mar = tblPr.makeelement(qn('w:tblCellMar'), {})
+        tblPr.append(cell_mar)
+    for edge in ('top', 'left', 'bottom', 'right'):
+        val = cell_margin.get(edge)
+        if val is None:
+            continue
+        el = cell_mar.find(qn('w:' + edge))
+        if el is None:
+            el = cell_mar.makeelement(qn('w:' + edge), {})
+            cell_mar.append(el)
+        el.set(qn('w:w'), str(int(val)))
+        el.set(qn('w:type'), 'dxa')
+
+
 def _update_table_content(table, table_model: TableModel):
     """更新已有表格的单元格内容（带智能对齐）。"""
     total_cols = len(table.columns) if hasattr(table, 'columns') else 0
+    # V2.3：写出单元格边距（供表格样式修复）
+    _write_table_cell_mar(table, getattr(table_model, 'cell_margin', None))
     for cell_model in table_model.cells:
         try:
             cell = table.cell(cell_model.row, cell_model.col)
+            # V2.3：写出表头底色（供表格样式修复）
+            if cell_model.fill:
+                _write_cell_shd(cell, cell_model.fill)
             # 更新单元格中的段落内容
             if cell_model.paragraphs:
                 for p_idx, para_model in enumerate(cell_model.paragraphs):
@@ -144,11 +186,17 @@ def _add_table(doc: Document, table_model: TableModel):
             borders.append(border)
         tblPr.append(borders)
 
+        # V2.3：写出单元格边距（供表格样式修复）
+        _write_table_cell_mar(table, getattr(table_model, 'cell_margin', None))
+
         # 智能对齐：表头行居中加粗，数据行按内容类型对齐
         total_cols = max(1, table_model.cols)
         for cell_model in table_model.cells:
             try:
                 cell = table.cell(cell_model.row, cell_model.col)
+                # V2.3：写出表头底色
+                if getattr(cell_model, 'fill', None):
+                    _write_cell_shd(cell, cell_model.fill)
                 # 清除默认段落
                 for para in cell.paragraphs:
                     for run in list(para.runs):
@@ -316,6 +364,15 @@ def _update_pPr(p_element, para_model: Paragraph):
         pPr = OxmlElement('w:pPr')
         p_element.insert(0, pPr)
 
+    # 段前分页（--- 附件分页）：model 有 page_break 时写入/移除 w:pageBreakBefore
+    if getattr(para_model, 'page_break', False):
+        if pPr.find(qn('w:pageBreakBefore')) is None:
+            pPr.append(OxmlElement('w:pageBreakBefore'))
+    else:
+        pb = pPr.find(qn('w:pageBreakBefore'))
+        if pb is not None:
+            pPr.remove(pb)
+
     # 对齐方式：仅当 model 有值时替换
     if fmt.alignment:
         jc = pPr.find(qn('w:jc'))
@@ -403,6 +460,10 @@ def _apply_paragraph_format(para, para_model: Paragraph):
     """Apply formatting to a paragraph using python-docx API."""
     pf = para.paragraph_format
     fmt = para_model.format
+
+    # 段前分页（--- 附件分页标记）
+    if getattr(para_model, "page_break", False):
+        pf.page_break_before = True
 
     # Alignment
     if fmt.alignment:

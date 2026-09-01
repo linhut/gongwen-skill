@@ -547,6 +547,65 @@ check_rules:
     expected: "14pt"
     message: "页码应使用四号字(14pt)（GB/T 9704标准）"
 
+  # --- 表格样式检查 (CHK-C051~C058，V2.3) ---
+  # 对应 _common.yaml table 配置块（表头黑体12pt加粗居中+浅蓝灰底色、表体仿宋12pt、
+  # 单元格左右边距80twips）。此前为死配置，无 CHK 规则也从不被检查。
+  - id: CHK-C051
+    name: "表头字体检查"
+    severity: P2
+    field: table.header.font
+    expected: "黑体"
+    message: "表格表头应使用黑体（table 配置规范）"
+
+  - id: CHK-C052
+    name: "表头字号检查"
+    severity: P2
+    field: table.header.size
+    expected: "12pt"
+    message: "表格表头应使用小四号字(12pt)（table 配置规范）"
+
+  - id: CHK-C053
+    name: "表头加粗检查"
+    severity: P2
+    field: table.header.bold
+    expected: true
+    message: "表格表头应加粗（table 配置规范）"
+
+  - id: CHK-C054
+    name: "表头对齐检查"
+    severity: P2
+    field: table.header.align
+    expected: "center"
+    message: "表格表头应居中排列（table 配置规范）"
+
+  - id: CHK-C055
+    name: "表头底色检查"
+    severity: P2
+    field: table.header.fill
+    expected: "D9E2F3"
+    message: "表格表头应使用浅蓝灰底色 D9E2F3（table 配置规范）"
+
+  - id: CHK-C056
+    name: "表体字体检查"
+    severity: P2
+    field: table.body.font
+    expected: "仿宋_GB2312"
+    message: "表格表体应使用仿宋_GB2312（table 配置规范）"
+
+  - id: CHK-C057
+    name: "表体字号检查"
+    severity: P2
+    field: table.body.size
+    expected: "12pt"
+    message: "表格表体应使用小四号字(12pt)（table 配置规范）"
+
+  - id: CHK-C058
+    name: "单元格左边距检查"
+    severity: P2
+    field: table.cell_margin.left
+    expected: 80
+    message: "表格单元格左右边距应为80twips（table 配置规范）"
+
 # ============================================================
 #  通用修复规则（共23条）
 # ============================================================
@@ -600,6 +659,37 @@ fix_rules:
       bottom: 2.8cm
       left: 2.7cm
       right: 2.7cm
+
+  # V2.3 修复：纸张归一为 A4（CHK-C018 此前无 FIX 规则，Letter/其他纸张 optimize 修不动）
+  - id: FIX-C054
+    ref_check: CHK-C018
+    action: set_paper_size
+    target: page_setup
+    value:
+      width_mm: 210
+      height_mm: 297
+
+  # V2.3：表格样式修复（set_table_style，对齐 _common.yaml table 配置块）
+  - id: FIX-C055
+    ref_check: CHK-C051
+    action: set_table_style
+    target: all
+    value:
+      header:
+        font: "黑体"
+        size: 12pt
+        bold: true
+        align: center
+        fill: "D9E2F3"
+      body:
+        font: "仿宋_GB2312"
+        size: 12pt
+        align: left
+      cell_margin:
+        top: 0
+        left: 80
+        bottom: 0
+        right: 80
 
   # --- 大标题修复 ---
   - id: FIX-C016
@@ -746,9 +836,11 @@ fix_rules:
   # --- 落款和日期修复 ---
   - id: FIX-C013
     ref_check: CHK-C016
-    action: set_alignment
+    action: fix_paragraph_type
     target: signature
-    value: "center"
+    value:
+      alignment: center
+      first_line_indent: 0
 
   - id: FIX-C038
     ref_check: CHK-C039
@@ -761,6 +853,24 @@ fix_rules:
     action: set_font
     target: date
     value: "仿宋_GB2312"
+
+  # V2.3 修复：日期右对齐（CHK-C017）此前无 FIX 规则，遇到日期段
+  # alignment 非 right（或带异常大首行缩进，如 245pt）时 optimize 修不动。
+  - id: FIX-C052
+    ref_check: CHK-C017
+    action: fix_paragraph_type
+    target: date
+    value:
+      alignment: right
+      first_line_indent: 0
+
+  # V2.3 修复：附件说明左空二字（CHK-C027）此前无 FIX 规则且 target=attachment
+  # 选择器缺失，附件说明缩进异常时 optimize 修不动。
+  - id: FIX-C053
+    ref_check: CHK-C027
+    action: set_first_line_indent
+    target: attachment
+    value: "2em"
 
   - id: FIX-C024
     ref_check: CHK-C025

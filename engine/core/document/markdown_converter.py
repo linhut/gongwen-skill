@@ -39,6 +39,9 @@ _MD_TABLE_SEP_RE = re.compile(r'^\|[\s\-:|]+\|$')
 # markdown 水平分隔线：--- *** ___
 _MD_HR_RE = re.compile(r'^[-*_]{3,}$')
 
+# 纯连字符分隔线 --- 用作附件分页标记（SKILL.md 约定）
+_MD_PAGEBREAK_RE = re.compile(r'^-{3,}$')
+
 # HTML 标签
 _HTML_TAG_RE = re.compile(r'<[^>]+>')
 
@@ -184,6 +187,13 @@ def convert_markdown(model: DocumentModel) -> int:
 
         # 水平分隔线 --- *** ___
         if _MD_HR_RE.match(text):
+            # 纯 --- 作为附件分页标记（SKILL.md：落款后、附件标题前保留 --- 分页）
+            if _MD_PAGEBREAK_RE.match(text):
+                para.text = ''
+                para.runs = []
+                para.page_break = True
+                changes += 1
+                continue
             to_remove.append(i)
             continue
 

@@ -412,19 +412,16 @@ def cmd_md2docx(args):
         ),
     )
 
-    # 主送机关
+    # 主送机关（V2.3 修复：不再 append 在头部，延迟到标题确定后插入——
+    # 原先主送机关排在标题之前，且与正文内联主送机关重复）
     rcp = recipients
     if isinstance(rcp, str) and rcp:
         # "各单位,各部门" → ["各单位", "各部门"]
         parts = [p.strip() for p in rcp.replace("，", ",").split(",") if p.strip()]
         rcp = parts
+    rcp_text = ""
     if isinstance(rcp, list) and rcp:
         rcp_text = "、".join(rcp) + "："
-        model.paragraphs.append(Paragraph(
-            index=0, text=rcp_text, role="recipient",
-            runs=[Run(index=0, text=rcp_text, format=RunFormat(font_name="仿宋_GB2312", font_size_pt=16.0))],
-            format=ParagraphFormat(alignment="justify", first_line_indent_pt=0, line_spacing_pt=33),
-        ))
 
     # 正文行：每行一个段落
     para_offset = len(model.paragraphs)
@@ -455,6 +452,56 @@ def cmd_md2docx(args):
                     r.format.font_name = '方正小标宋简体'
                     r.format.font_size_pt = 22.0
                 break
+
+    # 主送机关：插入到标题之后（V2.3 修复——原先 append 在头部，主送机关会排在标题
+    # 之前，且与正文内联主送机关重复，导致 parser 误判标题/optimize 标题带首行缩进）
+    _SALUTATION_EXCLUDE_WORDS = (
+        '按照', '根据', '遵照', '依据', '为了', '为贯彻', '为落实', '为认真',
+        '为深入', '为切实', '为全面', '经', '据', '奉', '针对', '基于', '鉴于',
+        '综上', '为此', '对此', '结合', '围绕', '因此', '故', '由此可见', '从上述',
+    )
+    if rcp_text:
+        _title_idx = next((i for i, _p in enumerate(model.paragraphs)
+                           if getattr(_p, 'is_heading', False) and _p.heading_level == 0), None)
+        if _title_idx is not None:
+            # 标题后已有内联主送机关（role=recipient 或以冒号结尾的短文本且非导语）→ 去重
+            _existing_idx = None
+            for _j in range(_title_idx + 1, min(_title_idx + 5, len(model.paragraphs))):
+                _q = model.paragraphs[_j]
+                _qt = (_q.text or "").strip()
+                if not _qt:
+                    continue
+                _looks_sal = (_q.role == "recipient") or (
+                    _q.role in (None, "body")
+                    and len(_qt) <= 50
+                    and _qt.endswith(("：", ":"))
+                    and not _qt.startswith(_SALUTATION_EXCLUDE_WORDS)
+                )
+                if _looks_sal:
+                    _existing_idx = _j
+                break  # 标题后第一个非空段若不像称呼段，不再继续找
+            if _existing_idx is not None:
+                _ep = model.paragraphs[_existing_idx]
+                _ep.text = rcp_text
+                _ep.role = "recipient"
+                if _ep.runs:
+                    _ep.runs[0].text = rcp_text
+                    _ep.runs[0].format.font_name = "仿宋_GB2312"
+                    _ep.runs[0].format.font_size_pt = 16.0
+                if _ep.format is None:
+                    _ep.format = ParagraphFormat()
+                _ep.format.first_line_indent_pt = 0
+            else:
+                # 标题后没有称呼段 → 在标题后插入（平移后续表格锚点）
+                _pos = _title_idx + 1
+                for _t in model.tables:
+                    if getattr(_t, 'insert_after_index', -1) >= _pos:
+                        _t.insert_after_index += 1
+                model.paragraphs.insert(_pos, Paragraph(
+                    index=_pos, text=rcp_text, role="recipient",
+                    runs=[Run(index=0, text=rcp_text, format=RunFormat(font_name="仿宋_GB2312", font_size_pt=16.0))],
+                    format=ParagraphFormat(alignment="justify", first_line_indent_pt=0, line_spacing_pt=33),
+                ))
 
     # 领句加粗（路径 C 生成公文时，Markdown 中的"一是/二是/第一/第二"等领句自动加粗）
     _BOLD_LEADIN = {
@@ -488,42 +535,197 @@ def cmd_md2docx(args):
             format=RunFormat(font_name=_BOLD_LEADIN[matched], font_size_pt=16.0),
         ))
 
-    # 落款与日期（P10: 署名前增加2个空行；P4: 署名段居中 18pt）
-    if signer or doc_date:
-        for _ in range(2):
-            idx = len(model.paragraphs)
-            model.paragraphs.append(Paragraph(
-                index=idx, text="", role="body",
-                runs=[],
-                format=ParagraphFormat(line_spacing_pt=33),
-            ))
-    if signer:
-        idx = len(model.paragraphs)
-        model.paragraphs.append(Paragraph(
-            index=idx, text=signer, role="signature",
-            runs=[Run(index=0, text=signer, format=RunFormat(font_name="仿宋_GB2312", font_size_pt=18.0))],
-            format=ParagraphFormat(alignment="center", line_spacing_pt=33),
-        ))
-    if doc_date:
-        idx = len(model.paragraphs)
-        model.paragraphs.append(Paragraph(
-            index=idx, text=doc_date, role="date",
-            runs=[Run(index=0, text=doc_date, format=RunFormat(font_name="仿宋_GB2312", font_size_pt=16.0))],
-            format=ParagraphFormat(alignment="right", line_spacing_pt=33),
-        ))
+    # 落款与附件说明：插入到正文之后、附件分页/附件标题（# 附件：）之前，
+    # 而非 append 到文档末尾——否则"落款后附表"时表格会被插到落款之前（定位缺陷修复）
+    insert_pos = len(model.paragraphs)  # 默认：文档末尾
+    for _i, _p in enumerate(model.paragraphs):
+        _t = (_p.text or "").strip()
+        # 优先锚定附件分页段（---），其次附件标题（# 附件：），落款插在其之前
+        if (getattr(_p, "page_break", False)
+                or (getattr(_p, "is_heading", False) and _t.startswith("附件"))):
+            insert_pos = _i
+            break
 
-    # 附件说明
+    # 正文内联落款识别（V2.3 新增）：正文区末尾若直接写了署名行+日期行
+    # （"XX单位" + "YYYY年M月D日"），自动标记为 signature/date 角色并按 GB/T 9704
+    # 落款样式渲染（此前被当作普通正文 JUSTIFY+首行缩进，与 parser 识别结果不一致）。
+    # 扫描范围限定在 insert_pos（附件分页/标题）之前；--signer/--date 已提供时原位覆盖。
+    import re as _re
+    _DATE_ONLY_RE = _re.compile(r'^\s*\d{4}年\d{1,2}月\d{1,2}日\s*$')
+    _inline_sig_found = False
+    _inline_sig_idxs: list = []
+    _inline_date_idx = None
+    _body_end = insert_pos if insert_pos is not None else len(model.paragraphs)
+    _nonempty_idxs = [i for i in range(_body_end)
+                      if (model.paragraphs[i].text or "").strip()]
+    if _nonempty_idxs:
+        _li = _nonempty_idxs[-1]
+        if _DATE_ONLY_RE.match(model.paragraphs[_li].text or ""):
+            _inline_date_idx = _li
+            # 从日期往前收集署名行：非标题、非称呼、非附件说明、非日期、
+            # 不以句末标点结尾、≤60 字（支持多行署名，最多 3 行）
+            for _k in range(len(_nonempty_idxs) - 2, max(len(_nonempty_idxs) - 5, -1), -1):
+                _i2 = _nonempty_idxs[_k]
+                _p2 = model.paragraphs[_i2]
+                _t2 = (_p2.text or "").strip()
+                if (getattr(_p2, "is_heading", False)
+                        or _p2.role in ("recipient", "salutation")
+                        or _t2.startswith(("附件：", "附："))
+                        or _DATE_ONLY_RE.match(_t2)
+                        or len(_t2) > 60
+                        or _t2.endswith(("。", "！", "？", "；"))):
+                    break
+                _inline_sig_idxs.append(_i2)
+            _inline_sig_idxs.reverse()
+    if _inline_sig_idxs and _inline_date_idx is not None:
+        # 首行署名必须是非空文本（防止把正文倒数第二段误当署名）
+        _t0 = (model.paragraphs[_inline_sig_idxs[0]].text or "").strip()
+        if _t0:
+            _inline_sig_found = True
+    if _inline_sig_found:
+        # 署名段前补足 2 个空行（GB/T 9704 落款区 P10）
+        _first_sig = _inline_sig_idxs[0]
+        _blanks = 0
+        _j = _first_sig - 1
+        while _j >= 0 and not (model.paragraphs[_j].text or "").strip():
+            _blanks += 1
+            _j -= 1
+        _need = max(0, 2 - _blanks)
+        if _need:
+            for _t_ in model.tables:
+                if getattr(_t_, 'insert_after_index', -1) >= _first_sig:
+                    _t_.insert_after_index += _need
+            for _n in range(_need):
+                model.paragraphs.insert(_first_sig, Paragraph(
+                    index=0, text="", role="body", runs=[],
+                    format=ParagraphFormat(line_spacing_pt=33)))
+            _inline_sig_idxs = [i + _need for i in _inline_sig_idxs]
+            if _inline_date_idx is not None:
+                _inline_date_idx += _need
+            insert_pos += _need  # 附件标题整体后移
+        # --signer/--date 覆盖（去重：不重复插入）
+        if signer:
+            _sp = model.paragraphs[_inline_sig_idxs[0]]
+            _sp.text = signer
+            _sp.runs = [Run(index=0, text=signer, format=RunFormat(font_name="仿宋_GB2312", font_size_pt=18.0))]
+            if _sp.format is None:
+                _sp.format = ParagraphFormat()
+            _sp.format.alignment = "center"
+            _sp.format.first_line_indent_pt = 0
+            for _i2 in _inline_sig_idxs[1:]:
+                model.paragraphs[_i2].text = ""
+                model.paragraphs[_i2].runs = []
+        if doc_date and _inline_date_idx is not None:
+            _dp = model.paragraphs[_inline_date_idx]
+            _dp.text = doc_date
+            _dp.runs = [Run(index=0, text=doc_date, format=RunFormat(font_name="仿宋_GB2312", font_size_pt=16.0))]
+            if _dp.format is None:
+                _dp.format = ParagraphFormat()
+            _dp.format.alignment = "right"
+            _dp.format.first_line_indent_pt = 0
+        # 其余署名/日期段应用样式（渲染按 role 取样式；未覆盖文本的保留原文）
+        for _i2 in _inline_sig_idxs:
+            _p2 = model.paragraphs[_i2]
+            if not (_p2.text or "").strip():
+                continue
+            _p2.role = "signature"
+            if _p2.format is None:
+                _p2.format = ParagraphFormat()
+            _p2.format.alignment = "center"
+            _p2.format.first_line_indent_pt = 0
+            if not _p2.runs:
+                _p2.runs = [Run(index=0, text=_p2.text, format=RunFormat(font_name="仿宋_GB2312", font_size_pt=18.0))]
+            for _r in _p2.runs:
+                _r.format.font_name = "仿宋_GB2312"
+                _r.format.font_size_pt = 18.0
+        if _inline_date_idx is not None:
+            _dp2 = model.paragraphs[_inline_date_idx]
+            _dp2.role = "date"
+            if _dp2.format is None:
+                _dp2.format = ParagraphFormat()
+            _dp2.format.alignment = "right"
+            _dp2.format.first_line_indent_pt = 0
+            if not _dp2.runs:
+                _dp2.runs = [Run(index=0, text=_dp2.text, format=RunFormat(font_name="仿宋_GB2312", font_size_pt=16.0))]
+            for _r in _dp2.runs:
+                _r.format.font_name = "仿宋_GB2312"
+                _r.format.font_size_pt = 16.0
+
+    # 组装待插入段落：附件说明 → 落款（署名前 2 空行）
+    new_paras: list = []
+
+    # 附件说明（--attachments；编号已带"1."则不再重复加）
     atts = attachments
     if isinstance(atts, str) and atts:
         atts = [atts]
     if isinstance(atts, list) and atts:
-        idx = len(model.paragraphs)
-        att_text = "附件：" + "、".join(f"{i+1}.{a}" for i, a in enumerate(atts))
-        model.paragraphs.append(Paragraph(
-            index=idx, text=att_text, role="attachment",
-            runs=[Run(index=0, text=att_text, format=RunFormat(font_name="仿宋_GB2312", font_size_pt=16.0))],
-            format=ParagraphFormat(alignment="justify", line_spacing_pt=33),
-        ))
+        _parts = []
+        for _i, _a in enumerate(atts):
+            _s = str(_a).strip()
+            if _s and _s[0].isdigit() and _s[1:2] in (".", "、"):
+                _parts.append(_s)
+            else:
+                _parts.append(f"{_i + 1}.{_s}")
+        att_text = "附件：" + "、".join(_parts)
+        # 去重（FIX）：若正文已含附件说明（"附件：/附："开头、非标题段），
+        # 则原位替换其文本，避免与 --attachments 重复生成两条附件说明
+        _existing_att = None
+        for _ep in model.paragraphs:
+            _et = (_ep.text or "").strip()
+            if (not getattr(_ep, "is_heading", False)
+                    and (_et.startswith("附件：") or _et.startswith("附："))):
+                _existing_att = _ep
+                break
+        if _existing_att is not None:
+            _existing_att.text = att_text
+            _existing_att.role = "attachment"
+            _existing_att.runs = [Run(index=0, text=att_text,
+                                      format=RunFormat(font_name="仿宋_GB2312", font_size_pt=16.0))]
+            if _existing_att.format is None:
+                _existing_att.format = ParagraphFormat()
+            _existing_att.format.alignment = "justify"
+            _existing_att.format.line_spacing_pt = 33
+        else:
+            new_paras.append(Paragraph(
+                index=0, text=att_text, role="attachment",
+                runs=[Run(index=0, text=att_text, format=RunFormat(font_name="仿宋_GB2312", font_size_pt=16.0))],
+                format=ParagraphFormat(alignment="justify", line_spacing_pt=33),
+            ))
+
+    # 落款与日期（P10: 署名前增加2个空行；P4: 署名段居中 18pt）
+    # V2.3：正文内联落款已识别（_inline_sig_found）时不再重复插入——
+    # 空行与署名/日期样式已由识别块处理；--signer/--date 文本也已原位覆盖
+    if not _inline_sig_found:
+        if signer or doc_date:
+            for _ in range(2):
+                new_paras.append(Paragraph(
+                    index=0, text="", role="body",
+                    runs=[],
+                    format=ParagraphFormat(line_spacing_pt=33),
+                ))
+        if signer:
+            new_paras.append(Paragraph(
+                index=0, text=signer, role="signature",
+                runs=[Run(index=0, text=signer, format=RunFormat(font_name="仿宋_GB2312", font_size_pt=18.0))],
+                format=ParagraphFormat(alignment="center", line_spacing_pt=33),
+            ))
+        if doc_date:
+            new_paras.append(Paragraph(
+                index=0, text=doc_date, role="date",
+                runs=[Run(index=0, text=doc_date, format=RunFormat(font_name="仿宋_GB2312", font_size_pt=16.0))],
+                format=ParagraphFormat(alignment="right", line_spacing_pt=33),
+            ))
+
+    if new_paras:
+        # 插入点之后的表格锚点整体后移（保持"表格跟在锚点段落之后"不变）
+        _shift = len(new_paras)
+        for _t in model.tables:
+            if _t.insert_after_index >= insert_pos:
+                _t.insert_after_index += _shift
+        # 插入段落并统一重排索引
+        model.paragraphs[insert_pos:insert_pos] = new_paras
+        for _i, _p in enumerate(model.paragraphs):
+            _p.index = _i
 
     # 生成 docx（P1: --no-ai-declaration 跳过 AI 声明段）
     # AI 生成内容通病修复：去除句前空格 + 统一文字颜色为黑色（md2docx 不走规则引擎，手动调用）

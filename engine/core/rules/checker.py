@@ -102,6 +102,11 @@ def check_document(model: DocumentModel, rules: dict[str, Any]) -> list[CheckIss
             # 此前无分发分支，规则定义但从不执行
             issues.extend(_check_header_field(model, rule_id, severity, name, field_path,
                                               expected, message))
+        elif field_path.startswith("table."):
+            # V2.3：table.* 表格样式检查（表头字体/字号/加粗/对齐/底色、表体字体/字号、
+            # 单元格边距）——此前 _common.yaml 的 table 配置块为死配置，无任何 CHK 规则
+            issues.extend(_check_table_style(model, rule_id, severity, name, field_path,
+                                             expected, message))
         else:
             # P1-6 修复：删除 generic else 中的硬编码索引逻辑（model.paragraphs[0]/[1]
             # 不一定是标题/正文，检查结果会指向错误段落），未识别的 field 直接 skip + warning
@@ -348,7 +353,11 @@ def _check_body(model, rule_id, severity, name, field_path, expected, message) -
     issues = []
     # 顶格左对齐的段落（主送机关/称呼段、署名、日期、AI 声明批注）不属于正文，
     # 不应套用正文的缩进/对齐/字体检查
-    _EXCLUDE_ROLES = {'signature', 'date', 'annotation', 'notes', 'recipient', 'salutation'}
+    # V2.3 修复：附件说明（attachment）有自己的格式规范（CHK-C027 左空二字），
+    # 不属于正文——若纳入正文行距检查，会报出 FIX-C015（target=body，仅 role=='body'）
+    # 修不到的问题，形成"检查报错但优化不动"的不一致。
+    _EXCLUDE_ROLES = {'signature', 'date', 'annotation', 'notes', 'recipient',
+                      'salutation', 'attachment'}
     body_paras = [p for p in model.paragraphs
                   if not p.is_heading and p.text.strip() and p.role not in _EXCLUDE_ROLES]
     if not body_paras:
@@ -971,16 +980,24 @@ def _check_common_issues(model: DocumentModel) -> list[CheckIssue]:
             ))
 
         # Extra blank lines (empty paragraphs)
-        if not text.strip() and para.index > 0:
-            prev = model.paragraphs[para.index - 1] if para.index - 1 < len(model.paragraphs) else None
-            if prev and not prev.text.strip():
+        # V2.3 修复：连续 2 个空行是规范允许的（blank_line_rules.body_to_signature=2，
+        # 附件说明/正文与落款之间空 2 行）；仅当连续空行 >= 3 时，第 3 个起才算多余。
+        # 原实现把任意连续 2 空行都报"多余空行"，与规范冲突（误报）。
+        if not text.strip() and para.index > 1:
+            # 连续空行数：从本段向前数（含本段）
+            run_len = 0
+            j = para.index
+            while j >= 0 and j < len(model.paragraphs) and not model.paragraphs[j].text.strip():
+                run_len += 1
+                j -= 1
+            if run_len >= 3:
                 issues.append(CheckIssue(
                     rule_id="CHK-HEUR-002", check_type="format", severity="P2",
                     name="多余空行",
                     location=f"paragraph:{para.index}",
                     original_text="(空行)",
                     suggested_fix="移除多余空行",
-                    reason="连续出现多个空行",
+                    reason="连续出现多个空行（规范允许落款前 2 空行）",
                 ))
 
     # --- 页码检查（GB/T 9704: 公文应标注页码）---
@@ -999,5 +1016,117 @@ def _check_common_issues(model: DocumentModel) -> list[CheckIssue]:
             suggested_fix="在页脚中插入页码（半角阿拉伯数字）",
             reason="GB/T 9704要求公文标注页码，版心下边缘居中",
         ))
+
+    return issues
+
+
+# ---------------------------------------------------------------------------
+#  Table style checks (V2.3)
+# ---------------------------------------------------------------------------
+
+def _check_table_style(model, rule_id, severity, name, field_path, expected, message) -> list:
+    """检查表格具体样式（field: table.header.* / table.body.* / table.cell_margin.*）。
+
+    - header.font / header.size / header.bold / header.align：取自表头行（row==0）首段首 run
+    - header.fill：取自 TableCell.fill（parser 解析 w:shd）
+    - body.font / body.size：取自数据行（row>0）非空单元格首段首 run
+    - cell_margin.left/right/top/bottom：取自 Table.cell_margin（parser 解析 w:tblCellMar）
+    """
+    issues: list = []
+    if not model.tables:
+        return issues
+    sub = field_path.split(".", 1)[1] if "." in field_path else ""
+
+    def _style_run(cell):
+        """取单元格用于样式检查的 run：优先第一个非空文本 run，其次第一个有样式 run。"""
+        if not cell.paragraphs:
+            return None, None
+        for para in cell.paragraphs:
+            for run in para.runs:
+                if run.text.strip():
+                    return para, run
+        for para in cell.paragraphs:
+            if para.runs:
+                return para, para.runs[0]
+        return None, None
+
+    for ti, table in enumerate(model.tables):
+        loc = f"table:{ti}"
+
+        if sub in ("header.font", "header.size", "header.bold", "header.align"):
+            hdr_cells = [c for c in table.cells if c.row == 0]
+            if not hdr_cells:
+                continue
+            for c in hdr_cells:
+                para, run = _style_run(c)
+                if para is None or run is None:
+                    continue
+                if sub == "header.font":
+                    got = run.format.font_name
+                    if got != expected:
+                        issues.append(CheckIssue(rule_id, "format", severity, name, loc,
+                                                 str(got), str(expected), message))
+                        break
+                elif sub == "header.size":
+                    got = run.format.font_size_pt
+                    exp_pt = float(str(expected).replace("pt", ""))
+                    if got is None or abs(got - exp_pt) > 0.5:
+                        issues.append(CheckIssue(rule_id, "format", severity, name, loc,
+                                                 str(got), str(expected), message))
+                        break
+                elif sub == "header.bold":
+                    got = run.format.bold
+                    if bool(got) != bool(expected):
+                        issues.append(CheckIssue(rule_id, "format", severity, name, loc,
+                                                 str(got), str(expected), message))
+                        break
+                elif sub == "header.align":
+                    got = para.format.alignment if para.format else None
+                    if got != expected:
+                        issues.append(CheckIssue(rule_id, "format", severity, name, loc,
+                                                 str(got), str(expected), message))
+                        break
+
+        elif sub == "header.fill":
+            hdr_cells = [c for c in table.cells if c.row == 0]
+            if not hdr_cells:
+                continue
+            for c in hdr_cells:
+                got = getattr(c, "fill", None)
+                if (got or "").strip().lower() != str(expected).strip().lower():
+                    issues.append(CheckIssue(rule_id, "format", severity, name, loc,
+                                             str(got), str(expected), message))
+                    break
+
+        elif sub in ("body.font", "body.size"):
+            body_cells = [c for c in table.cells if c.row > 0 and (c.text or "").strip()]
+            if not body_cells:
+                continue
+            for c in body_cells:
+                _para, run = _style_run(c)
+                if run is None:
+                    continue
+                if sub == "body.font":
+                    got = run.format.font_name
+                    if got != expected:
+                        issues.append(CheckIssue(rule_id, "format", severity, name, loc,
+                                                 str(got), str(expected), message))
+                        break
+                else:  # body.size
+                    got = run.format.font_size_pt
+                    exp_pt = float(str(expected).replace("pt", ""))
+                    if got is None or abs(got - exp_pt) > 0.5:
+                        issues.append(CheckIssue(rule_id, "format", severity, name, loc,
+                                                 str(got), str(expected), message))
+                        break
+
+        elif sub.startswith("cell_margin"):
+            margin = getattr(table, "cell_margin", None) or {}
+            edge = sub.split(".")[-1]
+            got = margin.get(edge)
+            exp = int(expected)
+            if got is None or got != exp:
+                issues.append(CheckIssue(rule_id, "format", severity, name, loc,
+                                         str(got), str(expected), message))
 
     return issues
