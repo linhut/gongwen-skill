@@ -19,8 +19,8 @@
 | 段 | 含义 | 示例 |
 |----|------|------|
 | `MAJOR` | 重大重构 / 架构变更（不向后兼容） | `1.12.74` → `2.0.0` |
-| `MINOR` | 功能迭代 / 拆分 / 修复（向后兼容） | `2.4.0` → `2.5.0` |
-| `PATCH` | 紧急缺陷修复 | `2.5.0` → `2.5.1` |
+| `MINOR` | 功能迭代 / 拆分 / 修复（向后兼容） | `2.5.0` → `2.6.0` |
+| `PATCH` | 紧急缺陷修复 | `2.6.0` → `2.6.1` |
 
 **规则**：
 - 每次常规发布 `MINOR+1`（当前节奏：功能/修复/拆分均走 `2.x+1`）
@@ -205,7 +205,7 @@ for r in origin gc atomgit; do git push $r master --tags; done
 git ls-remote $r HEAD  # 核对三仓库 HEAD 一致
 ```
 
-**Release 统一编号**：三平台 Release 编号必须与 tag 一致（如 v2.5.0），不得出现 GitHub 停在旧版、其他平台新的错位：
+**Release 统一编号**：三平台 Release 编号必须与 tag 一致（如 v2.6.0），不得出现 GitHub 停在旧版、其他平台新的错位：
 - GitHub：CI 的 release job 自动创建（编号 = tag）
 - GitCode：经 API POST /api/v5/repos/linhut/gongwen-skill/releases 创建/核对（token 从 git remote get-url gc 提取）
 - AtomGit：核对 GET /api/v1/projects/linhut%2Fgongwen-skill/releases 已有对应 tag；缺失时经同 API 创建

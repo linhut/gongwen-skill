@@ -4,6 +4,20 @@
   Licensed under the MIT License. See the LICENSE file for details.
 -->
 
+## v2.6.0 (2026-09-02)
+
+### Added
+- **check-update 判定渠道精简为 PyPI + GitHub 双权威源**：对齐 EasyTier 单权威源 + 加速代理设计，GitCode/AtomGit 不再参与版本判定（零增量镜像），降为 GitHub 不可达时的国内拉取镜像提示；--json 输出新增 mirrors 字段
+- **GitHub 国内访问优化**：并发查询 + 分级超时（PyPI 10s / GitHub 8s 快速降级），GitHub 不可达时提示 GitHub520 hosts 方案与国内镜像地址
+- **发布流程修复（三平台 Release 统一编号）**：ci.yml 新增 release job，tag 推送自动创建 GitHub Release（编号 = tag）；RELEASE.md 发布流程新增 GitHub Release 自动创建 + GitCode/AtomGit Release 同步（编号与 tag 统一）
+- **非必要文件不同步原则写入发布流程**：RELEASE.md 明确临时/调试文件（tmp_*、_gw_* 等）不提交、不入库、不同步三仓库
+
+### Changed
+- check-update 头部与末尾文案同步为 PyPI + GitHub 判定；--json 的 channels 字段只含 PyPI/GitHub
+- README / RELEASE.md 文档同步更新（判定渠道、镜像提示、Release 统一编号说明）
+
+### Fixed
+- 历史遗留：v2.0.0~v2.5.0 在 GitHub/GitCode 从未创建 Release 对象（仅 tag），已补建且编号与 tag 统一
 ## v2.5.0 (2026-09-01)
 
 ### Added
