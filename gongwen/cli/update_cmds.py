@@ -57,11 +57,45 @@ def _latest_tag_from_remote(remote_url: str, timeout: int = 15) -> tuple[bool, s
         return False, str(e)[:120]
 
 
-def cmd_check_update(args):
-    """多渠道版本自检：查询 PyPI/GitHub/GitCode/AtomGit 四渠道最新版本，取最高版本比对本地。
+# 判定渠道（版本从哪来）：
+#   - PyPI   ：发布源（pip 用户首选，国内有镜像）
+#   - GitHub ：代码仓库权威源（git 用户，CI 触发源）
+# GitCode/AtomGit 与 GitHub 是同一份 tag 的镜像（发布时同步 push），
+# 参与版本判定零增量，不列为判定渠道；仅在 GitHub 不可达时作为
+# 国内拉取/加速代理提示（参考 EasyTier「单权威源 + 加速代理」设计）。
+_JUDGMENT_CHANNELS = ("PyPI", "GitHub")
 
-    渠道优先级：PyPI（pip 用户首选）> GitHub > GitCode > AtomGit
-    全部不可达时明确告知并返回退出码 2。
+# 渠道分级超时（秒）：GitHub 为海外渠道，国内常超时，用短超时快速降级；
+# PyPI 有国内镜像 CDN，可用较长超时。
+_CHANNEL_TIMEOUTS = {
+    "PyPI": 10,
+    "GitHub": 8,
+}
+
+# 国内代码镜像（加速代理层，非判定渠道）：GitHub 不可达时的 git 拉取替代。
+# 从 REPO_MIRRORS 派生（排除 GitHub），避免 URL 重复维护。
+_GIT_MIRRORS = {k: v for k, v in REPO_MIRRORS.items() if k != "GitHub"}
+
+
+def _fetch_channel(name: str, url: str | None, timeout: int) -> tuple[str, bool, str]:
+    """查询单个渠道，返回 (渠道名, 是否成功, 版本或错误信息)。
+
+    在线程池中执行；内部已捕获异常，不会向外抛出。
+    """
+    if name == "PyPI":
+        ok, val = _latest_version_from_pypi(timeout=timeout)
+    else:
+        ok, val = _latest_tag_from_remote(url, timeout=timeout)
+    return name, ok, val
+
+
+def cmd_check_update(args):
+    """版本自检：以 PyPI + GitHub 双判定渠道取最高版本比对本地。
+
+    判定渠道：PyPI（发布源，pip 用户首选）+ GitHub（代码仓库权威源，CI 触发源）。
+    GitCode/AtomGit 与 GitHub 同步同 tag，不参与版本判定（零增量），
+    仅在 GitHub 不可达时作为国内拉取镜像提示（JSON 输出于 mirrors 字段）。
+    全部判定渠道不可达时明确告知并返回退出码 2。
     支持 --json 输出结构化结果，便于 Agent 解析。
     """
     import json as _json
@@ -71,36 +105,40 @@ def cmd_check_update(args):
     local_ver = __version__
 
     if not use_json:
-        print(f"🔍 版本自检（多渠道，本地 v{local_ver}）")
+        print(f"🔍 版本自检（PyPI + GitHub 判定，本地 v{local_ver}）")
         print(f"{'─' * 50}")
 
     results: dict[str, str] = {}
     ok_count = 0
 
-    # 渠道1：PyPI（无需 git，pip 用户首选）
-    ok, val = _latest_version_from_pypi()
-    if ok:
-        results["PyPI"] = val
-        ok_count += 1
-        if not use_json:
-            print(f"  ✅ PyPI     最新: {val}")
-    else:
-        results["PyPI"] = ""
-        if not use_json:
-            print(f"  ⚠️  PyPI     不可达: {val}")
+    # 判定渠道并发查询：PyPI（发布源）+ GitHub（代码权威源）。
+    # 两渠道并发，总耗时 = 最坏单渠道超时（GitHub 短超时快速降级）。
+    from concurrent.futures import ThreadPoolExecutor
+    channels = [
+        (name, REPO_MIRRORS[name] if name in REPO_MIRRORS else None)
+        for name in _JUDGMENT_CHANNELS
+    ]
+    with ThreadPoolExecutor(max_workers=len(channels)) as pool:
+        futures = [pool.submit(_fetch_channel, name, url, _CHANNEL_TIMEOUTS[name])
+                   for name, url in channels]
+        for fut in futures:
+            name, ok, val = fut.result()
+            if ok:
+                results[name] = val
+                ok_count += 1
+                if not use_json:
+                    print(f"  ✅ {name:<8} 最新: {val}")
+            else:
+                results[name] = ""
+                if not use_json:
+                    print(f"  ⚠️  {name:<8} 不可达: {val}")
 
-    # 渠道2-4：Git 仓库
-    for name, url in REPO_MIRRORS.items():
-        ok, val = _latest_tag_from_remote(url)
-        if ok:
-            results[name] = val
-            ok_count += 1
-            if not use_json:
-                print(f"  ✅ {name:<8} 最新: {val}")
-        else:
-            results[name] = ""
-            if not use_json:
-                print(f"  ⚠️  {name:<8} 不可达: {val}")
+    # GitHub 海外渠道不可达时，给出国内加速指引（EasyTier 式加速代理 + GitHub520 hosts）
+    if not use_json and results.get("GitHub", "") == "" and ok_count > 0:
+        print("  💡 国内访问 GitHub 常超时，可用国内代码镜像：")
+        for _name, _url in _GIT_MIRRORS.items():
+            print(f"     - {_name}: {_url}")
+        print("     或参考 GitHub520 hosts 加速方案：https://github.com/521xueweihan/GitHub520")
 
     if not use_json:
         print(f"{'─' * 50}")
@@ -111,18 +149,22 @@ def cmd_check_update(args):
             print("   ⚠️ 版本自检因无法访问远程而跳过，本地版本可能不是最新")
             print("   💡 拉取地址：")
             print("      - PyPI:  pip install --upgrade gongwen-skill")
-            for name, url in REPO_MIRRORS.items():
+            for name in _JUDGMENT_CHANNELS:
+                if name == "PyPI":
+                    continue
+                print(f"      - {name}: {REPO_MIRRORS[name]}")
+            for name, url in _GIT_MIRRORS.items():
                 print(f"      - {name}: {url}")
         return 2
 
-    # 取多渠道中的最高版本
+    # 取判定渠道中的最高版本
     valid = [v for v in results.values() if v]
     latest = max(valid, key=_parse_version)
 
     # 判断安装方式（用于给出对应的更新命令）
     # pip 安装的用户应使用 pip install --upgrade，git clone 的用户应使用 git pull
     pypi_ok = bool(results.get("PyPI"))
-    git_ok = any(results.get(name) for name in REPO_MIRRORS)
+    git_ok = bool(results.get("GitHub"))
 
     has_update = _parse_version(latest) > _parse_version(local_ver)
 
@@ -136,6 +178,7 @@ def cmd_check_update(args):
                 name: {"reachable": bool(v), "version": v.lstrip("v") if v else None}
                 for name, v in results.items()
             },
+            "mirrors": {name: url for name, url in _GIT_MIRRORS.items()},
             "reachable_channels": ok_count,
             "elapsed_seconds": round(time.time() - t0, 1),
         }
@@ -153,7 +196,10 @@ def cmd_check_update(args):
         print(f"⏱️  自检耗时 {time.time() - t0:.1f}s")
         return 1
     elif _parse_version(latest) == _parse_version(local_ver):
-        print(f"✅ 已是最新版本：v{local_ver}（多渠道一致）")
+        if ok_count >= 2:
+            print(f"✅ 已是最新版本：v{local_ver}（PyPI 与 GitHub 一致）")
+        else:
+            print(f"✅ 已是最新版本：v{local_ver}（单渠道确认）")
     else:
         print(f"ℹ️  本地版本 v{local_ver} 高于远程 {latest}（本地领先或渠道不同步）")
 

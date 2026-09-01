@@ -35,12 +35,15 @@
 
 ```text
 1. 确认代码就绪（功能完成、本地检查通过）
+   - ⚠️ 清理非必要文件：临时/调试脚本（tmp_*、_gw_* 等）不提交、不入库、不同步三仓库
 2. 同步测试与运行（tests/ 为本地策略，见 §6）
 3. 更新版本号（4 处代码 + CHANGELOG，见 §3）
 4. 提交（chore: bump version to X.Y.Z）
 5. 打注解 tag（git tag -a vX.Y.Z）
 6. 推送 master + tag 到三 remote（触发 CI 自动发布）
-7. 验证发布（PyPI / pip / 干净 venv，见 §5）
+7. CI 自动创建 GitHub Release（编号 = tag，见 §5.1 release job）
+8. 同步 GitCode/AtomGit Release（编号与 tag 统一，见 §6.1）
+9. 验证发布（PyPI / pip / 干净 venv，见 §5）
 ```
 
 ### 2.1 详细步骤
@@ -138,6 +141,7 @@ grep -n "v2\.0\.\(0\|1\)" README.md prompts/usage-prompts.md dsh/index.js
 | lint | pycodestyle | 0 违规 |
 | publish | `python -m build` + gh-action-pypi-publish | 仅 tag `v*` 触发；凭据 `secrets.PYPI_API_TOKEN`（token 模式） |
 | publish-npm | `npm publish --access public`（DSH 插件包） | 仅 tag `v*` 触发；凭据 `secrets.NPM_TOKEN` |
+| release | 创建 GitHub Release（编号 = tag，`softprops/action-gh-release`） | 仅 tag `v*` 触发；`generate_release_notes: true` |
 
 > **📢 npm 发布现状（2026-08-20）**：npm 通道已启用，`NPM_TOKEN` secret 已配置。`publish-npm` job 自动将 DSH 插件包发布到 npmjs.com（包名 `gongwen-skill`）和 GitHub Packages（`@linhut/gongwen-skill`，仓库命名空间）。
 
@@ -188,9 +192,11 @@ python -m venv /tmp/verify && /tmp/verify/Scripts/pip install gongwen-skill==2.1
 
 | remote | 平台 | 用途 |
 |--------|------|------|
-| `origin` | GitHub | **唯一触发 CI 发布**的仓库 |
-| `gc` | GitCode | 代码镜像 + `check-update` 渠道 |
-| `atomgit` | AtomGit | 代码镜像 + `check-update` 渠道 |
+| `origin` | GitHub | **唯一触发 CI 发布**的仓库，`check-update` 代码判定渠道 |
+| `gc` | GitCode | 代码镜像 + GitHub 不可达时的国内拉取镜像（`check-update` mirrors 提示） |
+| `atomgit` | AtomGit | 代码镜像 + GitHub 不可达时的国内拉取镜像（`check-update` mirrors 提示） |
+
+**原则：非必要的代码和文件不进行仓库同步。** 每次发布前清理临时/调试残留（tmp_*、_gw_*、本地验证脚本等），仅提交并同步必要文件（核心代码、版本号 4 处、CHANGELOG/README/RELEASE、CI 配置等）。.gitignore 已覆盖 tmp_* 等模式；已跟踪的残留文件须 git rm 移除后再提交。
 
 每次发布后执行：
 
@@ -198,6 +204,13 @@ python -m venv /tmp/verify && /tmp/verify/Scripts/pip install gongwen-skill==2.1
 for r in origin gc atomgit; do git push $r master --tags; done
 git ls-remote $r HEAD  # 核对三仓库 HEAD 一致
 ```
+
+**Release 统一编号**：三平台 Release 编号必须与 tag 一致（如 v2.5.0），不得出现 GitHub 停在旧版、其他平台新的错位：
+- GitHub：CI 的 release job 自动创建（编号 = tag）
+- GitCode：经 API POST /api/v5/repos/linhut/gongwen-skill/releases 创建/核对（token 从 git remote get-url gc 提取）
+- AtomGit：核对 GET /api/v1/projects/linhut%2Fgongwen-skill/releases 已有对应 tag；缺失时经同 API 创建
+
+发布后核对三平台 Release 均含最新 vX.Y.Z，GitHub 标记为 Latest。
 
 ### 6.2 tests/ 本地策略（重要）
 

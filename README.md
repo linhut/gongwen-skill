@@ -45,7 +45,7 @@ Licensed under the MIT License. See the LICENSE file for details.
 | 🔍 审稿生成 | `review` | 按五角色审稿机制生成审稿意见 |
 | 🧩 完整审校 | `full-review` | 修订+批注联合命令（句子级差异修订 + 分类批注） |
 | 🎨 样式学习 | `style-learn` / `style-list` | 上传标准文档学习 Run/段落/页面三级样式（字体/字号/字间距/行距/缩进/页边距），生成命名模板持久化，后续用 `optimize -t 模板名` 套用 |
-| 🔄 版本自检 | `check-update` | 多渠道版本自检（GitHub/GitCode/AtomGit 三仓库比对取最新） |
+| 🔄 版本自检 | `check-update` | 版本自检（PyPI + GitHub 双判定渠道，GitCode/AtomGit 作国内镜像提示） |
 | 🩺 自我诊断 | `doctor` / `repair` | 全面诊断 22 项（Python/依赖/版本一致性/字体/DSH 文件/DSH 技能 frontmatter/代码风格），自动修复常见问题 |
 | 🕵️ 文档审计 | `audit` | 检查删除线/加粗/AI 声明等痕迹 |
 | 🤝 会话交接 | `handoff` | 跨会话上下文传递（`--list` / `--latest` / Agent 长任务收尾必写） |
@@ -150,7 +150,7 @@ python -m gongwen footer 红头公文.docx --cc "各单位" --printer "XX办公�
 # 注入页码（Word PAGE 域动态页码）
 python -m gongwen pagenum 红头公文.docx --alignment right
 
-# 多渠道版本自检
+# 版本自检（PyPI + GitHub 双判定渠道）
 python -m gongwen check-update
 
 # 安装公文标准字体（方正小标宋简体/仿宋_GB2312/楷体_GB2312）
@@ -317,7 +317,7 @@ python -m gongwen rule-list notice
 
 Agent 加载 skill 后**必须执行版本追新自检**，确保使用最新版本：
 
-1. **多渠道远程自检**（首选）：`python -m gongwen check-update`——自动查询 GitHub/GitCode/AtomGit 三仓库最新 tag，取最高版本比对本地；任一渠道可达即不遗漏，全部不可达时明确告知"版本自检跳过"
+1. **远程自检**（首选）：`python -m gongwen check-update`——以 **PyPI（发布源）+ GitHub（代码权威源）双判定渠道**并发查询，取最高版本比对本地；任一判定渠道可达即不遗漏，全部不可达时明确告知"版本自检跳过"。GitHub 为海外渠道（国内常超时）采用短超时快速降级；GitHub 不可达时自动提示国内代码镜像（GitCode/AtomGit，与 GitHub 同源 tag）与 GitHub520 hosts 加速方案
 2. **本地 git tag 对比**（补充）：对 skill 安装目录执行 `git -C "<skill安装目录>" describe --tags --abbrev=0`；若安装目录不在 git 管理下，应告知用户"无法执行版本对比，建议手动检查 GitHub 更新"
 3. **落后则警告**：发现本地版本落后于最新 tag 时，**必须在执行前警告用户**并提示更新（`cd <gongwen-skill目录> && git pull && git fetch --tags`），不得静默使用旧版本
 
@@ -574,7 +574,7 @@ pip install -r requirements.txt
 用户：帮我优化这份会议通知的第二章节措辞
 
 Agent：📋 合规自检报告
-Skill 版本: v2.5.0（多渠道自检已确认最新）
+Skill 版本: v2.5.0（版本自检已确认最新）
 路径判定: B（内容优化）
 依据: 用户指定了已有文档，且要求"优化措辞"
 命令调用: 1. python -m gongwen optimize-content 会议通知.docx --changes changes.json --apply --paragraphs "5-8"

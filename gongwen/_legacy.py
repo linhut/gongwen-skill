@@ -857,7 +857,7 @@ _STYLE_DEVIATION_HINTS = {
 # _VALID_STYLES 已迁移到 gongwen/cli/style_helpers.py
 
 
-# 官方镜像仓库（多渠道版本自检用）
+# 官方镜像仓库（GitHub 为 check-update 判定渠道，GitCode/AtomGit 作国内镜像）
 # PyPI JSON API（无需 git，pip 用户首选渠道）
 # ---------------------------------------------------------------------------
 #  字体管理（install/list/check）
@@ -1076,8 +1076,8 @@ def main():
     p = sub.add_parser("style-list", help="列出所有通过 style-learn 学习的自定义样式模板")
     p.set_defaults(func=cmd_style_list)
 
-    # ---- 多渠道版本自检（PyPI/GitHub/GitCode/AtomGit 比对取最新） ----
-    p = sub.add_parser("check-update", help="多渠道版本自检：查询 PyPI/GitHub/GitCode/AtomGit 四渠道最新版本，取最高版本比对本地")
+    # ---- 版本自检（PyPI + GitHub 双判定渠道，GitCode/AtomGit 作国内镜像） ----
+    p = sub.add_parser("check-update", help="版本自检：PyPI + GitHub 双判定渠道比对本地版本（GitCode/AtomGit 作国内镜像提示）")
     p.add_argument("--json", action="store_true",
                    help="输出 JSON 格式结果（便于 Agent 解析）")
     p.set_defaults(func=cmd_check_update)
