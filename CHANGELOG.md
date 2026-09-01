@@ -4,6 +4,17 @@
   Licensed under the MIT License. See the LICENSE file for details.
 -->
 
+## v2.5.0 (2026-09-01)
+
+### Added
+- **样式学习引擎修复**：style-learn 多 section 文档只学主文档（不再把横向附件页当正文页）；页边距 mm→cm 换算修复（26.9mm 不再写成 26.9cm）；角色判定增强（识别红头版头/发文字号/整段日期/落款机关名）；解析 styles.xml 样式链（basedOn + docDefaults），run 未指定 eastAsia 时继承段落样式字体，修复落款误学 Times New Roman
+- **模板规则断链打通**：manager 新增 _sync_style_expected，将配置段权威样式值（doc_title/body/signature/date/table/page_setup 等）同步到 CHK expected 与 FIX value（标量覆盖 + 复合 dict 保守合并），使 style-learn 模板 / user_rules / config-overrides 覆盖配置段后 check/optimize 期望值自动跟随
+
+### Fixed
+- **style-learn 学错横向附件页**：多 section 文档（正文纵向 + 附件横向）此前学到 297×210mm 横向纸张与附件页边距
+- **样式继承未解析**：run 无显式 eastAsia 时直接回退 ascii=Times New Roman，现按段落样式链（basedOn → docDefaults）解析正确中文字体
+- **模板样式不生效**：style-learn 生成的模板仅覆盖配置段，但 CHK expected/FIX value 硬编码在规则 YAML，导致 -t 模板时检查/修复仍用默认值——现已打通
+
 ## v2.4.0 (2026-09-01)
 
 ### Added
