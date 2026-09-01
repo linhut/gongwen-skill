@@ -4,6 +4,18 @@
   Licensed under the MIT License. See the LICENSE file for details.
 -->
 
+## v2.4.0 (2026-09-01)
+
+### Added
+- **表格样式检测与修复全链路**：新增 8 条表格样式检查规则（CHK-C051~C058：表头字体/字号/加粗/对齐/底色、表体字体/字号、单元格左右边距）与 set_table_style 修复动作（FIX-C055），对齐 rules/official/_common.yaml table 配置块——此前该配置为死配置，无 CHK 规则也从不被检查
+- **模型新增表格样式字段**：TableCell.fill（表头底色 w:shd）、Table.cell_margin（单元格边距 w:tblCellMar），parser 解析、generator 原位更新/新建两路径写出
+- **md2docx 表格样式应用**：渲染时读取 table 配置块，表头写入 D9E2F3 底色 + 单元格边距 80twips + 数字列右对齐（与 optimize 智能对齐一致）
+
+### Fixed
+- **表格单元格解析丢失修复**：_parse_table 原用 id(cell._element) 去重，lxml 代理对象 id 被 GC 复用导致非合并表格也误丢约 58% 单元格（实测 88 个误丢 51 个），改用 lxml 元素对象做 key——修复后表格内容/样式修复可完整覆盖全部单元格
+- **署名与开头样式修复**：主送机关延迟插入（标题后、防误判标题）、recipients 顺序/重复去重、导语段误判排除、正文内联落款识别（避免与 --signer/--date 重复落款、补齐署名前 2 空行）
+- **生成文档作者元数据统一为 Jose AI**
+
 ## v2.3.0 (2026-08-31)
 
 ### Added
