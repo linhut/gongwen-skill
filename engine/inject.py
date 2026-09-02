@@ -379,7 +379,7 @@ def inject_footer(output_path: str, footer_config: dict) -> None:
 #  页码注入：Word PAGE 域动态页码
 # ---------------------------------------------------------------------------
 
-def _add_page_run(para_elem, text: str, font_name: str, size_pt: int) -> None:
+def _add_page_run(para_elem, text: str, font_name: str, size_pt: float) -> None:
     """添加一个普通文本 run 到段落元素。"""
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
@@ -402,7 +402,7 @@ def _add_page_run(para_elem, text: str, font_name: str, size_pt: int) -> None:
     para_elem.append(r)
 
 
-def _build_page_number_xml(fmt: str, font_name: str, size_pt: int) -> list:
+def _build_page_number_xml(fmt: str, font_name: str, size_pt: float) -> list:
     """解析页码格式字符串，返回 (类型, 内容, 字体, 字号) 元素列表。"""
     import re
     elements = []
@@ -621,6 +621,10 @@ def inject_page_number(output_path: str, page_number_config: dict) -> None:
         from docx.oxml import OxmlElement
         from docx.oxml.ns import qn
         from docx.shared import Pt
+        from engine.core.document.font_utils import (
+            PAGE_NUMBER_FONT,
+            PAGE_NUMBER_SIZE_PT,
+        )
 
         enabled = page_number_config.get('enabled')
         if enabled is None:
@@ -629,8 +633,8 @@ def inject_page_number(output_path: str, page_number_config: dict) -> None:
             return
 
         fmt = page_number_config.get('format', '- {PAGE} -')
-        font_name = page_number_config.get('font', '宋体')
-        size_pt = page_number_config.get('size', 14)
+        font_name = page_number_config.get('font', PAGE_NUMBER_FONT)
+        size_pt = page_number_config.get('size', PAGE_NUMBER_SIZE_PT)
         align = page_number_config.get('alignment') or page_number_config.get('position', 'center')
         if align == 'right-left':
             align = 'right'
@@ -671,9 +675,9 @@ def inject_page_number(output_path: str, page_number_config: dict) -> None:
             if is_odd_even:
                 ind = OxmlElement('w:ind')
                 if align == 'right':
-                    ind.set(qn('w:right'), str(int(14 * 20)))
+                    ind.set(qn('w:right'), str(int(PAGE_NUMBER_SIZE_PT * 20)))
                 else:
-                    ind.set(qn('w:left'), str(int(14 * 20)))
+                    ind.set(qn('w:left'), str(int(PAGE_NUMBER_SIZE_PT * 20)))
                 pPr.append(ind)
             try:
                 bm = section.bottom_margin

@@ -45,6 +45,10 @@ from gongwen.cli.helpers import (
     parse_config_overrides as _parse_config_overrides,
     load_rules_with_overrides as _load_rules_with_overrides,
 )
+from engine.core.document.font_utils import (
+    PAGE_NUMBER_FONT,
+    PAGE_NUMBER_SIZE_PT,
+)
 __version__ = "2.6.1"
 # 版本号应与 gongwen/__init__.py 保持一致，每次发版同步更新
 """
@@ -945,8 +949,8 @@ def main():
     p = sub.add_parser("pagenum", help="注入页码：Word PAGE 域动态页码")
     p.add_argument("input", help="输入 .docx 路径")
     p.add_argument("-o", "--output", help="输出 .docx 路径（默认原地修改）")
-    p.add_argument("--font", default="宋体", help="页码字体（默认 宋体）")
-    p.add_argument("--size", type=int, default=14, help="页码字号（默认 14）")
+    p.add_argument("--font", default=PAGE_NUMBER_FONT, help="页码字体（默认 宋体）")
+    p.add_argument("--size", type=int, default=PAGE_NUMBER_SIZE_PT, help="页码字号（默认 14）")
     p.add_argument("--alignment", default="right",
                    choices=["center", "left", "right"],
                    help="对齐（默认 right 单右双左奇偶排版，适配双面打印；center 居中；left 左对齐）")

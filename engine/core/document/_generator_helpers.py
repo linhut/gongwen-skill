@@ -529,8 +529,9 @@ def _apply_run_format(run, run_model: Run):
         run.font.italic = fmt.italic
     if fmt.underline is not None:
         run.font.underline = fmt.underline
-    if fmt.strikethrough is True:
-        run.font.strike = True
+    if fmt.strikethrough is not None:
+        # True 设置删除线 / False 显式清除已有删除线（避免 strikethrough=False 时旧删除线残留）
+        run.font.strike = fmt.strikethrough
 
     # === 颜色 ===
     if fmt.color:

@@ -30,8 +30,8 @@ _MD_UL_RE = re.compile(r'^[-*+]\s+')
 # markdown 有序列表前缀：1. 2. 3. 或 1、2、3、
 _MD_OL_RE = re.compile(r'^\d+[.、]\s*')
 
-# markdown 表格行
-_MD_TABLE_RE = re.compile(r'^\|.+\|.+\|$')
+# markdown 表格行（支持单列：| a |；贪婪匹配到行尾，多列 | a | b | 亦能识别）
+_MD_TABLE_RE = re.compile(r'^\|.+\|$')
 
 # markdown 表格分隔行：|----|----|
 _MD_TABLE_SEP_RE = re.compile(r'^\|[\s\-:|]+\|$')
@@ -263,6 +263,8 @@ def convert_markdown(model: DocumentModel) -> int:
         ol_match = _MD_OL_RE.match(text)
         if ol_match and not para.is_heading:
             is_list = True
+            text = _MD_OL_RE.sub('', text)
+            list_indent_pt = 32  # 有序列表同样 2 字符缩进（与无序列表一致）
 
         # --- 应用格式修改到 run ---
 

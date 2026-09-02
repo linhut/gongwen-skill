@@ -893,7 +893,7 @@ def _check_header_field(model, rule_id: str, severity: str, name: str,
                     suggested_fix="仅保留一个主送机关",
                     reason="请示一般只写一个主送机关（发现多个主送机关段）",
                 ))
-            elif re.search(r'[、，,s]{2,}', first.strip().rstrip('：:')) and len(first.strip().rstrip('：:')) > 5:
+            elif re.search(r'[、，,]{2,}', first.strip().rstrip('：:')) and len(first.strip().rstrip('：:')) > 5:
                 issues.append(CheckIssue(
                     rule_id=rule_id, check_type="content", severity=severity,
                     name=name, location=f"paragraph:{recips[0].index}",

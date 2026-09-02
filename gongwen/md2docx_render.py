@@ -397,8 +397,9 @@ def _add_paragraph(doc: Document, para, rules: dict):
                 run.font.bold = True
             if fmt.italic is not None:
                 run.font.italic = fmt.italic
-            if fmt.strikethrough is True:
-                run.font.strike = True
+            if fmt.strikethrough is not None:
+                # True 设置删除线 / False 显式清除已有删除线（避免 strikethrough=False 时旧删除线残留）
+                run.font.strike = fmt.strikethrough
             if fmt.color:
                 try:
                     rgb = str(fmt.color).lstrip("#")
