@@ -38,7 +38,7 @@ TYPE_KEYWORDS = {
     "讲话稿": "speech", "主持词": "speech", "新闻稿": "news", "简报": "news",
 }
 
-# 官方镜像仓库（GitHub 为 check-update 判定渠道，GitCode/AtomGit 作国内镜像）
+# 官方镜像仓库（GitHub 为 check-update 备用判定渠道，GitCode/AtomGit 作国内镜像）
 REPO_MIRRORS = {
     "GitHub": "https://github.com/linhut/gongwen-skill.git",
     "GitCode": "https://gitcode.com/linhut/gongwen-skill.git",

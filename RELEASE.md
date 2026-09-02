@@ -192,7 +192,7 @@ python -m venv /tmp/verify && /tmp/verify/Scripts/pip install gongwen-skill==2.1
 
 | remote | 平台 | 用途 |
 |--------|------|------|
-| `origin` | GitHub | **唯一触发 CI 发布**的仓库，`check-update` 代码判定渠道 |
+| `origin` | GitHub | **唯一触发 CI 发布**的仓库，`check-update` 备用判定渠道（PyPI 为权威） |
 | `gc` | GitCode | 代码镜像 + GitHub 不可达时的国内拉取镜像（`check-update` mirrors 提示） |
 | `atomgit` | AtomGit | 代码镜像 + GitHub 不可达时的国内拉取镜像（`check-update` mirrors 提示） |
 

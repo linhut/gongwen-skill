@@ -4,6 +4,13 @@
   Licensed under the MIT License. See the LICENSE file for details.
 -->
 
+## v2.6.1 (2026-09-02)
+
+### Changed
+- **check-update 改为 PyPI 权威判定 + 安装形态自动检测**：以 PyPI（pip 包发布源）为唯一权威判定渠道（pip install -U 即从 PyPI 拉取），GitHub 降为 PyPI 不可达时的备用渠道（git 用户/CI 触发源）；GitCode/AtomGit 保持国内拉取镜像提示（不参与版本判定）
+- **更新命令按安装形态精准给出**：运行时自动检测安装形态（pip 包 / git·skill 目录），pip 安装提示 `pip install --upgrade gongwen-skill`，git/skill 目录提示 `cd <gongwen-skill目录> && git pull && git fetch --tags`；--json 输出新增 authoritative_channel、install_type 字段
+- **文档同步**：SKILL.md/README/RELEASE/_legacy 的渠道描述统一为"PyPI 权威 + GitHub 备用"，SKILL.md 版本自检节新增手动回退命令
+
 ## v2.6.0 (2026-09-02)
 
 ### Added
