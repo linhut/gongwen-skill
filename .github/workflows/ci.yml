@@ -112,6 +112,8 @@ jobs:
         run: |
           # GITHUB_TOKEN 发布到仓库命名空间（linhut/gongwen-skill/pkgs/npm/gongwen-skill）
           # 包名保留为 gongwen-skill（与仓库名一致），无需 scoped 格式
+          # setup-node 仅配置了 registry.npmjs.org 的认证，需为 npm.pkg.github.com 单独写入 token
+          echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
           npm publish --registry=https://npm.pkg.github.com --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
