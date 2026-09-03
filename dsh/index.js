@@ -88,6 +88,9 @@ const POSITIONAL_ARGS = {
   audit: ["input"],
   review: ["doc_type"],
   "rule-export": ["type"],
+  draft: ["input"],
+  "rule-import": ["key"],
+  font: ["action"],
 };
 
 // 支持 --config-overrides 的命令列表

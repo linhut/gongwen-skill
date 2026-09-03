@@ -451,6 +451,14 @@ dsh plugin --profile web add -w "link:/path/to/gongwen-skill"
 #  - dsh.profile.bundles 包含 "gongwen-skill"
 ```
 
+### 架构边界（O12 · DSH 插件）
+
+> 规则：**CLI（`python -m gongwen`）是唯一业务逻辑入口**，DSH 插件（`dsh/`）只做 UI 代理与结果展示。
+
+- 插件通过 `spawn("python", ["-m", "gongwen", ...])` 子进程转发命令，**不直接 import 引擎、不操作 docx**，避免双入口行为分裂
+- `dsh/index.js` 的 `POSITIONAL_ARGS` 声明各命令的位置参数（如 `draft: ["input"]`）；新增/调整 CLI 命令位置参数时**必须同步更新该表**，否则插件转发会构造出 `--input` 而 CLI 只接受位置参数
+- 插件保持薄层：业务逻辑全在 CLI / engine，改动引擎不影响插件；改动 CLI 参数形态时需同步检查 `dsh/index.js` 转发（doctor 自检覆盖 DSH 文件存在性）
+
 ### 🚀 启动 DSH Web 服务
 
 ```bash
@@ -667,4 +675,3 @@ MIT License · **(c) 2026 Jose AI** · https://www.linhut.cn
 - GitHub：https://github.com/linhut/gongwen-skill
 - GitCode：https://gitcode.com/linhut/gongwen-skill
 - AtomGit：https://atomgit.com/linhut/gongwen-skill
-
