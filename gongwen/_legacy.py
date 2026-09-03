@@ -1106,7 +1106,9 @@ def main():
 
     # ---- 向导式交互 ----
     p = sub.add_parser("wizard", help="向导式交互：A/B/C/D 路径引导 + 一键执行（--answers 非交互 / --dry-run 只打印）")
-    p.add_argument("--answers", default="", help="答案 JSON 文件路径（Agent 非交互模式）：{\"path\":\"A\",\"input\":\"a.docx\",\"apply\":true}")
+    p.add_argument("--answers", default="",
+                   help="答案 JSON 文件路径（Agent 非交互模式）："
+                        '{"path":"A","input":"a.docx","apply":true}')
     p.add_argument("--dry-run", action="store_true", help="只打印将执行的命令，不真正执行")
     p.set_defaults(func=cmd_wizard)
 
