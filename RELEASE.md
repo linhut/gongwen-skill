@@ -208,7 +208,7 @@ git ls-remote $r HEAD  # 核对三仓库 HEAD 一致
 **Release 统一编号**：三平台 Release 编号必须与 tag 一致（如 v2.6.0），不得出现 GitHub 停在旧版、其他平台新的错位：
 - GitHub：CI 的 release job 自动创建（编号 = tag）
 - GitCode：经 API POST /api/v5/repos/linhut/gongwen-skill/releases 创建/核对（token 从 git remote get-url gc 提取）
-- AtomGit：核对 GET /api/v1/projects/linhut%2Fgongwen-skill/releases 已有对应 tag；缺失时经同 API 创建
+- AtomGit：与 GitCode 同源（Gitee 风格 API），核对/创建用 `GET/POST https://atomgit.com/api/v5/repos/linhut/gongwen-skill/releases`，认证头 `Authorization: Bearer <token>`（token 从 git remote get-url atomgit 提取 oauth2 段）；POST 参数 form 编码（tag_name/name/body/target_commitish）
 
 发布后核对三平台 Release 均含最新 vX.Y.Z，GitHub 标记为 Latest。
 
@@ -229,6 +229,7 @@ git ls-remote $r HEAD  # 核对三仓库 HEAD 一致
 
 - 项目同时作为 **DSH Skill** 分发（`.dsh/skills/gongwen-skill/` 目录技能 + `.dsh/skills/gongwen-skill.md` 单文件技能 + `dsh/index.js` 桥接），DSH 分发跟随 git 仓库（克隆即用）
 - **npm 发布**：ci.yml 已配置 `publish-npm` job（包名 `gongwen-skill`，`dsh/index.js` + `cordis.patch.yml` 打包），推送 `v*` tag 时自动发布到 npmjs.com 和 GitHub Packages 两个通道
+  - ⚠️ GitHub Packages 通道要求（2026-09-03 v2.7.0 踩坑）：job 必须声明 `permissions: packages: write`（GITHUB_TOKEN 默认无此权限），且发布步骤需单独为 `npm.pkg.github.com` 写 `_authToken` 到 .npmrc（setup-node 只配置了 npmjs registry 的认证）——两者缺失分别报 403 与 ENEEDAUTH
 - 版本号同步：SKILL.md frontmatter、`package.json`、PyPI 三处保持一致（§3 核对）
 
 ### 6.5 版本号自动检查（pre-commit hook）
@@ -280,7 +281,7 @@ git ls-remote $r HEAD  # 核对三仓库 HEAD 一致
 | 问题 | 处理 |
 |------|------|
 | CI publish 失败（403 token） | 检查 `secrets.PYPI_API_TOKEN` 是否有效（PyPI 可重新生成同名 secret）；确认 tag 分支为 `v*` |
-| CI publish-npm 失败（403/404） | **NPM_TOKEN 未配置**（当前状态）：先在 npmjs.com 生成 Automation token 并添加为 GitHub secret `NPM_TOKEN`；404 则确认包名 `gongwen-skill` 已在 npm 注册 |
+| CI publish-npm 失败 | 先看失败步骤：npmjs 通道失败 → 检查 `secrets.NPM_TOKEN`（npmjs Automation token）；GitHub Packages 通道失败 → 检查 job 是否声明 `permissions: packages: write` 且发布步骤已写 `_authToken` 到 .npmrc（见 §6.4）；404 则确认包名 `gongwen-skill` 已在对应 registry 注册 |
 | CI test job 被跳过 | 属预期（tests/ 本地策略）；确保发布前本地测试已过 |
 | 版本漂移（4 处不一致） | 用 §3 核对命令定位，逐文件修正后重新提交 |
 | 发布后发现严重缺陷 | **PyPI 不可删除已发布版本** → 在 PyPI 标记该版本 deprecated（`pip index` 会提示），并尽快发布 `X+1` 修复版 |
