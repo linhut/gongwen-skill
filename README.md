@@ -50,6 +50,7 @@ Licensed under the MIT License. See the LICENSE file for details.
 | 🕵️ 文档审计 | `audit` | 检查删除线/加粗/AI 声明等痕迹 |
 | 🤝 会话交接 | `handoff` | 跨会话上下文传递（`--list` / `--latest` / Agent 长任务收尾必写） |
 | ⚙️ 规则管理 | `rule-export/import/list` | YAML 规则三层定制（官方/单位/用户） |
+| 🧭 向导式交互 | `wizard` | 交互式路径引导（A/B/C/D）+ 一键执行；Agent 用 `--answers` 非交互 / `--dry-run` 只打印命令 |
 
 ## 使用示例
 
@@ -258,6 +259,24 @@ python -m gongwen optimize-content 新闻稿.docx --changes changes.json \
 --show-rules                 输出文档类型内容层规则摘要
 --show-confirmed             已确认实体也生成批注
 ```
+
+### 🧭 向导式交互（wizard）
+
+交互式引导选择处理路径并一键执行，适合不熟悉命令行的用户；Agent 可走非交互模式：
+
+```bash
+python -m gongwen wizard                        # 终端交互：菜单选 A/B/C/D → 逐项填参 → 预览确认 → 执行
+python -m gongwen wizard --answers 答案.json     # Agent 非交互：跳过提问直接执行
+python -m gongwen wizard --answers 答案.json --dry-run  # 只打印将执行的命令
+```
+
+`--answers` 扁平 JSON（顶层带 `path`）：
+
+```json
+{"path": "A", "input": "原文.docx", "doc_type": "notice", "output": "成品.docx", "apply": true}
+```
+
+路径：A 格式优化（`optimize`）｜B 内容优化（`optimize-content`）｜C 生成模板（`template`）｜D 一键格式修复（`fix-common`）。A/B/D 默认先预览再 y/n 确认；不写 `apply` 时非交互模式仅预览不执行（安全默认）。
 
 ## 📐 GB/T 9704 标准格式
 

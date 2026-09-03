@@ -4,6 +4,15 @@
   Licensed under the MIT License. See the LICENSE file for details.
 -->
 
+## v2.7.0 (2026-09-03)
+
+### Added
+- **新增 `wizard` 向导式交互命令**：`python -m gongwen wizard` 以 A/B/C/D 路径菜单引导用户（A 格式优化 `optimize` / B 内容优化 `optimize-content` / C 生成模板 `template` / D 一键格式修复 `fix-common`），交互收集参数后一键执行
+- **双模式交互**：终端 input() 交互（公文类型支持序号 / id / 中文名智能匹配）+ `--answers` 扁平 JSON 非交互（Agent 场景，顶层带 `path`，如 `{"path":"A","input":"a.docx","apply":true}`）
+- **安全默认**：A/B/D 修改类路径先预览再 y/n 确认；非交互模式不写 `apply` 时仅预览不执行；`--dry-run` 只打印将执行的命令（A/B 同时打印预览+执行两条）
+- **执行机制**：`subprocess` 调用 `sys.executable -m gongwen <子命令>`，输出流式透传，Agent 可直接解析子命令原始输出
+- **文档同步**：SKILL.md「用户交互指引」升级为向导式三步流程并新增「向导式交互」小节（命令速查 24→25 个）；README 能力表与命令行速查补充 wizard 用法
+
 ## v2.6.1 (2026-09-02)
 
 ### Changed

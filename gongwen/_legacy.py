@@ -39,6 +39,9 @@ from gongwen.cli.doctor_cmds import (
     cmd_doctor,
     cmd_repair,
 )
+from gongwen.cli.wizard_cmds import (
+    cmd_wizard,
+)
 from gongwen.cli.helpers import (
     detect_doc_type as _detect_doc_type,
     build_output_name as _build_output_name,
@@ -49,7 +52,7 @@ from engine.core.document.font_utils import (
     PAGE_NUMBER_FONT,
     PAGE_NUMBER_SIZE_PT,
 )
-__version__ = "2.6.1"
+__version__ = "2.7.0"
 # 版本号应与 gongwen/__init__.py 保持一致，每次发版同步更新
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
@@ -72,6 +75,7 @@ __version__ = "2.6.1"
   rule-export <type>           导出某类型的合并规则为 YAML 用于二次定制
   rule-list                    列出三层规则（official / custom / user）
   rule-import <key> -f <file>  导入/保存自定义规则 YAML
+  wizard    [--answers json]     向导式交互：A/B/C/D 路径引导 + 一键执行（--dry-run 只打印命令）
   font      [list|check|install] 公文标准字体管理（方正小标宋简体/仿宋_GB2312/楷体_GB2312）
 
 示例：
@@ -1099,6 +1103,12 @@ def main():
                    help="审稿方案：full=完整五角色（默认）, compact=精简三角色")
     p.add_argument("--title", default="", help="待审文稿标题")
     p.set_defaults(func=cmd_review)
+
+    # ---- 向导式交互 ----
+    p = sub.add_parser("wizard", help="向导式交互：A/B/C/D 路径引导 + 一键执行（--answers 非交互 / --dry-run 只打印）")
+    p.add_argument("--answers", default="", help="答案 JSON 文件路径（Agent 非交互模式）：{\"path\":\"A\",\"input\":\"a.docx\",\"apply\":true}")
+    p.add_argument("--dry-run", action="store_true", help="只打印将执行的命令，不真正执行")
+    p.set_defaults(func=cmd_wizard)
 
     # ---- 字体管理 ----
     p = sub.add_parser("font", help="公文标准字体管理：安装/检查/列出内置字体")
