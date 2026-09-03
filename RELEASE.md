@@ -230,6 +230,7 @@ git ls-remote $r HEAD  # 核对三仓库 HEAD 一致
 - 项目同时作为 **DSH Skill** 分发（`.dsh/skills/gongwen-skill/` 目录技能 + `.dsh/skills/gongwen-skill.md` 单文件技能 + `dsh/index.js` 桥接），DSH 分发跟随 git 仓库（克隆即用）
 - **npm 发布**：ci.yml 已配置 `publish-npm` job（包名 `gongwen-skill`，`dsh/index.js` + `cordis.patch.yml` 打包），推送 `v*` tag 时自动发布到 npmjs.com 和 GitHub Packages 两个通道
   - ⚠️ GitHub Packages 通道要求（2026-09-03 v2.7.0 踩坑）：job 必须声明 `permissions: packages: write`（GITHUB_TOKEN 默认无此权限），且发布步骤需单独为 `npm.pkg.github.com` 写 `_authToken` 到 .npmrc（setup-node 只配置了 npmjs registry 的认证）——两者缺失分别报 403 与 ENEEDAUTH
+  - ⚠️ **GitHub Packages 通道现状（2026-09-03 v2.8.0 实测）**：上述 403/ENEEDAUTH 已修复，但 `npm publish --registry=https://npm.pkg.github.com` 仍报 `E404 PUT https://npm.pkg.github.com/gongwen-skill`——根因是 GitHub Packages registry 中**从未创建过非 scoped 包 `gongwen-skill`**（GITHUB_TOKEN 无法自动创建首包）。处置：先在 GitHub 网页端 Packages 页手动创建一次该包（或改用 scoped 命名 `@linhut/gongwen-skill`），下个版本验证；该通道失败不阻断发布（npmjs 通道正常）
 - 版本号同步：SKILL.md frontmatter、`package.json`、PyPI 三处保持一致（§3 核对）
 
 ### 6.5 版本号自动检查（pre-commit hook）
