@@ -45,8 +45,8 @@ Licensed under the MIT License. See the LICENSE file for details.
 | 🔍 审稿生成 | `review` | 按五角色审稿机制生成审稿意见 |
 | 🧩 完整审校 | `full-review` | 修订+批注联合命令（句子级差异修订 + 分类批注） |
 | 🎨 样式学习 | `style-learn` / `style-list` | 上传标准文档学习 Run/段落/页面三级样式（字体/字号/字间距/行距/缩进/页边距），生成命名模板持久化，后续用 `optimize -t 模板名` 套用 |
-| 🔄 版本自检 | `check-update` | 版本自检（PyPI pip 包权威判定 + GitHub 备用，GitCode/AtomGit 作国内镜像提示） |
-| 🩺 自我诊断 | `doctor` / `repair` | 全面诊断 22 项（Python/依赖/版本一致性/字体/DSH 文件/DSH 技能 frontmatter/代码风格），自动修复常见问题 |
+| 🔄 版本自检 | `check-update` | 版本自检（PyPI pip 包权威判定 + GitHub 备用，GitCode/AtomGit 作国内镜像提示；GitHub 不可达时自动做 DNS 污染诊断 + hosts 建议） |
+| 🩺 自我诊断 | `doctor` / `repair` | 全面诊断 23 项（Python/依赖/版本一致性/字体/DSH 文件/DSH 技能 frontmatter/代码风格/网络 DNS），自动修复常见问题；`--offline` 跳过网络检查 |
 | 🕵️ 文档审计 | `audit` | 检查删除线/加粗/AI 声明等痕迹 |
 | 🤝 会话交接 | `handoff` | 跨会话上下文传递（`--list` / `--latest` / Agent 长任务收尾必写） |
 | ⚙️ 规则管理 | `rule-export/import/list` | YAML 规则三层定制（官方/单位/用户） |
@@ -336,7 +336,7 @@ python -m gongwen rule-list notice
 
 Agent 加载 skill 后**必须执行版本追新自检**，确保使用最新版本：
 
-1. **远程自检**（首选）：`python -m gongwen check-update`——以 **PyPI（pip 包发布源）为权威判定渠道**并发查询比对本地（pip install -U 即从 PyPI 拉取）；PyPI 不可达时回退 GitHub tag（备用渠道）。全部渠道不可达时明确告知"版本自检跳过"。GitHub 为海外渠道（国内常超时）采用短超时快速降级；GitHub 不可达时自动提示国内代码镜像（GitCode/AtomGit，与 GitHub 同源 tag）与 GitHub520 hosts 加速方案
+1. **远程自检**（首选）：`python -m gongwen check-update`——以 **PyPI（pip 包发布源）为权威判定渠道**并发查询比对本地（pip install -U 即从 PyPI 拉取）；PyPI 不可达时回退 GitHub tag（备用渠道）。全部渠道不可达时明确告知"版本自检跳过"。GitHub 为海外渠道（国内常超时）采用短超时快速降级；GitHub 不可达时自动提示国内代码镜像（GitCode/AtomGit，与 GitHub 同源 tag）、GitHub520 hosts 加速方案，并自动做 **DNS 污染诊断**（对比系统解析与安全 DNS/DoH 真实 IP，输出可直接粘贴的 hosts 条目建议）
 2. **本地 git tag 对比**（补充）：对 skill 安装目录执行 `git -C "<skill安装目录>" describe --tags --abbrev=0`；若安装目录不在 git 管理下，应告知用户"无法执行版本对比，建议手动检查 GitHub 更新"
 3. **落后则警告**：发现本地版本落后于最新版本时，**必须在执行前警告用户**并提示更新——`check-update` 会按安装形态自动给出精准更新命令（pip 包安装：`pip install --upgrade gongwen-skill`；git/skill 目录安装：`cd <gongwen-skill目录> && git pull && git fetch --tags`），不得静默使用旧版本
 
@@ -356,7 +356,7 @@ DSH 采用 **Cordis 模块化微内核架构**：技能体系基于本地文件�
 git clone https://github.com/linhut/gongwen-skill.git
 cd gongwen-skill
 pip install -r requirements.txt   # 或 pip install gongwen-skill（已上 PyPI）
-python -m gongwen --version       # 检验：gongwen-skill v2.7.0
+python -m gongwen --version       # 检验：gongwen-skill v2.8.0
 ```
 
 ### 方式一：作为 DSH Skill 注册（基于本地文件系统）
@@ -412,7 +412,7 @@ pnpm add -w gongwen-skill
   "dependencies": {
     "@deepseek-ai/dsh-base": "...",
     "@deepseek-ai/dsh-web-app": "...",
-    "gongwen-skill": "^2.7.0"
+    "gongwen-skill": "^2.8.0"
   },
   "dsh": {
     "profile": {
@@ -593,7 +593,7 @@ pip install -r requirements.txt
 用户：帮我优化这份会议通知的第二章节措辞
 
 Agent：📋 合规自检报告
-Skill 版本: v2.7.0（版本自检已确认最新）
+Skill 版本: v2.8.0（版本自检已确认最新）
 路径判定: B（内容优化）
 依据: 用户指定了已有文档，且要求"优化措辞"
 命令调用: 1. python -m gongwen optimize-content 会议通知.docx --changes changes.json --apply --paragraphs "5-8"
@@ -628,6 +628,21 @@ Skill 定位为**工具层**，默认不依赖 LLM（确定性工作全自包含
 | 💚 **QQ 群** | 扫码加入 QQ 群，与中文用户交流使用经验 |
 
 ---
+
+## 🌐 GitHub 不可达排查（安全 DNS / DoH）
+
+国内网络访问 GitHub 常遇「无法访问 / 超时」问题，常见原因之一是 **DNS 污染**——系统 DNS 返回的不是真实 IP，而是保留/Fake-IP 段（如 198.18.0.0/15、0.0.0.0），连接自然失败或超时。
+
+**快速诊断**：运行 python -m gongwen doctor（含网络/DNS 检查项），或 python -m gongwen check-update（GitHub 渠道不可达时自动诊断）。检测到疑似污染时，会输出系统解析 vs 安全 DNS 真实 IP 对比，以及可直接粘贴的 hosts 条目建议。
+
+**原理**：安全 DNS（DoH，DNS over HTTPS）通过加密 HTTP 查询 DNS，避免中间设备篡改解析结果，可拿到域名的真实 IP。本工具内置阿里（dns.alidns.com）、腾讯（doh.pub / 1.12.12.12）等国内公共 DoH 端点，多端点自动降级；可通过环境变量 GONGWEN_DOH 覆盖为自定义端点（如自建的 DoH 服务）。
+
+**处置建议**（按推荐度）：
+1. 若使用了代理工具（Clash/V2Ray 等）且系统解析命中 198.18.x Fake-IP，优先检查其 DNS 模式的 fake-ip-filter 是否漏掉 GitHub 域名（比改 hosts 更治本）
+2. 将诊断输出的 hosts 条目写入 C:\Windows\System32\drivers\etc\hosts（需管理员权限），git / 浏览器即可直连真实 IP
+3. 或使用国内镜像仓库克隆/更新（见下方「镜像仓库」）
+
+> 仅诊断不自动修改：本工具只输出建议，不写入 hosts、不自动直连（YAGNI）。DoH 查询经第三方公共 DNS 服务，仅诊断时发起少量查询，隐私敏感者可设置 GONGWEN_DOH 指向自有端点。
 
 ## 📄 许可证与出处
 

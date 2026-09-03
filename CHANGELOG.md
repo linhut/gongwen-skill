@@ -4,6 +4,18 @@
   Licensed under the MIT License. See the LICENSE file for details.
 -->
 
+## v2.8.0 (2026-09-03)
+
+### Added
+- **DNS 污染诊断（安全 DNS / DoH）**：`check-update` 在 GitHub 渠道不可达时自动触发 DNS 污染诊断，对比系统解析与安全 DNS（DoH）真实 IP，输出污染判定、对比表与可直接粘贴的 hosts 条目建议
+- **`doctor` 新增「网络/DNS 诊断」检查项**：默认联网检测 GitHub/PyPI 关键域名是否疑似 DNS 污染（系统解析落在 198.18.0.0/15 等保留/Fake-IP 段时判定疑似污染），`--offline` 参数可完全跳过网络查询
+- **新增 `gongwen/cli/netcheck.py` 模块**：DoH 解析（内置阿里 `dns.alidns.com` / 腾讯 `doh.pub` / `1.12.12.12` / Google 备用，多端点自动降级）+ 系统解析对比 + 污染判定 + hosts 建议生成；环境变量 `GONGWEN_DOH` 可覆盖为自定义 DoH 端点
+- **`check-update --json` 输出新增 `dns_diagnosis` 字段**：含 `polluted` / `detail` / `hosts_suggestions` 等，便于 Agent 解析
+
+### Notes
+- 只做诊断建议：不修改 hosts、不自动直连、不改变版本判定逻辑（YAGNI）
+- DoH 查询经第三方公共 DNS 服务（阿里/腾讯），仅诊断时发起少量查询；可设置 `GONGWEN_DOH` 指向私有端点
+
 ## v2.7.0 (2026-09-03)
 
 ### Added

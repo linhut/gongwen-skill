@@ -52,7 +52,7 @@ from engine.core.document.font_utils import (
     PAGE_NUMBER_FONT,
     PAGE_NUMBER_SIZE_PT,
 )
-__version__ = "2.7.0"
+__version__ = "2.8.0"
 # 版本号应与 gongwen/__init__.py 保持一致，每次发版同步更新
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
@@ -1120,9 +1120,11 @@ def main():
     p.set_defaults(func=cmd_font)
 
     # ---- 自我诊断与修复 ----
-    p = sub.add_parser("doctor", help="全面诊断：检查 Python 版本/依赖/版本一致性/字体/DSH 文件/代码风格等")
+    p = sub.add_parser("doctor", help="全面诊断：检查 Python 版本/依赖/版本一致性/字体/DSH 文件/代码风格/网络 DNS 等")
     p.add_argument("--json", action="store_true",
                    help="输出 JSON 格式结果（便于 Agent 解析）")
+    p.add_argument("--offline", action="store_true",
+                   help="跳过网络/DNS 诊断（离线模式）")
     p.set_defaults(func=cmd_doctor)
 
     p = sub.add_parser("repair", help="修复常见问题：安装缺失依赖/字体/同步 SKILL.md 副本")

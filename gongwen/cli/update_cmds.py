@@ -160,12 +160,32 @@ def cmd_check_update(args):
                 if not use_json:
                     print(f"  ⚠️  {name:<8} 不可达: {val}")
 
-    # GitHub 海外渠道不可达时，给出国内加速指引（EasyTier 式加速代理 + GitHub520 hosts）
-    if not use_json and results.get("GitHub", "") == "" and ok_count > 0:
-        print("  💡 国内访问 GitHub 常超时，可用国内代码镜像：")
-        for _name, _url in _GIT_MIRRORS.items():
-            print(f"     - {_name}: {_url}")
-        print("     或参考 GitHub520 hosts 加速方案：https://github.com/521xueweihan/GitHub520")
+    # GitHub 海外渠道不可达时，给出国内加速指引 + DNS 污染诊断（安全 DNS / DoH）
+    dns_diag = None
+    github_unreachable = results.get("GitHub", "") == "" and ok_count > 0
+    if github_unreachable:
+        from gongwen.cli import netcheck as _netcheck
+        _dns_entries = _netcheck.check_hosts(
+            ["github.com", "api.github.com", "raw.githubusercontent.com"]
+        )
+        dns_diag = _netcheck.summarize(_dns_entries)
+        if not use_json:
+            print("  💡 国内访问 GitHub 常超时，可用国内代码镜像：")
+            for _name, _url in _GIT_MIRRORS.items():
+                print(f"     - {_name}: {_url}")
+            print("     或参考 GitHub520 hosts 加速方案：https://github.com/521xueweihan/GitHub520")
+            if dns_diag.get("polluted"):
+                print("  🔬 DNS 诊断：检测到疑似 DNS 污染（系统解析为保留/Fake-IP 段）")
+                for _e in _dns_entries:
+                    _mark = ("疑似污染" if _e.get("ok") is False
+                             else "正常" if _e.get("ok") is True else "差异提示")
+                    _sys = "、".join(_e.get("system_ips") or []) or "解析失败"
+                    _doh = "、".join(_e.get("doh_ips") or []) or "（无）"
+                    _host = _e.get("host", "")
+                    print(f"     - {_host}: 系统 {_sys} → 安全DNS {_doh}（{_mark}）")
+                print("  📝 hosts 建议（管理员权限写入 hosts 文件）：")
+                for _line in dns_diag.get("hosts_suggestions", "").splitlines():
+                    print(f"     {_line}")
 
     if not use_json:
         print(f"{'─' * 50}")
@@ -217,6 +237,7 @@ def cmd_check_update(args):
             "install_type": _detect_install_type(),
             "reachable_channels": ok_count,
             "elapsed_seconds": round(time.time() - t0, 1),
+            "dns_diagnosis": dns_diag,
         }
         print(_json.dumps(output, ensure_ascii=False, indent=2))
         return 0 if not has_update else 1

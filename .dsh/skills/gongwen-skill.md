@@ -103,6 +103,7 @@ metadata:
    ```
    - **PyPI 为权威判定渠道**（pip 包核心分发，pip install -U 即从 PyPI 拉取）；PyPI 不可达时回退 GitHub tag（备用渠道，git 用户/CI 触发源）
    - GitCode/AtomGit 与 GitHub 同源 tag，仅在 GitHub 不可达时作国内拉取镜像提示（不参与版本判定）
+   - GitHub 不可达且触发 DNS 诊断时（系统解析为保留/Fake-IP 段），`check-update --json` 会输出 `dns_diagnosis` 字段（含 `hosts_suggestions`），如实向用户转述排查建议即可
    - 若全部渠道均不可用（无 git/无网络），**必须明确告知用户"版本自检因无法访问远程而跳过"**，不得静默假设本地即最新
 3.5. **本地 git tag 对比**（P6，Agent 执行版本确认时补充）：
    - 优先对 skill 安装目录执行 git tag 对比：
@@ -925,15 +926,16 @@ python -m gongwen fix-common 文件.docx -o 成品.docx
 | `table-signs` | 从名单批量生成会议桌签 | `python -m gongwen table-signs 名单.txt -o 桌签.docx` |
 | `review` | 生成公文审稿流转单（五/三角色） | `python -m gongwen review report -o 审稿单.docx` |
 | `handoff` | 跨会话交接（长任务收尾必写） | `python -m gongwen handoff --write` |
-| `check-update` | 版本自检（PyPI pip 包权威 + GitHub 备用，自动检测安装形态） | `python -m gongwen check-update` |
+| `check-update` | 版本自检（PyPI pip 包权威 + GitHub 备用，自动检测安装形态；GitHub 不可达时 DNS 诊断） | `python -m gongwen check-update` |
 | `font` | 公文标准字体管理（安装/检查/列出） | `python -m gongwen font install` |
 
 ### 🩺 诊断与修复
 
 | 命令 | 用途 | 最小用法 |
 |------|------|---------|
-| `doctor` | 全面诊断：检查 Python 版本/依赖/版本一致性/字体/DSH 文件/代码风格等 | `python -m gongwen doctor` |
+| `doctor` | 全面诊断：检查 Python 版本/依赖/版本一致性/字体/DSH 文件/代码风格/网络 DNS 等 | `python -m gongwen doctor` |
 | `doctor --json` | JSON 结构化输出（便于 Agent 解析） | `python -m gongwen doctor --json` |
+| `doctor --offline` | 跳过网络/DNS 诊断（离线模式） | `python -m gongwen doctor --offline` |
 | `repair` | 修复常见问题：安装缺失依赖/字体/同步 SKILL.md 副本 | `python -m gongwen repair` |
 
 ### ⚙️ 规则管理

@@ -548,7 +548,57 @@ def _check_npm_package() -> dict:
         }
 
 
-def _run_all_checks() -> dict:
+def _check_network_dns(offline: bool = False) -> dict:
+    """网络与 DNS 诊断：检测 GitHub/PyPI 域名是否疑似 DNS 污染。
+
+    原理：系统 DNS 常被污染（返回 198.18.0.0/15 等保留段 Fake-IP），
+    通过安全 DNS（DoH）查询真实 IP 对比，判定是否疑似污染，
+    并给出 hosts 建议（v2.8.0 规格）。
+    --offline 时跳过网络查询（WARN）。
+    """
+    if offline:
+        return {
+            "name": "网络/DNS 诊断",
+            "ok": None,
+            "detail": "已跳过（--offline 离线模式）",
+            "hint": None,
+        }
+    try:
+        from gongwen.cli import netcheck
+        entries = netcheck.check_hosts()
+        s = netcheck.summarize(entries)
+        if s.get("polluted"):
+            return {
+                "name": "网络/DNS 诊断",
+                "ok": False,
+                "detail": s.get("detail", ""),
+                "hint": ("疑似 DNS 污染（系统解析为保留/Fake-IP 段）。"
+                         "可参考安全 DNS（DoH）方案，或使用国内镜像；"
+                         "hosts 建议： " + s.get("hosts_suggestions", "")),
+            }
+        if s.get("checked") and s.get("ok_count") == s.get("checked"):
+            return {
+                "name": "网络/DNS 诊断",
+                "ok": True,
+                "detail": "GitHub/PyPI 域名解析正常（与安全 DNS 一致）",
+                "hint": None,
+            }
+        return {
+            "name": "网络/DNS 诊断",
+            "ok": None,
+            "detail": s.get("detail", "") or "部分域名解析存在差异",
+            "hint": "部分域名解析与安全 DNS 不一致，建议进一步排查",
+        }
+    except Exception as e:
+        return {
+            "name": "网络/DNS 诊断",
+            "ok": None,
+            "detail": "诊断失败: " + str(e)[:100],
+            "hint": None,
+        }
+
+
+def _run_all_checks(offline: bool = False) -> dict:
     """运行所有检查，返回结构化报告。"""
     t0 = time.time()
 
@@ -584,6 +634,7 @@ def _run_all_checks() -> dict:
     add(_check_git_status())
     add(_check_pycodestyle())
     add(_check_npm_package())
+    add(_check_network_dns(offline))
 
     report["elapsed_seconds"] = round(time.time() - t0, 1)
     return report
@@ -596,7 +647,8 @@ def cmd_doctor(args):
     但实际文件残缺。本命令逐一检查每个组件，不依赖"看起来正常"的状态。
     """
     use_json = getattr(args, "json", False)
-    report = _run_all_checks()
+    offline = getattr(args, "offline", False)
+    report = _run_all_checks(offline=offline)
 
     if use_json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
