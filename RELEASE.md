@@ -77,6 +77,25 @@ git push atomgit master --tags
 
 ## 3. 版本号更新点（9 处代码 + 文档，doctor 仅检查前 4 项）
 
+### 3.0 一键 bump（推荐）
+
+```bash
+# 指定版本（SemVer）
+node scripts/bump-version.js 2.9.0
+
+# 自动递增 PATCH / MINOR / MAJOR
+node scripts/bump-version.js --patch
+node scripts/bump-version.js --minor
+node scripts/bump-version.js --major
+
+# 预览将改动的文件（不写盘）
+node scripts/bump-version.js --minor --dry-run
+```
+
+脚本自动同步 **6 处版本**（4 处代码 + `prompts/usage-prompts.md` + `dsh/index.js` 注释）并在 `CHANGELOG.md` 顶部插入新版本草稿条目；写后自动校验 4 处代码版本一致，拒绝降级/非法版本；**不自动 git commit/tag/push**（保留人工确认）。改用后发布流程第 3 步「更新版本号」从手工 9 处收敛为一条命令。
+
+> 快速核对命令（4 处代码版本）仍可保留作发布前兜底验证：
+
 | # | 文件 | 位置 | 类型 |
 |---|------|------|------|
 | 1 | `pyproject.toml` | `version = "2.1.X"`（`[project]`） | 代码版本 |

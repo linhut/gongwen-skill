@@ -29,6 +29,9 @@ from gongwen.cli.review_cmds import (
     cmd_fix_common,
     cmd_handoff,
 )
+from gongwen.cli.draft_cmds import (
+    cmd_draft,
+)
 from gongwen.cli.update_cmds import (
     cmd_check_update,
 )
@@ -75,7 +78,7 @@ __version__ = "2.8.0"
   rule-export <type>           导出某类型的合并规则为 YAML 用于二次定制
   rule-list                    列出三层规则（official / custom / user）
   rule-import <key> -f <file>  导入/保存自定义规则 YAML
-  wizard    [--answers json]     向导式交互：A/B/C/D 路径引导 + 一键执行（--dry-run 只打印命令）
+  wizard    [--answers json]     向导式交互：A/B/C/D/E 路径引导 + 一键执行（--dry-run 只打印命令）
   font      [list|check|install] 公文标准字体管理（方正小标宋简体/仿宋_GB2312/楷体_GB2312）
 
 示例：
@@ -213,11 +216,14 @@ def cmd_optimize(args):
 
     默认预览模式：检测类型 → 检查问题 → 列出摘要 → 提示下一步。
     加 --apply 才真正执行修复并生成文件。
+    --verify：执行后自动 check 输出文件，存在 P0 时退出码非 0（单命令闭环）。
+    --json：输出结构化结果（Agent 可机器解析）。
     """
     from engine.core.document.parser import parse_docx
     from engine.core.document.generator import generate_docx
     from engine.core.rules.engine import RuleEngine
 
+    is_json = bool(getattr(args, "json", False))
     engine = RuleEngine()
     # 应用 DSH 配置覆盖到规则引擎
     overrides = _parse_config_overrides(getattr(args, "config_overrides", ""))
@@ -237,32 +243,60 @@ def cmd_optimize(args):
     p1 = [i for i in issues if i.severity == "P1"]
     p2 = [i for i in issues if i.severity == "P2"]
 
-    # === 预览信息（始终显示）===
-    print(f"📄 文件: {input_path.name}")
-    print(f"🔍 类型: {doc_type}（{type_source}）")
-    print(f"📊 问题: 共 {len(issues)} 项（P0:{len(p0)}, P1:{len(p1)}, P2:{len(p2)}）")
-    if issues:
-        print("  P0 示例（必须修复）:")
-        for i in p0[:3]:
-            print(f"    - {i.name} @ {i.location}")
-        if p1:
-            print("  P1 示例（建议修复）:")
-            for i in p1[:3]:
+    # 版式配置预读（失败不阻断主流程）
+    layout_parts: list = []
+    if getattr(args, "layout", None):
+        try:
+            lc = json.loads(Path(args.layout).read_text(encoding="utf-8"))
+            layout_parts = [k for k in ("header", "footer", "page_number") if k in lc]
+        except Exception as e:
+            print(f"  ⚠️ 版式配置读取失败（{e}），跳过版式注入", file=sys.stderr)
+
+    result = {
+        "command": "optimize",
+        "input": str(input_path),
+        "output": str(out),
+        "doc_type": doc_type,
+        "type_source": type_source,
+        "issues": len(issues),
+        "p0": len(p0), "p1": len(p1), "p2": len(p2),
+        "applied": bool(getattr(args, "apply", False)),
+        "layout": layout_parts or None,
+        "fixed": 0, "cleaned": 0, "bolded": 0, "blank_lines": 0,
+        "ai_declaration_removed": bool(getattr(args, "remove_ai_declaration", False)),
+        "verified": None, "verify_issues": None,
+        "verify_p0": None, "verify_p1": None, "verify_p2": None,
+        "verify_error": None,
+    }
+
+    # === 预览信息（--json 时不打印人类文本）===
+    if not is_json:
+        print(f"📄 文件: {input_path.name}")
+        print(f"🔍 类型: {doc_type}（{type_source}）")
+        print(f"📊 问题: 共 {len(issues)} 项（P0:{len(p0)}, P1:{len(p1)}, P2:{len(p2)}）")
+        if issues:
+            print("  P0 示例（必须修复）:")
+            for i in p0[:3]:
                 print(f"    - {i.name} @ {i.location}")
-    if args.layout:
-        lc = json.loads(Path(args.layout).read_text(encoding="utf-8"))
-        parts = [k for k in ("header", "footer", "page_number") if k in lc]
-        print(f"🎨 版式注入: {', '.join(parts)}")
+            if p1:
+                print("  P1 示例（建议修复）:")
+                for i in p1[:3]:
+                    print(f"    - {i.name} @ {i.location}")
+        if layout_parts:
+            print(f"🎨 版式注入: {', '.join(layout_parts)}")
 
     if not args.apply:
-        print()
-        print("─── 预览模式 ───")
-        print("以上是本次将要修复的内容预览。")
-        print("加 --apply 执行修复，或指定 -t 切换公文类型。")
-        print("示例:")
-        print(f"  python -m gongwen optimize {args.input} -t notice --apply")
-        print(f"  python -m gongwen optimize {args.input} -o 成品.docx --apply --layout 版式.json")
-        return
+        if not is_json:
+            print()
+            print("─── 预览模式 ───")
+            print("以上是本次将要修复的内容预览。")
+            print("加 --apply 执行修复，或指定 -t 切换公文类型。")
+            print("示例:")
+            print(f"  python -m gongwen optimize {args.input} -t notice --apply")
+            print(f"  python -m gongwen optimize {args.input} -o 成品.docx --apply --layout 版式.json")
+        else:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
 
     # === 执行模式 ===
     selected = args.selected_rules.split(",") if args.selected_rules else None
@@ -283,29 +317,70 @@ def cmd_optimize(args):
     except Exception:
         n_blank = 0
     generate_docx(fixed, str(out), no_ai_declaration=getattr(args, "remove_ai_declaration", False))
-    print(f"✅ 优化完成: {out}")
-    print(f"  修复 {len(issues)} 项 (P0:{len(p0)}, P1:{len(p1)}, P2:{len(p2)})")
-    if cleaned:
-        print(f"  清理 {cleaned} 处路径B标记")
-    if n_bold:
-        print(f"  首句加粗 {n_bold} 处")
-    if n_blank:
-        print(f"  补齐空行 {n_blank} 处")
-    if getattr(args, "remove_ai_declaration", False):
-        print("  AI声明段: 已移除（--remove-ai-declaration）")
+
+    result["fixed"] = len(issues)
+    result["cleaned"] = cleaned
+    result["bolded"] = n_bold
+    result["blank_lines"] = n_blank
+
+    if not is_json:
+        print(f"✅ 优化完成: {out}")
+        print(f"  修复 {len(issues)} 项 (P0:{len(p0)}, P1:{len(p1)}, P2:{len(p2)})")
+        if cleaned:
+            print(f"  清理 {cleaned} 处路径B标记")
+        if n_bold:
+            print(f"  首句加粗 {n_bold} 处")
+        if n_blank:
+            print(f"  补齐空行 {n_blank} 处")
+        if getattr(args, "remove_ai_declaration", False):
+            print("  AI声明段: 已移除（--remove-ai-declaration）")
 
     if getattr(args, "layout", None):
         layout = json.loads(Path(args.layout).read_text(encoding="utf-8"))
         from inject import inject_header, inject_footer, inject_page_number
         if layout.get("header"):
             inject_header(str(out), layout["header"])
-            print("  版头已注入")
+            if not is_json:
+                print("  版头已注入")
         if layout.get("footer"):
             inject_footer(str(out), layout["footer"])
-            print("  版记已注入")
+            if not is_json:
+                print("  版记已注入")
         if layout.get("page_number"):
             inject_page_number(str(out), layout["page_number"])
-            print("  页码已注入")
+            if not is_json:
+                print("  页码已注入")
+
+    # === 验证闭环（--verify，路径 A 单命令）===
+    if getattr(args, "verify", False) and out.exists():
+        try:
+            v_model = parse_docx(str(out))
+            v_issues = engine.check(v_model, doc_type)
+            v_p0 = sum(1 for i in v_issues if i.severity == "P0")
+            v_p1 = sum(1 for i in v_issues if i.severity == "P1")
+            v_p2 = sum(1 for i in v_issues if i.severity == "P2")
+            result["verified"] = True
+            result["verify_issues"] = len(v_issues)
+            result["verify_p0"] = v_p0
+            result["verify_p1"] = v_p1
+            result["verify_p2"] = v_p2
+            if not is_json:
+                print(f"✅ 验证: {len(v_issues)} 项（P0:{v_p0}, P1:{v_p1}, P2:{v_p2}）")
+                if v_p0:
+                    print("  ⚠️ 仍存在 P0 必须修复项，请检查输出文档")
+        except Exception as e:
+            result["verified"] = False
+            result["verify_error"] = str(e)
+            if not is_json:
+                print(f"  ⚠️ 验证失败（{e}）", file=sys.stderr)
+
+    if is_json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+
+    # 验证闭环失败（存在 P0）→ 退出码非 0，供 Agent 判断交付质量
+    if result.get("verified") and (result.get("verify_p0") or 0) > 0:
+        return 1
+    return 0
 
 
 def cmd_generate(args):
@@ -923,6 +998,8 @@ def main():
     p.add_argument("--selected-rules", help="仅应用指定修复规则 ID，逗号分隔")
     p.add_argument("--layout", help="版式注入 JSON 配置（含 header/footer/page_number）")
     p.add_argument("--apply", action="store_true", help="确认执行修复（默认预览）")
+    p.add_argument("--verify", action="store_true", help="执行后自动 check 输出文件（存在 P0 时退出码非 0，单命令闭环）")
+    p.add_argument("--json", action="store_true", help="JSON 结构化输出（Agent 可机器解析）")
     p.add_argument("--remove-ai-declaration", action="store_true",
                    help="P1: 生成文档不追加 AI 声明段（默认追加）")
     p.add_argument("--config-overrides", default="",
@@ -976,6 +1053,26 @@ def main():
                    help="规则覆盖 JSON（DSH 插件注入）")
     p.set_defaults(func=cmd_md2docx)
 
+    # ---- draft：路径 C 一站式生成（Markdown → 国标成品 + 验证）----
+    p = sub.add_parser("draft", help="Markdown 草稿 → 国标成品 + 验证（路径 C 四步合一）")
+    p.add_argument("input", help="输入 .md 路径，或 '-' 从标准输入读取（支持管道）")
+    p.add_argument("-o", "--output", help="输出 .docx 路径（默认 修订版+{类型}-成品+{日期}+v1.docx）")
+    p.add_argument("-t", "--doc-type", default="", help="公文类型（默认自动检测/Front Matter，可指定）")
+    p.add_argument("--recipients", nargs="*", help="主送机关（逗号分隔）")
+    p.add_argument("--signer", default="", help="落款单位")
+    p.add_argument("--date", default="", help="成文日期")
+    p.add_argument("--attachments", nargs="*", help="附件列表")
+    p.add_argument("--no-ai-declaration", action="store_true",
+                   help="生成的文档不追加 AI 声明段（默认追加）")
+    p.add_argument("--verify", dest="verify", action="store_true", default=True,
+                   help="生成后自动 check 验证（默认开启；P0 存在时退出码非 0）")
+    p.add_argument("--no-verify", dest="verify", action="store_false",
+                   help="跳过生成后验证")
+    p.add_argument("--json", action="store_true", help="JSON 结构化输出（Agent 可机器解析）")
+    p.add_argument("--config-overrides", default="",
+                   help="DSH 配置覆盖 JSON 字符串（页边距/行距/字体）")
+    p.set_defaults(func=cmd_draft)
+
     p = sub.add_parser("optimize-content", help="内容优化差异对比：原文灰色+删除线，修改后红色高亮，每段附修改说明与依据")
     p.add_argument("input", help="输入 .docx 路径")
     p.add_argument("-o", "--output", help="输出 .docx 路径（默认按规范自动命名：{原文档名}+{内容风格}+{日期}+v1.docx）")
@@ -1024,6 +1121,7 @@ def main():
     p.set_defaults(func=cmd_bold_first)
 
     p = sub.add_parser("fix-common", help="一键修复常见格式问题（路径D）：段落类型修正/编号拆分/首句加粗/加粗范围修复，不含AI声明段")
+    p.add_argument("--json", action="store_true", help="JSON 结构化输出（Agent 可机器解析）")
     p.add_argument("input", help="输入 .docx 路径")
     p.add_argument("-o", "--output", help="输出 .docx 路径（默认输入_fix-common.docx）")
     p.set_defaults(func=cmd_fix_common)
@@ -1073,6 +1171,7 @@ def main():
     p.add_argument("-o", "--output", help="输出 .docx 路径")
     p.add_argument("-t", "--doc-type", default="", help="公文类型（默认自动检测）")
     p.add_argument("--changes", default="", help="变更 JSON 文件路径（路径B优化建议，可省略则仅格式修复+批注空）")
+    p.add_argument("--json", action="store_true", help="JSON 结构化输出（Agent 可机器解析）")
     p.set_defaults(func=cmd_full_review)
 
     # ---- 样式学习（上传标准文档 → 自定义命名模板） ----
@@ -1105,7 +1204,7 @@ def main():
     p.set_defaults(func=cmd_review)
 
     # ---- 向导式交互 ----
-    p = sub.add_parser("wizard", help="向导式交互：A/B/C/D 路径引导 + 一键执行（--answers 非交互 / --dry-run 只打印）")
+    p = sub.add_parser("wizard", help="向导式交互：A/B/C/D/E 路径引导 + 一键执行（--answers 非交互 / --dry-run 只打印）")
     p.add_argument("--answers", default="",
                    help="答案 JSON 文件路径（Agent 非交互模式）："
                         '{"path":"A","input":"a.docx","apply":true}')

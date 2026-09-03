@@ -186,7 +186,7 @@ python -m gongwen handoff --latest --summary # 最新交接文档（Markdown 摘
 
 - **路径 A - 格式修复**：用户有文档，只需排版标准化（GB/T 9704），不改文字内容
 - **路径 B - 内容优化**：用户有文档，需要润色文字并生成修订对比版（原稿 vs 优化稿，红色标注修改处）
-- **路径 C - 生成公文**：用户没有文档，根据背景和要求从零生成新的公文。四步流程：编写 Markdown 草稿 → md2docx 转换 → 引用路径 A optimize 套国标格式 → check 验证交付。
+- **路径 C - 生成公文**：用户没有文档，根据背景和要求从零生成新的公文。四步流程：编写 Markdown 草稿 → md2docx 转换 → 引用路径 A optimize 套国标格式 → check 验证交付；也可用 `gongwen draft 草稿.md -o 成品.docx -t 类型` 一条命令完成（含自动格式修复 + 验证）。
 - **路径 D - 一键格式修复**（`fix-common` 新增）：用户有文档，只需快速规范化常见格式问题（段落类型修正/编号拆分/首句加粗/加粗范围修复），一步到位，输出不含 AI 声明段的干净文档。与路径 A 的区别：不依赖规则引擎、不追加 AI 声明段，适合对"干净中间稿"做最终格式规范化。
 - **路径 E - 样式学习**（`style-learn` 新增）：用户提供一份**标准文档**（如本单位定稿的红头公文/排版规范的样例），要求"学习排版样式""按这个格式生成模板""做成模板以后都用这个格式"。Agent 应调用 `style-learn` 解析文档的字体/字号/字间距/行距/缩进/页边距，生成命名自定义模板（注册到 user_rules），后续所有文档可用 `optimize -t 模板名` 套用该格式。
 
@@ -242,7 +242,7 @@ python -m gongwen handoff --latest --summary # 最新交接文档（Markdown 摘
   │
   ├─ 包含"生成/写/起草" + 未指定已有文档
   │   └── 识别为路径 C（生成公文）
-  │       └── 必须走 md2docx → [bold-first] → optimize → check
+  │       └── 必须走 md2docx → [bold-first] → optimize → check（或 `draft 草稿.md -o 成品.docx -t 类型` 一步到位）
   │
   └─ 不确定
       └── 必须追问用户：是改格式还是改内容？不得猜测路径直接执行
@@ -259,7 +259,7 @@ python -m gongwen handoff --latest --summary # 最新交接文档（Markdown 摘
 
 ## 用户交互指引（Agent 必须遵守）
 
-> **终端用户也可直接运行 `python -m gongwen wizard`**：交互式向导以菜单方式完成同样的 A/B/C/D 路径选择与逐步确认（详见下文「向导式交互」小节）。Agent 读到本条时，若用户表示「不熟悉命令/不想记参数」，应主动引导其使用向导，而非逐字念命令行参数。
+> **终端用户也可直接运行 `python -m gongwen wizard`**：交互式向导以菜单方式完成同样的 A/B/C/D/E 路径选择与逐步确认（详见下文「向导式交互」小节）。Agent 读到本条时，若用户表示「不熟悉命令/不想记参数」，应主动引导其使用向导，而非逐字念命令行参数。
 
 ### 第一步：确认路径（必须，严禁跳过）
 
@@ -288,12 +288,12 @@ python -m gongwen handoff --latest --summary # 最新交接文档（Markdown 摘
 当用户**不熟悉命令行**、希望**逐步确认后再执行**，或 Agent 需要**把交互决策委托给工具**时，使用向导：
 
 ```
-python -m gongwen wizard                        # 终端交互：菜单选 A/B/C/D → 逐项填参 → 预览确认 → 执行
+python -m gongwen wizard                        # 终端交互：菜单选 A/B/C/D/E → 逐项填参 → 预览确认 → 执行
 python -m gongwen wizard --answers 答案.json     # Agent 非交互：跳过提问直接执行
 python -m gongwen wizard --answers 答案.json --dry-run  # 只打印将执行的命令，不真正执行
 ```
 
-- **路径菜单**：A 格式优化（`optimize`）｜B 内容优化（`optimize-content`）｜C 生成模板（`template`）｜D 一键格式修复（`fix-common`）
+- **路径菜单**：A 格式优化（`optimize`）｜B 内容优化（`optimize-content`）｜C 生成模板（`template`）｜D 一键格式修复（`fix-common`）｜E 样式学习（`style-learn`）
 - **交互流程**：选择路径 → 收集参数（公文类型支持 序号 / id / 中文名，如 `1`、`notice`、`通知`）→ A/B/D 先预览再 y/n 确认 → 执行；C 无修改风险直接执行
 - **`--answers` JSON 扁平结构**（Agent 场景，顶层带 `path`）：
   ```json
@@ -321,7 +321,7 @@ python -m gongwen wizard --answers 答案.json --dry-run  # 只打印将执行�
 | "按上级文件要求调整" | 用户有政策依据但未提供 | 追问具体文件名或文号，或用 web 搜索相关政策 |
 | "弄漂亮一点" | 希望格式规范 | 解释 GB/T 9704 标准是唯一合规格式 |
 
-**原则**：不确定时 **先确认路径**（A/B/C/D，向导模式同），再用 **具体示例引导用户选择**，不猜测。
+**原则**：不确定时 **先确认路径**（A/B/C/D/E，向导模式同），再用 **具体示例引导用户选择**，不猜测。
 
 #### 2. 充分利用 skill 知识库
 
@@ -872,7 +872,7 @@ python -m gongwen fix-common 文件.docx -o 成品.docx
 
 ---
 
-## 附录：全部命令速查（25 个，按用途分组）
+## 附录：全部命令速查（26 个，按用途分组）
 
 > Agent 遇到用户需求时，先在此表定位对应命令；命令用法不明确时运行 `python -m gongwen <命令> --help` 查看完整参数。
 
@@ -880,7 +880,7 @@ python -m gongwen fix-common 文件.docx -o 成品.docx
 
 | 命令 | 用途 | 最小用法 |
 |------|------|---------|
-| `wizard` | 交互式路径引导（A/B/C/D）+ 一键执行；Agent 用 `--answers` 非交互 / `--dry-run` 只打印命令 | `python -m gongwen wizard` |
+| `wizard` | 交互式路径引导（A/B/C/D/E）+ 一键执行；Agent 用 `--answers` 非交互 / `--dry-run` 只打印命令 | `python -m gongwen wizard` |
 
 ### 🏗️ 生成与模板
 
@@ -889,7 +889,8 @@ python -m gongwen fix-common 文件.docx -o 成品.docx
 | `list-types` | 列出 24 种支持的公文类型 | `python -m gongwen list-types` |
 | `template` | 按类型生成 GB/T 9704 空白模板 | `python -m gongwen template notice -o 通知.docx` |
 | `generate` | 从 DocumentModel JSON 生成 .docx | `python -m gongwen generate 模型.json -o 公文.docx` |
-| `md2docx` | Markdown 草稿 → 格式化公文 | `python -m gongwen md2docx 草稿.md -o 公文.docx -t notice` |
+| `md2docx` | Markdown 草稿 → 格式化公文（初稿） | `python -m gongwen md2docx 草稿.md -o 公文.docx -t notice` |
+| `draft` | Markdown 草稿 → 国标成品 + 验证（路径 C 四步合一） | `python -m gongwen draft 草稿.md -o 成品.docx -t notice` |
 | `style-learn` | 从标准文档学习排版样式生成模板 | `python -m gongwen style-learn 标准.docx -n 模板名` |
 | `style-list` | 列出已学习的自定义样式模板 | `python -m gongwen style-list` |
 
@@ -1950,7 +1951,7 @@ python -m gongwen check 成品.docx -t <类型> --json
 
 第二步至第四步使用同一 `-t` 类型。
 
-> **推荐做法**：Agent 先根据用户需求在对话中生成 Markdown 草稿（使用下方段落模板），再走上述四步流程生成格式化成品并验证合规。
+> **推荐做法**：Agent 先根据用户需求在对话中生成 Markdown 草稿（使用下方段落模板），再走上述四步流程生成格式化成品并验证合规；需要一步到位时可直接 `python -m gongwen draft 草稿.md -o 成品.docx -t <类型>`（自动完成格式修复 + check 验证，P0 存在时退出码非 0）。
 
 ### 路径 C / 交付后的用户修改处理
 

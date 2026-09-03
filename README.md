@@ -35,6 +35,7 @@ Licensed under the MIT License. See the LICENSE file for details.
 | 🔧 格式修复 | `optimize` | 自动修复字体/字号/行距/页边距，输出合规文档 |
 | ✍️ **内容优化** | **`optimize-content`** | 内容润色：默认 **Word 原生修订+批注**（审阅面板逐条接受/拒绝），可选行内差异对比版 |
 | 📝 草稿转公文 | `md2docx` | Markdown 文本直接转为格式化 `.docx`（支持 Front Matter） |
+| 🚀 一站式生成 | `draft` | Markdown 草稿 → 国标成品 + 自动验证（路径 C 四步合一） |
 | 📄 模型生成 | `generate` | 从 JSON 模型生成 `.docx` |
 | 🔴 版头 | `header` | 注入发文机关标志 + 发文字号 + 签发人 + 红色反线 |
 | 📑 版记 | `footer` | 注入抄送机关 + 印发机关 + 印发日期 + 分隔线 |
@@ -50,7 +51,7 @@ Licensed under the MIT License. See the LICENSE file for details.
 | 🕵️ 文档审计 | `audit` | 检查删除线/加粗/AI 声明等痕迹 |
 | 🤝 会话交接 | `handoff` | 跨会话上下文传递（`--list` / `--latest` / Agent 长任务收尾必写） |
 | ⚙️ 规则管理 | `rule-export/import/list` | YAML 规则三层定制（官方/单位/用户） |
-| 🧭 向导式交互 | `wizard` | 交互式路径引导（A/B/C/D）+ 一键执行；Agent 用 `--answers` 非交互 / `--dry-run` 只打印命令 |
+| 🧭 向导式交互 | `wizard` | 交互式路径引导（A/B/C/D/E）+ 一键执行；Agent 用 `--answers` 非交互 / `--dry-run` 只打印命令 |
 
 ## 使用示例
 
@@ -138,6 +139,9 @@ python -m gongwen optimize 公文.docx -o 成品.docx --layout 版式.json
 
 # Markdown 草稿 → 正式公文（支持管道输入和 Front Matter 元数据）
 python -m gongwen md2docx 草稿.md -o 正式公文.docx -t report --signer "XX单位" --date "2026年8月1日"
+
+# 一步到位：Markdown 草稿 → 国标成品 + 自动验证（路径 C 四步合一）
+python -m gongwen draft 草稿.md -o 正式公文.docx -t report --signer "XX单位" --date "2026年8月1日"
 
 # 内容优化（默认 tracked 模式：Word 原生修订+批注，审阅面板逐条接受/拒绝）
 python -m gongwen optimize-content 原文.docx --changes 修订内容.json --apply --mode tracked -t news
@@ -265,7 +269,7 @@ python -m gongwen optimize-content 新闻稿.docx --changes changes.json \
 交互式引导选择处理路径并一键执行，适合不熟悉命令行的用户；Agent 可走非交互模式：
 
 ```bash
-python -m gongwen wizard                        # 终端交互：菜单选 A/B/C/D → 逐项填参 → 预览确认 → 执行
+python -m gongwen wizard                        # 终端交互：菜单选 A/B/C/D/E → 逐项填参 → 预览确认 → 执行
 python -m gongwen wizard --answers 答案.json     # Agent 非交互：跳过提问直接执行
 python -m gongwen wizard --answers 答案.json --dry-run  # 只打印将执行的命令
 ```
@@ -328,7 +332,7 @@ python -m gongwen rule-list notice
 
 - **路径 A**：格式修复（不改文字，只修排版）
 - **路径 B**：内容优化（润色文字，Word 原生修订+批注 / 差异对比版）
-- **路径 C**：生成公文（从零创建，四步流水线）
+- **路径 C**：生成公文（从零创建，四步流水线；`draft` 命令可一步到位）
 
 **平台适配**：`SKILL.md` 采用通用 frontmatter（`name/description/whenToUse/user-invocable`），兼容 **WorkBuddy、CloudCode、Claude Code、AtomCode、DeepSeek Harness** 等以 `SKILL.md` 为技能清单的平台；纯对话 LLM（无代码执行能力）请参见上方「纯对话 LLM 使用指引」。
 

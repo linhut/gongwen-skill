@@ -47,7 +47,8 @@
     "url": "git+https://github.com/linhut/gongwen-skill.git"
   },
   "scripts": {
-    "prepack": "node scripts/clean-cache.js"
+    "prepack": "node scripts/clean-cache.js",
+    "bump": "node scripts/bump-version.js"
   },
   "files": [
     "dsh/",

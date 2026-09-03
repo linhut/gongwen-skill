@@ -29,23 +29,30 @@ _logger = logging.getLogger(__name__)
 
 
 def cmd_full_review(args):
-    """完整审校流程：格式修复（路径A）→ 内容优化（路径B）→ 批注输出。"""
+    """完整审校流程：格式修复（路径A）→ 内容优化（路径B）→ 批注输出。
+
+    --json：输出结构化结果（Agent 可机器解析）。
+    """
     from engine.core.document.parser import parse_docx
     from engine.core.document.generator import generate_docx
     from engine.core.rules.engine import RuleEngine
     from optimizer import load_changes_from_json
     from engine.core.document.annotator import GongwenAnnotator, CommentSuggestion
 
+    is_json = bool(getattr(args, "json", False))
     input_path = Path(args.input)
     # P1-1 修复：统一传 None
     doc_type = _detect_doc_type(input_path, getattr(args, 'doc_type', None))[0]
 
     # 1. 路径 A：格式修复
-    print(f"🔧 步骤1/3 格式修复（路径 A，类型 {doc_type}）...")
+    if not is_json:
+        print(f"🔧 步骤1/3 格式修复（路径 A，类型 {doc_type}）...")
     model = parse_docx(str(input_path))
     engine = RuleEngine()
     issues, fixed = engine.check_and_fix(model, doc_type)
-    print(f"  ✓ 格式修复完成，修复 {len(issues)} 项")
+    n_fixed = len(issues)
+    if not is_json:
+        print(f"  ✓ 格式修复完成，修复 {n_fixed} 项")
 
     # 2. 路径 B：内容优化（加载变更）
     changes = load_changes_from_json(args.changes) if args.changes else []
@@ -53,7 +60,8 @@ def cmd_full_review(args):
     changes = _validate_changes_schema(changes, source=args.changes)
     changes = [c for c in changes
                if c.get("optimized_text", "").strip() != c.get("original_text", "").strip()]
-    print(f"🔧 步骤2/3 内容优化（路径 B，{len(changes)} 处变更）...")
+    if not is_json:
+        print(f"🔧 步骤2/3 内容优化（路径 B，{len(changes)} 处变更）...")
 
     # 3. 批注输出（中间稿用内存 BytesIO，避免落盘 I/O）
     import io
@@ -76,9 +84,22 @@ def cmd_full_review(args):
 
     # FIX-V153-01：0 处批注时直接通过（无变更 → 无 comments.xml 属正常，不应误报失败）
     ok = True if len(suggestions) == 0 else ann.verify_comments(result)
-    print(f"✅ 完整审校完成: {result}")
-    print(f"  格式修复 {len(issues)} 项 + 批注 {len(suggestions)} 处（可审阅→接受/拒绝）")
-    print(f"  批注完整性验证: {'通过' if ok else '失败'}")
+    if is_json:
+        import json as _json
+        print(_json.dumps({
+            "command": "full-review",
+            "input": str(input_path),
+            "output": str(out_name),
+            "doc_type": doc_type,
+            "fixed_issues": n_fixed,
+            "comments": len(suggestions),
+            "verified": bool(ok),
+        }, ensure_ascii=False, indent=2))
+    else:
+        print(f"✅ 完整审校完成: {out_name}")
+        print(f"  格式修复 {n_fixed} 项 + 批注 {len(suggestions)} 处（可审阅→接受/拒绝）")
+        print(f"  批注完整性验证: {'通过' if ok else '失败'}")
+    return 0 if ok else 1
 
 
 def cmd_bold_first(args):
@@ -143,6 +164,7 @@ def cmd_fix_common(args):
 
     与 optimize 的区别：不跑完整 check 流程，仅做常见格式规范化，
     适合对"干净中间稿"做最终格式修复。
+    --json：输出结构化结果（Agent 可机器解析）。
     """
     import time
     import copy as _copy
@@ -156,16 +178,19 @@ def cmd_fix_common(args):
     from engine.core.rules.fixer import apply_fixes
 
     t0 = time.time()
+    is_json = bool(getattr(args, "json", False))
     input_path = Path(args.input)
     out = Path(args.output) if args.output else input_path.with_stem(input_path.stem + "_fix-common")
 
     # [1/7] 解析文档
-    print(f"[1/7] 解析文档: {input_path.name}")
+    if not is_json:
+        print(f"[1/7] 解析文档: {input_path.name}")
     model = parse_docx(str(input_path))
 
     # [2/7] 清理路径B标记
     n_markers = clean_path_b_markers(model)
-    print(f"[2/7] 清理路径B标记: {n_markers} 处")
+    if not is_json:
+        print(f"[2/7] 清理路径B标记: {n_markers} 处")
 
     # [3/7] 段落类型检测与格式修正（P1-12：复用规则引擎 apply_fixes，
     # 与 optimize 走同一套 FIX-C041~C044 修复逻辑，不再独立硬编码）
@@ -182,27 +207,52 @@ def cmd_fix_common(args):
     fixed = apply_fixes(model, rules, selected_rule_ids=sorted(_ALLOWED & _avail))
     n_fmt = _count_fmt_changes(snapshot, fixed)
     model = fixed
-    print(f"[3/7] 段落类型格式修正（规则引擎 FIX-C041~C044, {doc_type}）: {n_fmt} 处")
+    if not is_json:
+        print(f"[3/7] 段落类型格式修正（规则引擎 FIX-C041~C044, {doc_type}）: {n_fmt} 处")
 
     # [4/7] 编号段落自动拆分
     n_split = split_numbered_paragraphs(model)
-    print(f"[4/7] 编号段落拆分: {n_split} 个新段落")
+    if not is_json:
+        print(f"[4/7] 编号段落拆分: {n_split} 个新段落")
 
     # [5/7] 首句加粗（段落类型感知）
     n_bold = bold_first_sentence_of_body(model)
-    print(f"[5/7] 首句加粗: {n_bold} 处")
+    if not is_json:
+        print(f"[5/7] 首句加粗: {n_bold} 处")
 
     # [6/7] 加粗范围修复（B-01 方案二：传递文种，speech 跳过整段加粗修复）
     n_range = fix_bold_range(model, doc_type=doc_type)
-    print(f"[6/7] 加粗范围修复: {n_range} 处")
+    if not is_json:
+        print(f"[6/7] 加粗范围修复: {n_range} 处")
 
     # [7/7] 生成文档（no_ai_declaration=True，不含AI声明段）
     generate_docx(model, str(out), no_ai_declaration=True)
-    print(f"[7/7] 生成文档: {out}")
+    if not is_json:
+        print(f"[7/7] 生成文档: {out}")
 
-    print(f"✅ fix-common 完成: {out}")
-    print(f"  格式修正 {n_fmt} 处 + 编号拆分 {n_split} 段 + 首句加粗 {n_bold} 处 + "
-          f"加粗范围修复 {n_range} 处（耗时 {time.time() - t0:.1f}s）")
+    duration_s = round(time.time() - t0, 2)
+    result = {
+        "command": "fix-common",
+        "input": str(input_path),
+        "output": str(out),
+        "doc_type": doc_type,
+        "type_source": type_source,
+        "markers_cleaned": n_markers,
+        "fmt_fixed": n_fmt,
+        "split": n_split,
+        "bolded": n_bold,
+        "bold_range_fixed": n_range,
+        "duration_s": duration_s,
+        "ai_declaration": False,
+    }
+    if is_json:
+        import json as _json
+        print(_json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(f"✅ fix-common 完成: {out}")
+        print(f"  格式修正 {n_fmt} 处 + 编号拆分 {n_split} 段 + 首句加粗 {n_bold} 处 + "
+              f"加粗范围修复 {n_range} 处（耗时 {duration_s}s）")
+    return 0
 
 
 def cmd_handoff(args):

@@ -6,8 +6,8 @@
 # Licensed under the MIT License. See the LICENSE file for details.
 #
 # gongwen wizard —— 向导式交互命令
-# A/B/C/D 路径引导 + 一键执行；终端交互 + --answers JSON 非交互双模式。
-"""向导式交互：以 A/B/C/D 路径菜单引导用户，交互收集参数后直接执行对应命令。
+# A/B/C/D/E 路径引导 + 一键执行；终端交互 + --answers JSON 非交互双模式。
+"""向导式交互：以 A/B/C/D/E 路径菜单引导用户，交互收集参数后直接执行对应命令。
 
 使用方式：
     python -m gongwen wizard                       # 终端交互模式
@@ -33,6 +33,7 @@ PATH_DEFS = [
     ("B", "内容优化", "润色文字表达，红色标注+删除线对比版", "optimize-content"),
     ("C", "生成模板", "按类型生成一份 GB/T 9704 空白模板", "template"),
     ("D", "一键格式修复", "段落类型/编号拆分/首句加粗等常见问题快速修复", "fix-common"),
+    ("E", "样式学习", "从标准文档学习排版样式生成命名模板（style-learn）", "style-learn"),
 ]
 PATH_KEYS = [p[0] for p in PATH_DEFS]
 
@@ -76,14 +77,14 @@ def _ask_yes_no(question: str, default: bool = True) -> bool:
 
 
 def _ask_path() -> str:
-    """展示 A/B/C/D 菜单，返回路径键。"""
+    """展示 A/B/C/D/E 菜单，返回路径键。"""
     print("\n请选择要执行的操作：\n")
     for key, title, desc, _sub in PATH_DEFS:
         print(f"  {key}. {title} —— {desc}")
     print()
     while True:
         try:
-            raw = input("请输入路径（A/B/C/D，Enter 退出）: ").strip().upper()
+            raw = input("请输入路径（A/B/C/D/E，Enter 退出）: ").strip().upper()
         except EOFError:
             print("已退出向导。")
             raise SystemExit(0)
@@ -92,7 +93,7 @@ def _ask_path() -> str:
             raise SystemExit(0)
         if raw in PATH_KEYS:
             return raw
-        print("无效路径，请输入 A/B/C/D。", file=sys.stderr)
+        print("无效路径，请输入 A/B/C/D/E。", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -227,6 +228,11 @@ def _collect_params(path_key: str, answers: dict, interactive: bool) -> dict:
             answers, "input", "输入 .docx 路径", interactive,
             validator=lambda p: _file_exists(p) or print(f"  ⚠ 文件不存在: {p}", file=sys.stderr) or False)
         params["output"] = _get(answers, "output") or ""
+    elif path_key == "E":
+        params["input"] = _require(
+            answers, "input", "输入标准 .docx 路径", interactive,
+            validator=lambda p: _file_exists(p) or print(f"  ⚠ 文件不存在: {p}", file=sys.stderr) or False)
+        params["name"] = _get(answers, "name") or ""
     else:
         raise SystemExit(f"未知路径: {path_key}")
 
@@ -268,6 +274,10 @@ def _build_cmd(path_key: str, params: dict, apply: bool) -> list[str]:
         argv.append(params["input"])
         if params.get("output"):
             argv += ["-o", params["output"]]
+    elif path_key == "E":
+        argv.append(params["input"])
+        if params.get("name"):
+            argv += ["-n", params["name"]]
 
     return argv
 
@@ -353,7 +363,7 @@ def _non_interactive_plan(path_key: str, params: dict, apply: bool,
                           dry_run: bool) -> int:
     """非交互（--answers）执行路径；dry-run 只打印。"""
     argv = _build_cmd(path_key, params, apply)
-    if path_key == "C":
+    if path_key in ("C", "E"):
         return _run(argv, dry_run)
     return _confirm_and_run(argv, dry_run, interactive=False, apply=apply)
 
@@ -386,11 +396,11 @@ def cmd_wizard(args: argparse.Namespace) -> int:
     path_key = answers.get("path")
     if not path_key:
         if not interactive:
-            raise SystemExit("缺少必填参数 path（A/B/C/D）—— 请在 --answers JSON 中提供")
+            raise SystemExit("缺少必填参数 path（A/B/C/D/E）—— 请在 --answers JSON 中提供")
         path_key = _ask_path()
     path_key = str(path_key).strip().upper()
     if path_key not in PATH_KEYS:
-        raise SystemExit(f"无效 path: {path_key}（可选 A/B/C/D）")
+        raise SystemExit(f"无效 path: {path_key}（可选 A/B/C/D/E）")
 
     apply = bool(answers.get("apply", False))
 
@@ -411,8 +421,8 @@ def cmd_wizard(args: argparse.Namespace) -> int:
 
 def _interactive_flow_selected(path_key: str, params: dict) -> int:
     """交互模式已有 path/params 时的执行分支。"""
-    if path_key == "C":
-        # C 生成模板无修改风险，直接执行，不问确认
+    if path_key in ("C", "E"):
+        # C/E 无修改风险，直接执行，不问确认
         argv = _build_cmd(path_key, params, False)
         return _run(argv, dry_run=False)
     apply = _ask_yes_no("是否直接执行（跳过预览确认）？", default=False)
