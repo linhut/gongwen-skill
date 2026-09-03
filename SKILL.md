@@ -927,7 +927,7 @@ python -m gongwen fix-common 文件.docx -o 成品.docx
 | `review` | 生成公文审稿流转单（五/三角色） | `python -m gongwen review report -o 审稿单.docx` |
 | `handoff` | 跨会话交接（长任务收尾必写） | `python -m gongwen handoff --write` |
 | `check-update` | 版本自检（PyPI pip 包权威 + GitHub 备用，自动检测安装形态；GitHub 不可达时 DNS 诊断） | `python -m gongwen check-update` |
-| `font` | 公文标准字体管理（安装/检查/列出） | `python -m gongwen font install` |
+| `font` | 公文标准字体管理（安装/检查/列出；下载失败时自动安全 DNS 直连兜底） | `python -m gongwen font install` |
 
 ### 🩺 诊断与修复
 

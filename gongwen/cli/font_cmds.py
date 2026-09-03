@@ -35,7 +35,11 @@ def _get_fonts_dir() -> Path:
 
 
 def _download_font(ttf_file: str, dest: Path) -> bool:
-    """从 GitHub 下载字体文件到 dest，返回是否成功。"""
+    """从 GitHub 下载字体文件到 dest，返回是否成功。
+
+    常规下载失败（如 DNS 污染）时自动用安全 DNS（DoH）真实 IP + TLS SNI
+    直连兜底，用户零操作（证书校验不降级，仍针对真实域名）。
+    """
     import urllib.request
     import urllib.error
     from urllib.parse import quote
@@ -46,17 +50,24 @@ def _download_font(ttf_file: str, dest: Path) -> bool:
         req = urllib.request.Request(url, headers={"User-Agent": "gongwen-skill"})
         with urllib.request.urlopen(req, timeout=60) as resp:
             data = resp.read()
-        # SEC-V168-03 修复：完整性校验——字体文件应 >1MB
-        if len(data) < 1_000_000:
-            print(f"  ❌ 下载文件过小 ({len(data)} bytes)，可能不完整")
-            return False
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(data)
-        print(f"  📦 已下载: {dest} ({len(data) / 1024:.0f}KB)")
-        return True
     except Exception as e:
-        print(f"  ❌ 下载失败: {e}")
+        # DNS 污染兜底：常规下载失败时改用安全 DNS 真实 IP 直连
+        try:
+            print(f"  ⚠️  常规下载失败: {str(e)[:120]}")
+            print("  🔄 尝试安全 DNS（DoH）真实 IP 直连下载 ...")
+            from gongwen.cli import netcheck as gwnet
+            data = gwnet.download_with_doh_fallback(url, timeout=60)
+        except Exception as e2:
+            print(f"  ❌ 下载失败: {str(e2)[:120]}")
+            return False
+    # SEC-V168-03 修复：完整性校验——字体文件应 >1MB
+    if len(data) < 1_000_000:
+        print(f"  ❌ 下载文件过小 ({len(data)} bytes)，可能不完整")
         return False
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(data)
+    print(f"  📦 已下载: {dest} ({len(data) / 1024:.0f}KB)")
+    return True
 
 
 def _ensure_font_file(ttf_file: str, fonts_dir: Path) -> Path | None:

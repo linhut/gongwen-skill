@@ -188,18 +188,31 @@ def verify_output_fresh(output_path: Path, start_time: float, label: str = "输�
         return False
 
 
+def _parse_pypi_version(data: dict) -> str:
+    """从 PyPI JSON 响应提取版本号（自动补 v 前缀）。"""
+    version = data.get("info", {}).get("version", "")
+    if version and not version.startswith("v"):
+        version = "v" + version
+    return version
+
+
 def latest_version_from_pypi(timeout: int = 10) -> tuple[bool, str]:
-    """从 PyPI JSON API 查询最新发布版本。"""
+    """从 PyPI JSON API 查询最新发布版本。
+
+    DNS 污染兜底：常规请求失败时自动用安全 DNS（DoH）真实 IP + TLS SNI
+    直连重试（PyPI 域名也可能被污染），用户零操作。
+    """
     import urllib.request
     try:
         req = urllib.request.Request(PYPI_API, headers={"Accept": "application/json"})
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-        version = data.get("info", {}).get("version", "")
-        if version:
-            if not version.startswith("v"):
-                version = f"v{version}"
-            return True, version
-        return False, "PyPI API 返回无版本号"
+        return True, _parse_pypi_version(data)
     except Exception as e:
-        return False, str(e)[:120]
+        try:
+            from gongwen.cli import netcheck as gwnet
+            raw = gwnet.download_with_doh_fallback(PYPI_API, timeout=timeout)
+            data = json.loads(raw.decode("utf-8"))
+            return True, _parse_pypi_version(data)
+        except Exception as e2:
+            return False, str(e2 or e)[:120]

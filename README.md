@@ -637,12 +637,14 @@ Skill 定位为**工具层**，默认不依赖 LLM（确定性工作全自包含
 
 **原理**：安全 DNS（DoH，DNS over HTTPS）通过加密 HTTP 查询 DNS，避免中间设备篡改解析结果，可拿到域名的真实 IP。本工具内置阿里（dns.alidns.com）、腾讯（doh.pub / 1.12.12.12）等国内公共 DoH 端点，多端点自动降级；可通过环境变量 GONGWEN_DOH 覆盖为自定义端点（如自建的 DoH 服务）。
 
+**自动兜底（v2.8.0）**：`font install` 下载字体、`check-update` 查 PyPI 时若常规请求失败（疑似 DNS 污染），自动用 DoH 真实 IP + TLS SNI 直连重试——TLS 证书仍按真实域名校验，安全不降级，用户零操作。
+
 **处置建议**（按推荐度）：
 1. 若使用了代理工具（Clash/V2Ray 等）且系统解析命中 198.18.x Fake-IP，优先检查其 DNS 模式的 fake-ip-filter 是否漏掉 GitHub 域名（比改 hosts 更治本）
 2. 将诊断输出的 hosts 条目写入 C:\Windows\System32\drivers\etc\hosts（需管理员权限），git / 浏览器即可直连真实 IP
 3. 或使用国内镜像仓库克隆/更新（见下方「镜像仓库」）
 
-> 仅诊断不自动修改：本工具只输出建议，不写入 hosts、不自动直连（YAGNI）。DoH 查询经第三方公共 DNS 服务，仅诊断时发起少量查询，隐私敏感者可设置 GONGWEN_DOH 指向自有端点。
+> 诊断 + 自动兜底：本工具不写入 hosts、不修改系统配置；但 `font install` 下载字体、`check-update` 查询 PyPI 遇到 DNS 污染导致的失败时，会**自动用安全 DNS（DoH）真实 IP + TLS SNI 直连重试**（零操作，证书校验不降级）。DoH 查询经第三方公共 DNS 服务，仅在诊断/兜底失败时发起少量查询，隐私敏感者可设置 GONGWEN_DOH 指向自有端点。
 
 ## 📄 许可证与出处
 

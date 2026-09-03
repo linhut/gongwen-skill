@@ -7,20 +7,25 @@
 # Licensed under the MIT License. See the LICENSE file for details.
 #
 """
-gongwen.cli.netcheck -- DNS 污染诊断模块（安全 DNS / DoH）。
+gongwen.cli.netcheck -- DNS 污染诊断 + 自动直连兜底（安全 DNS / DoH）。
 
 背景：系统 DNS 常被污染（返回 198.18.0.0/15 等保留段 Fake-IP），
 导致 GitHub 等域名无法访问/超时。本模块通过 DoH（DNS over HTTPS）
 查询真实 IP，与系统解析对比，判定是否疑似 DNS 污染，
 并输出可直接粘贴的 hosts 条目建议。
 
-设计（v2.8.0 规格 docs/superpowers/specs/2026-09-03-dns-pollution-diagnosis-design.md）：
-  - 只做诊断建议，不修改 hosts、不自动直连
+诊断（v2.8.0 规格 docs/superpowers/specs/2026-09-03-dns-pollution-diagnosis-design.md）：
+  - 不修改 hosts；诊断结果仅供参考
   - 内置国内公共 DoH（阿里/腾讯），支持环境变量 GONGWEN_DOH 自定义
   - 所有网络操作超时短、可完全离线（--offline 时调用方不调用本模块）
+
+自动直连兜底（download_with_doh_fallback）：
+  - 常规下载失败（疑似 DNS 污染）时，自动用 DoH 真实 IP + TLS SNI 直连
+  - 证书校验保持针对真实域名（server_hostname），安全不降级，用户零操作
 """
 from __future__ import annotations
 
+import http.client
 import ipaddress
 import json
 import logging
@@ -262,3 +267,96 @@ def summarize(entries: list) -> dict:
         "detail": detail,
         "hosts_suggestions": format_hosts(entries),
     }
+
+
+class _DoHHTTPSConnection(http.client.HTTPSConnection):
+    """用 DoH 真实 IP 直连的 HTTPS 连接（TLS SNI 保持真实域名）。
+
+    证书校验仍针对真实域名（server_hostname=host），安全不降级：
+    连接的目标 IP 来自 DoH 真实解析，但 TLS 握手/证书校验完全等价于
+    常规 HTTPS 请求，只是绕过了被污染的系统 DNS。
+    """
+
+    def __init__(self, host, ip, timeout=None):
+        super().__init__(host, timeout=timeout)
+        self._doh_ip = ip
+
+    def connect(self):
+        """连接 DoH 解析出的真实 IP，TLS 握手仍使用真实域名（SNI）。"""
+        sock = socket.create_connection((self._doh_ip, self.port), self.timeout)
+        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
+
+
+def _http_get_via_ip(host, ip, path, timeout, headers):
+    """通过指定 IP 发起 HTTPS GET（SNI/证书校验针对 host），返回 (status, data, location)。"""
+    conn = _DoHHTTPSConnection(host, ip, timeout=timeout)
+    try:
+        conn.request("GET", path, headers=headers)
+        resp = conn.getresponse()
+        return resp.status, resp.read(), resp.getheader("Location")
+    finally:
+        conn.close()
+
+
+def download_with_doh_fallback(url, timeout=30, headers=None, max_redirects=5):
+    """下载 URL 内容；常规下载失败时自动用 DoH 真实 IP + TLS SNI 直连兜底。
+
+    Args:
+        url: http(s) 下载地址。
+        timeout: 单次请求超时（秒），默认 30。
+        headers: 附加请求头（dict）；缺省用 gongwen-skill UA。
+        max_redirects: 最大跟随重定向次数（兜底路径手动处理 3xx）。
+
+    Returns:
+        bytes: 响应体。
+
+    Raises:
+        Exception: 常规与 DoH 兜底均失败时抛出（由调用方决定提示）。
+
+    Note:
+        - 常规 urllib 请求自动跟随重定向；兜底路径手动跟随并重新解析新域名。
+        - 仅 https 参与 DoH 兜底（http 无 TLS，无 SNI 语义）。
+        - 证书校验不降级：wrap_socket 时 server_hostname=host，等价常规 HTTPS。
+    """
+    if headers is None:
+        headers = {"User-Agent": "gongwen-skill"}
+    current = url
+    for _ in range(max_redirects + 1):
+        parsed = urllib.parse.urlsplit(current)
+        host = parsed.hostname or ""
+        is_https = parsed.scheme == "https"
+        try:
+            req = urllib.request.Request(current, headers=headers)
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.read()
+        except Exception as normal_err:
+            if not is_https:
+                raise
+            ips = resolve_via_doh(host)
+            last_err = normal_err
+            redirected = False
+            for ip in ips:
+                try:
+                    status, data, location = _http_get_via_ip(
+                        host, ip, parsed.path or "/", timeout, headers,
+                    )
+                except Exception as ip_err:
+                    last_err = ip_err
+                    continue
+                if status in (301, 302, 303, 307, 308) and location:
+                    current = urllib.parse.urljoin(current, location)
+                    redirected = True
+                    break
+                if 200 <= status < 300:
+                    return data
+                if status >= 400:
+                    # 4xx/5xx 一般为真实错误，但不排除中间设备干扰（如 400），
+                    # 已尝试下一 IP；全部失败后抛出最后错误。
+                    last_err = OSError("HTTP " + str(status) + " via DoH IP " + ip)
+                    continue
+                last_err = OSError("HTTP " + str(status) + " via DoH IP " + ip)
+                continue
+            if redirected:
+                continue
+            raise last_err
+    raise OSError("下载重定向次数超限: " + url)
