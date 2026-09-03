@@ -655,7 +655,7 @@ def cmd_doctor(args):
         return 0 if report["summary"]["failed"] == 0 else 1
 
     s = report["summary"]
-    print(f"🔍 公文全流程处理工具 健康诊断")
+    print("🔍 公文全流程处理工具 健康诊断")
     print(f"   项目根目录: {report['project_root']}")
     print(f"   诊断时间: {report['timestamp']}")
     print(f"   耗时: {report['elapsed_seconds']}s")
@@ -675,10 +675,10 @@ def cmd_doctor(args):
     print(f"  总计: {s['total']} | OK {s['ok']} | FAIL {s['failed']} | WARN {s['warning']}")
 
     if s["failed"] > 0:
-        print(f"")
+        print("")
         print(f"发现 {s['failed']} 个问题，运行以下命令修复：")
-        print(f"   python -m gongwen repair")
-        print(f"   或按上述提示逐个修复")
+        print("   python -m gongwen repair")
+        print("   或按上述提示逐个修复")
 
     return 0 if s["failed"] == 0 else 1
 
@@ -687,7 +687,7 @@ def cmd_repair(args):
     """修复常见问题：自动修复 + 提示修复。"""
     import subprocess as _sp
 
-    print(f"公文全流程处理工具 修复工具")
+    print("公文全流程处理工具 修复工具")
     print(f"{'-' * 60}")
 
     fixes = 0
@@ -710,7 +710,7 @@ def cmd_repair(args):
 
     if missing_deps:
         print(f"   缺失: {', '.join(missing_deps)}")
-        print(f"   运行: pip install -r requirements.txt")
+        print("   运行: pip install -r requirements.txt")
         try:
             r = _sp.run(
                 [sys.executable, "-m", "pip", "install", "-r",
@@ -718,14 +718,14 @@ def cmd_repair(args):
                 capture_output=True, text=True, timeout=120,
             )
             if r.returncode == 0:
-                print(f"   依赖安装成功")
+                print("   依赖安装成功")
                 fixes += 1
             else:
                 print(f"   安装失败: {r.stderr.strip()[:200]}")
         except Exception as e:
             print(f"   安装失败: {e}")
     else:
-        print(f"   所有依赖已安装")
+        print("   所有依赖已安装")
 
     # 2. 修复字体
     total += 1
@@ -743,7 +743,7 @@ def cmd_repair(args):
 
     if missing_fonts:
         print(f"   缺失字体: {', '.join(missing_fonts)}")
-        print(f"   运行: python -m gongwen font install")
+        print("   运行: python -m gongwen font install")
         try:
             from gongwen.cli.font_cmds import cmd_font as _install_fonts
 
@@ -752,14 +752,14 @@ def cmd_repair(args):
 
             ret = _install_fonts(_Args())
             if ret == 0:
-                print(f"   字体安装成功")
+                print("   字体安装成功")
                 fixes += 1
             else:
-                print(f"   字体安装可能未完全成功")
+                print("   字体安装可能未完全成功")
         except Exception as e:
             print(f"   安装失败: {e}")
     else:
-        print(f"   所有字体可用")
+        print("   所有字体可用")
 
     # 3. 修复 SKILL.md 同步
     total += 1
@@ -773,7 +773,7 @@ def cmd_repair(args):
     ]
 
     if not root_skill.exists():
-        print(f"   根目录 SKILL.md 不存在，无法同步")
+        print("   根目录 SKILL.md 不存在，无法同步")
     else:
         synced = 0
         for target in dsh_targets:
@@ -784,11 +784,11 @@ def cmd_repair(args):
         if synced > 0:
             fixes += 1
         else:
-            print(f"   无 .dsh/skills/ 目录（非 DSH 环境，跳过）")
+            print("   无 .dsh/skills/ 目录（非 DSH 环境，跳过）")
 
     # 完成
     print(f"{'-' * 60}")
     print(f"修复完成: {fixes}/{total} 项已修复")
     if fixes > 0:
-        print(f"建议重新运行 python -m gongwen doctor 确认修复结果")
+        print("建议重新运行 python -m gongwen doctor 确认修复结果")
     return 0
