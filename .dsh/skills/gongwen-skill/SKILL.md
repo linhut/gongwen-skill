@@ -874,7 +874,7 @@ python -m gongwen fix-common 文件.docx -o 成品.docx
 
 ---
 
-## 附录：全部命令速查（26 个，按用途分组）
+## 附录：全部命令速查（29 个，按用途分组）
 
 > Agent 遇到用户需求时，先在此表定位对应命令；命令用法不明确时运行 `python -m gongwen <命令> --help` 查看完整参数。
 
