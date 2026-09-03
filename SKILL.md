@@ -44,6 +44,8 @@ metadata:
 | **dsh** | 加载 SKILL.md + cordis 插件，可执行命令、有 Web UI | 加载 skill 后调用 CLI 命令，或通过 DSH 插件 API 调用；配置面板可调整排版参数 |
 | **dialogue-only** | 纯对话，**不能执行命令** | 不应直接执行命令，应引导用户手动操作；同时可读取项目内的文字性资源库（`prompts/style-prompts.md`、`prompts/usage-prompts.md`、`rules/official/*.yaml`、`SKILL.md` 等）作为公文写作指导的知识库，在对话中提供用词用语、写作规范、风格指引等专业建议；参考 README.md 中的「纯对话 LLM 使用指引」
 
+> **格式兼容性**：工具链基于 OOXML（`.docx`），**不支持旧版 `.doc`（OLE2/WPS 二进制格式）**。用户提供 `.doc` 文件时，Agent 应先用 WPS/Word「另存为 .docx」；本机装有 WPS 时可用 COM 转换：`KWPS.Application` → `Documents.Open(src)` → `SaveAs(dst, 12)`（WPS 枚举 12 = OOXML），再走 `check/optimize/optimize-content` 全流程。
+
 ### 二、聚合禁令（违反任一条即为不合格执行）
 
 ```
@@ -906,9 +908,9 @@ python -m gongwen fix-common 文件.docx -o 成品.docx
 
 | 命令 | 用途 | 最小用法 |
 |------|------|---------|
-| `optimize` | 检查+修复+生成（默认预览，--apply 执行） | `python -m gongwen optimize 公文.docx -o 成品.docx --apply` |
+| `optimize` | 检查+修复+生成（默认预览，--apply 执行；`--verify` 单命令闭环自动复查输出、P0 存在时退出码非 0；`--json` 结构化输出） | `python -m gongwen optimize 公文.docx -o 成品.docx --apply --verify` |
 | `fix-common` | 一键修复常见格式问题（路径 D） | `python -m gongwen fix-common 公文.docx -o 成品.docx` |
-| `optimize-content` | 内容优化：修订+批注对比版（路径 B） | `python -m gongwen optimize-content 原文.docx --changes 修订.json --apply` |
+| `optimize-content` | 内容优化：修订+批注对比版（路径 B；`--precheck` 预检 changes 与原文一致性、`--preset quick/full/review` 参数收敛） | `python -m gongwen optimize-content 原文.docx --changes 修订.json --apply --preset full` |
 | `full-review` | 完整审校：格式修复→内容优化→批注，一条命令 | `python -m gongwen full-review 公文.docx -o 成品.docx` |
 | `bold-first` | 正文段落首句加粗（公文规范） | `python -m gongwen bold-first 公文.docx -o 成品.docx` |
 

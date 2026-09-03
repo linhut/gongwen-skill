@@ -20,6 +20,36 @@ from engine.utils.logger import logger
 # Rule source directories
 OFFICIAL_RULES_DIR = RULES_DIR  # rules/official（只读，捆绑在安装目录）
 
+# ---- O5：进程级规则缓存（跨命令/跨 RuleEngine 实例共享，mtime 自动失效） ----
+# 缓存键：doc_type；缓存值：(最新规则文件 mtime, 合并后规则字典)
+# 注意：返回时必须 deepcopy——调用方（apply_config_overrides / _extract_content_rules /
+# apply_fixes 等）会就地修改返回的规则字典，直接返回缓存对象会污染缓存。
+_RULES_CACHE: dict[str, tuple[float, dict]] = {}
+
+
+def _rules_mtime() -> float:
+    """扫描三层规则目录所有 yaml 的最新 mtime（缓存失效依据）。
+
+    与 RuleEngine.load_rules 的失效策略一致：official + custom + user 三层。
+    """
+    newest = 0.0
+    for d in (OFFICIAL_RULES_DIR, CUSTOM_RULES_DIR, USER_RULES_DIR):
+        try:
+            for p in d.glob("*.yaml"):
+                try:
+                    if p.stat().st_size > 0:
+                        newest = max(newest, p.stat().st_mtime)
+                except OSError:
+                    continue
+        except Exception:
+            continue
+    return newest
+
+
+def clear_rules_cache() -> None:
+    """清空进程级规则缓存（用户/模板规则变更后立即生效时调用）。"""
+    _RULES_CACHE.clear()
+
 
 def _ensure_dirs() -> None:
     CUSTOM_RULES_DIR.mkdir(parents=True, exist_ok=True)
@@ -52,10 +82,10 @@ def list_rule_files(source: str = "all") -> list[dict]:
     return result
 
 
-def load_rules_merged(doc_type: str = "") -> dict[str, Any]:
+def _load_merged_uncached(doc_type: str = "") -> dict[str, Any]:
     """
     Load and merge rules for a document type with priority:
-    official < custom < user
+    official < custom < user（无缓存版本，供 load_rules_merged 填充缓存）。
     """
     _ensure_dirs()
     merged: dict[str, Any] = {}
@@ -83,6 +113,24 @@ def load_rules_merged(doc_type: str = "") -> dict[str, Any]:
     # 配置段 → 规则期望值同步：使模板/用户规则覆盖配置段后 check/optimize 自动跟随
     _sync_style_expected(merged)
     return merged
+
+
+def load_rules_merged(doc_type: str = "") -> dict[str, Any]:
+    """
+    Load and merge rules for a document type with priority:
+    official < custom < user.
+
+    O5：进程级缓存——同一 doc_type 的重复加载直接命中（YAML 解析 + 深合并
+    只执行一次）；规则文件 mtime 变化时自动失效重载。返回深拷贝，
+    调用方就地修改（apply_config_overrides / 规则提取等）不会污染缓存。
+    """
+    _ensure_dirs()
+    newest = _rules_mtime()
+    cached = _RULES_CACHE.get(doc_type)
+    if cached is None or cached[0] < newest:
+        merged = _load_merged_uncached(doc_type)
+        _RULES_CACHE[doc_type] = (newest, merged)
+    return copy.deepcopy(_RULES_CACHE[doc_type][1])
 
 
 def _load_yaml(path: Path) -> dict:

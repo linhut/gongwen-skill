@@ -39,8 +39,8 @@ _logger = logging.getLogger(__name__)
 
 
 def _echo_progress(args, step: int, total: int, label: str, detail: str = "") -> None:
-    """分步进度回显（--quiet 时抑制中间步骤）。"""
-    if getattr(args, 'quiet', False):
+    """分步进度回显（--quiet / --json 时抑制中间步骤，保证 --json stdout 纯净）。"""
+    if getattr(args, 'quiet', False) or getattr(args, 'json', False):
         return
     mark = "✅" if detail else "…"
     line = f"  [{step}/{total}] {label} ………………… {mark}"
@@ -57,6 +57,79 @@ class _SimplePara:
         self.text = text
 
 
+def _precheck_norm(text: str) -> str:
+    """预检文本归一化（与 engine/optimizer._normalize_text 语义一致）。"""
+    text = (text or "").strip()
+    text = text.replace('\u3000', ' ')
+    text = text.replace('\xa0', ' ')
+    import re as _re
+    text = _re.sub(r'\s+', ' ', text)
+    return text
+
+
+def _precheck_changes(input_path: str, changes: list[dict], changes_src: str = "") -> dict:
+    """O7：内置 changes 预检——逐段比对 changes.json 的 original_text 与原文段落。
+
+    匹配判定与 engine/optimizer.create_diff_document 一致：
+    精确子串 → 归一化子串 → 去空格子串，三级递进。
+
+    返回结构化结果：{total, matched, mismatched, out_of_range, items:[...]}。
+    """
+    import difflib as _dfl
+    from engine.core.document.parser import parse_docx
+
+    model = parse_docx(input_path)
+    paras = [p.text for p in model.paragraphs]
+    n = len(paras)
+    items: list[dict] = []
+    matched = mismatched = out_of_range = 0
+
+    for i, c in enumerate(changes):
+        pi = c.get("paragraph_index", -1)
+        orig = c.get("original_text", "") or ""
+        if pi is None or not isinstance(pi, int) or pi < 0 or pi >= n:
+            out_of_range += 1
+            items.append({
+                "change_index": i, "paragraph_index": pi, "status": "out_of_range",
+                "original_text": orig, "para_text": "", "similarity": None,
+                "detail": f"段落索引 {pi} 越界（原文共 {n} 段）",
+            })
+            continue
+        para_text = paras[pi] or ""
+        norm_orig = _precheck_norm(orig)
+        norm_para = _precheck_norm(para_text)
+        no_space_orig = orig.replace(' ', '')
+        no_space_para = para_text.replace(' ', '')
+        if (orig and orig in para_text) \
+                or (norm_orig and norm_orig in norm_para) \
+                or (no_space_orig and no_space_orig in no_space_para):
+            matched += 1
+            items.append({
+                "change_index": i, "paragraph_index": pi, "status": "ok",
+                "original_text": orig, "para_text": para_text, "similarity": 1.0,
+            })
+        else:
+            mismatched += 1
+            ratio = _dfl.SequenceMatcher(None, orig, para_text).ratio()
+            items.append({
+                "change_index": i, "paragraph_index": pi, "status": "mismatch",
+                "original_text": orig, "para_text": para_text,
+                "similarity": round(ratio, 4),
+                "detail": f"相似度 {ratio:.1%}：changes 的 original_text 与第 {pi} 段文本不匹配",
+            })
+
+    return {
+        "command": "optimize-content-precheck",
+        "input": input_path,
+        "changes": changes_src,
+        "total": len(changes),
+        "matched": matched,
+        "mismatched": mismatched,
+        "out_of_range": out_of_range,
+        "items": items,
+    }
+
+
 def cmd_optimize_content(args):
     """内容优化差异对比：原文灰色+删除线，修改后红色高亮，附修改说明。
 
@@ -67,6 +140,22 @@ def cmd_optimize_content(args):
     import time
     _t_start = time.time()
     from optimizer import load_changes_from_json, create_diff_document
+
+    # O6：--preset 预设组合映射（显式参数优先；full=完整默认无需映射）
+    _preset = getattr(args, 'preset', '')
+    if _preset == 'quick':
+        if not hasattr(args, 'reviewers'):
+            args.reviewers = 3
+        args.no_style_enhance = True
+    elif _preset == 'review':
+        if not hasattr(args, 'reviewers'):
+            args.reviewers = 6
+        args.show_confirmed = True
+    if _preset and not getattr(args, 'quiet', False) and not getattr(args, 'json', False):
+        _desc = {"quick": "精简快速（3角色+跳过风格增强）",
+                 "full": "完整默认（6角色+风格增强+事实核验）",
+                 "review": "完整审稿（6角色+已确认实体批注）"}[_preset]
+        print(f"🎛️ preset {_preset}: {_desc}")
 
     # P0-4 修复：_m 在函数开头显式初始化（此前仅事实核验分支内赋值，
     # --output-tasks 模式到达 'if _m is None' 时触发 UnboundLocalError）
@@ -297,6 +386,31 @@ def cmd_optimize_content(args):
         before = len(changes)
         changes = [c for c in changes if c.get('paragraph_index', -1) in indices]
         print(f"📌 --paragraphs {args.paragraphs}: 过滤 {before}→{len(changes)} 处变更")
+
+    # O7：--precheck 预检——逐段比对 changes 与原文，输出不匹配清单与相似度诊断
+    if getattr(args, 'precheck', False):
+        _pc = _precheck_changes(args.input, changes, getattr(args, 'changes', ''))
+        if getattr(args, 'json', False):
+            print(json.dumps(_pc, ensure_ascii=False, indent=2))
+        else:
+            print(f"🔍 changes 预检（--precheck）: 共 {_pc['total']} 处变更")
+            print(f"  ✅ 完全匹配: {_pc['matched']} 处")
+            print(f"  ❌ 不匹配: {_pc['mismatched']} 处")
+            print(f"  ⚠️ 索引越界: {_pc['out_of_range']} 处")
+            for it in _pc['items']:
+                if it['status'] == 'ok':
+                    continue
+                print(f"  [{it['status']}] #{it['change_index']} pi={it['paragraph_index']} "
+                      f"相似度 {it['similarity']}")
+                print(f"      JSON: {it['original_text'][:60]}...")
+                if it['para_text']:
+                    print(f"      DOCX: {it['para_text'][:60]}...")
+                print(f"      {it['detail']}")
+            if _pc['mismatched'] or _pc['out_of_range']:
+                print("  建议：修正 changes.json 的 original_text（需与原文段落文本完全一致），"
+                      "或调整 paragraph_index 后重试")
+        # 有未匹配/越界项时返回 1（供 Agent 感知）；全部匹配返回 0
+        return 1 if (_pc['mismatched'] + _pc['out_of_range']) > 0 else 0
 
     # 预览：列出变更摘要
     print(f"📄 文件: {Path(args.input).name}")

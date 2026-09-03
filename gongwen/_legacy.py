@@ -955,11 +955,54 @@ FONTS_DOWNLOAD_BASE = "https://raw.githubusercontent.com/linhut/document-ai-assi
 #  参数解析
 # ---------------------------------------------------------------------------
 
+# O8：命令分组（--help 按场景展示；分组覆盖全部子命令，未列出的自动归入「其他」）
+COMMAND_GROUPS = [
+    ("🏗️ 生成", ["list-types", "template", "generate", "md2docx", "draft", "style-learn", "style-list"]),
+    ("🔧 格式", ["parse", "check", "optimize", "fix-common", "bold-first"]),
+    ("✍️ 内容", ["optimize-content", "review", "handoff", "wizard"]),
+    ("🔎 审校", ["full-review", "audit"]),
+    ("🎨 版式", ["header", "footer", "pagenum", "font", "table-signs"]),
+    ("⚙️ 运维", ["rule-export", "rule-list", "rule-import", "check-update", "doctor", "repair"]),
+]
+
+
+class _GroupedHelpFormatter(argparse.RawDescriptionHelpFormatter):
+    """O8：--help 按 COMMAND_GROUPS 分组展示子命令（保留 usage/options/epilog 原样）。"""
+
+    def _format_action(self, action):
+        if not isinstance(action, argparse._SubParsersAction):
+            return super()._format_action(action)
+        # 子命令分组渲染：_choices_actions 保存 dest（命令名）+ help（add_parser 的 help）
+        pseudo = {ca.dest: ca for ca in getattr(action, "_choices_actions", [])}
+        names = list(pseudo.keys())
+        if not names:
+            return super()._format_action(action)
+        col = max((len(n) for n in names), default=10) + 2
+        lines = []
+        grouped = set()
+        for group_title, cmds in COMMAND_GROUPS:
+            valid = [c for c in cmds if c in pseudo]
+            if not valid:
+                continue
+            grouped.update(valid)
+            lines.append(f"{group_title}:")
+            for n in valid:
+                h = pseudo[n].help or ""
+                lines.append(f"  {n:<{col}}{h}")
+        others = [n for n in names if n not in grouped]
+        if others:
+            lines.append("📌 其他:")
+            for n in others:
+                h = pseudo[n].help or ""
+                lines.append(f"  {n:<{col}}{h}")
+        return "\n".join(lines)
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="gongwen",
         description="公文全流程处理工具（GB/T 9704）—— 格式检查/内容优化/模板生成/版式注入  (c) 2026 Jose AI  https://www.linhut.cn",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        formatter_class=_GroupedHelpFormatter,
         epilog=__doc__,
     )
     parser.add_argument("--version", action="version", version=f"公文全流程处理工具 v{__version__}",
@@ -1088,9 +1131,11 @@ def main():
                    help="批注模式：将优化建议以 Word 原生批注写入（可审阅→接受/拒绝），而非行内标记")
     p.add_argument("--tracked-change", action="store_true",
                    help="修订追踪模式：将修改以 Word 原生修订标记（ins/del）写入，可在审阅面板逐条接受/拒绝")
+    p.add_argument("--preset", default="", choices=["quick", "full", "review"],
+                   help="O6：预设组合——quick 精简快速（3角色+跳过风格增强）/ full 完整默认（6角色+风格增强+事实核验）/ review 完整审稿（6角色+已确认实体批注）；显式参数优先于预设")
     p.add_argument("--mode", default="tracked", choices=["inline", "tracked"],
                    help="输出模式：tracked 修订+批注（默认，Word 审阅面板逐条接受/拒绝，修改说明写入批注）；inline 行内标记（显式降级选择）")
-    p.add_argument("--reviewers", type=int, default=6, choices=[3, 5, 6],
+    p.add_argument("--reviewers", type=int, default=argparse.SUPPRESS, choices=[3, 5, 6],
                    help="审稿角色数：6 完整版（默认，含事实核验员）/ 5 完整版（历史兼容，同6）/ 3 精简版，意见作为独立批注按审阅者写入")
     p.add_argument("--background", nargs="*", default=None,
                    help="背景资料路径（事实核验用，支持多个）：.docx / .pdf / .md / .txt / URL，与 --mode tracked 配合对存疑人事信息生成批注提醒")
@@ -1112,6 +1157,10 @@ def main():
     p.add_argument("--no-style-enhance", action="store_true",
                    help="V3：禁用风格增强步骤（默认启用）")
     p.add_argument("--quiet", action="store_true", help="安静模式：仅输出最终结果，不显示分步进度")
+    p.add_argument("--precheck", action="store_true",
+                   help="O7：预检模式——逐段比对 changes.json 与原文，输出不匹配清单和相似度诊断（不生成文档）")
+    p.add_argument("--json", action="store_true",
+                   help="JSON 输出（与 --precheck 配合输出结构化预检结果）")
     # P1-8 修复：移除从未使用的 --verbose 参数（cmd 函数内无任何引用）
     p.set_defaults(func=cmd_optimize_content)
 

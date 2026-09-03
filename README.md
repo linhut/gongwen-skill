@@ -32,8 +32,8 @@ Licensed under the MIT License. See the LICENSE file for details.
 | 🏗️ 模板生成 | `template` | 按类型生成 GB/T 9704 标准空白模板 |
 | 🔍 解析 | `parse` | `.docx` → 结构化 DocumentModel |
 | ✅ 格式检查 | `check` | 按国标检查，分级 P0/P1/P2（只读） |
-| 🔧 格式修复 | `optimize` | 自动修复字体/字号/行距/页边距，输出合规文档 |
-| ✍️ **内容优化** | **`optimize-content`** | 内容润色：默认 **Word 原生修订+批注**（审阅面板逐条接受/拒绝），可选行内差异对比版 |
+| 🔧 格式修复 | `optimize` | 自动修复字体/字号/行距/页边距，输出合规文档；`--verify` 单命令闭环自动复查、P0 存在时退出码非 0；`--json` 结构化输出 |
+| ✍️ **内容优化** | **`optimize-content`** | 内容润色：默认 **Word 原生修订+批注**（审阅面板逐条接受/拒绝），可选行内差异对比版；`--precheck` 预检 changes 与原文一致性、`--preset quick/full/review` 参数收敛 |
 | 📝 草稿转公文 | `md2docx` | Markdown 文本直接转为格式化 `.docx`（支持 Front Matter） |
 | 🚀 一站式生成 | `draft` | Markdown 草稿 → 国标成品 + 自动验证（路径 C 四步合一） |
 | 📄 模型生成 | `generate` | 从 JSON 模型生成 `.docx` |
@@ -131,8 +131,8 @@ python -m gongwen template notice -o 通知模板.docx
 # 检查公文格式（只读）
 python -m gongwen check 公文.docx -t notice --json
 
-# 自动修复格式（--apply 确认执行，默认预览）
-python -m gongwen optimize 公文.docx -o 成品.docx -t notice --apply
+# 自动修复格式（--apply 确认执行，默认预览）；--verify 生成后自动复查，P0 存在时退出码非 0
+python -m gongwen optimize 公文.docx -o 成品.docx -t notice --apply --verify
 
 # 一步到位：检查 + 修复 + 版头/版记/页码全注入（--layout 指向 JSON 配置）
 python -m gongwen optimize 公文.docx -o 成品.docx --layout 版式.json
@@ -145,6 +145,12 @@ python -m gongwen draft 草稿.md -o 正式公文.docx -t report --signer "XX单
 
 # 内容优化（默认 tracked 模式：Word 原生修订+批注，审阅面板逐条接受/拒绝）
 python -m gongwen optimize-content 原文.docx --changes 修订内容.json --apply --mode tracked -t news
+
+# 预检 changes 与原文一致性（不生成文档，输出不匹配清单+相似度诊断；不匹配时退出码 1）
+python -m gongwen optimize-content 原文.docx --changes 修订内容.json --precheck
+
+# 预设组合：quick 精简快速 / full 完整默认 / review 完整审稿（显式参数优先）
+python -m gongwen optimize-content 原文.docx --changes 修订内容.json --apply --preset full
 
 # 注入版头（发文机关标志 + 发文字号 + 签发人 + 红色反线）
 python -m gongwen header 公文.docx -o 红头公文.docx --org-name "XX单位" --doc-number "〔2026〕1号"
