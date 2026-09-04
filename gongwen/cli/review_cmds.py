@@ -32,74 +32,107 @@ def cmd_full_review(args):
     """完整审校流程：格式修复（路径A）→ 内容优化（路径B）→ 批注输出。
 
     --json：输出结构化结果（Agent 可机器解析）。
+    O9 重构：内部使用 Pipeline 编排层（一次解析、多次操作、一次生成）。
     """
-    from engine.core.document.parser import parse_docx
-    from engine.core.document.generator import generate_docx
-    from engine.core.rules.engine import RuleEngine
-    from optimizer import load_changes_from_json
-    from engine.core.document.annotator import GongwenAnnotator, CommentSuggestion
+    from pathlib import Path
+    from engine.core.pipeline import Pipeline, PipelineContext
 
     is_json = bool(getattr(args, "json", False))
     input_path = Path(args.input)
-    # P1-1 修复：统一传 None
     doc_type = _detect_doc_type(input_path, getattr(args, 'doc_type', None))[0]
 
-    # 1. 路径 A：格式修复
-    if not is_json:
-        print(f"🔧 步骤1/3 格式修复（路径 A，类型 {doc_type}）...")
-    model = parse_docx(str(input_path))
-    engine = RuleEngine()
-    issues, fixed = engine.check_and_fix(model, doc_type)
-    n_fixed = len(issues)
-    if not is_json:
-        print(f"  ✓ 格式修复完成，修复 {n_fixed} 项")
+    ctx = PipelineContext(
+        input_path=input_path,
+        doc_type=doc_type,
+        args=args,
+        is_json=is_json,
+        # 保留原始字符串（不做 Path 规范化），避免 Windows 下正斜杠->反斜杠
+        # 改变 JSON 输出（O9 行为一致性：与重构前逐字节相同）
+        output=args.output,
+    )
+    pipe = Pipeline("full-review")
+    pipe.add_stage("fix_format", _full_review_stage_fix_format)
+    pipe.add_stage("load_changes", _full_review_stage_load_changes)
+    pipe.add_stage("inject_comments", _full_review_stage_inject_comments)
+    ctx = pipe.run(ctx)
 
-    # 2. 路径 B：内容优化（加载变更）
-    changes = load_changes_from_json(args.changes) if args.changes else []
-    # B37 修复：cmd_full_review 路径补齐 P5 schema 校验 + P4 零修改过滤（与其他路径一致）
-    changes = _validate_changes_schema(changes, source=args.changes)
-    changes = [c for c in changes
-               if c.get("optimized_text", "").strip() != c.get("original_text", "").strip()]
-    if not is_json:
-        print(f"🔧 步骤2/3 内容优化（路径 B，{len(changes)} 处变更）...")
-
-    # 3. 批注输出（中间稿用内存 BytesIO，避免落盘 I/O）
-    import io
-    buf = io.BytesIO()
-    generate_docx(fixed, buf)  # 内存生成中间稿
-
-    out_name = args.output or input_path.parent / _build_output_name(input_path, "B", "审校")
-    suggestions = []
-    for c in changes:
-        suggestions.append(CommentSuggestion(
-            para_index=c.get("paragraph_index", 0),
-            start_offset=0,
-            end_offset=len(c.get("original_text", "")),
-            comment_text=f"建议修改：{c.get('optimized_text', '')}｜{c.get('reason', '')}",
-            category=c.get("style", "内容优化"),
-        ))
-    ann = GongwenAnnotator()
-    buf.seek(0)
-    result = ann.inject_comments(buf, suggestions, out_name)
-
-    # FIX-V153-01：0 处批注时直接通过（无变更 → 无 comments.xml 属正常，不应误报失败）
-    ok = True if len(suggestions) == 0 else ann.verify_comments(result)
+    ok = ctx.get("verified", True)
     if is_json:
         import json as _json
         print(_json.dumps({
             "command": "full-review",
             "input": str(input_path),
-            "output": str(out_name),
+            "output": str(ctx.get("out_name")),
             "doc_type": doc_type,
-            "fixed_issues": n_fixed,
-            "comments": len(suggestions),
+            "fixed_issues": ctx.get("fixed_issues", 0),
+            "comments": ctx.get("comments", 0),
             "verified": bool(ok),
         }, ensure_ascii=False, indent=2))
     else:
-        print(f"✅ 完整审校完成: {out_name}")
-        print(f"  格式修复 {n_fixed} 项 + 批注 {len(suggestions)} 处（可审阅→接受/拒绝）")
+        print(f"✅ 完整审校完成: {ctx.get('out_name')}")
+        print(f"  格式修复 {ctx.get('fixed_issues', 0)} 项 + 批注 {ctx.get('comments', 0)} 处（可审阅→接受/拒绝）")
         print(f"  批注完整性验证: {'通过' if ok else '失败'}")
     return 0 if ok else 1
+
+
+def _full_review_stage_fix_format(ctx):
+    """O9 阶段1：路径 A —— 解析 + 格式修复（model 全程携带 source_path）。"""
+    from engine.core.document.parser import parse_docx
+    from engine.core.rules.engine import RuleEngine
+
+    if not ctx.is_json:
+        print(f"🔧 步骤1/3 格式修复（路径 A，类型 {ctx.doc_type}）...")
+    model = parse_docx(str(ctx.input_path))
+    engine = RuleEngine()
+    issues, fixed = engine.check_and_fix(model, ctx.doc_type)
+    ctx.model = fixed
+    ctx.set("fixed_issues", len(issues))
+    if not ctx.is_json:
+        print(f"  ✓ 格式修复完成，修复 {len(issues)} 项")
+
+
+def _full_review_stage_load_changes(ctx):
+    """O9 阶段2：路径 B —— 加载变更 + schema 校验 + 零修改过滤。"""
+    from optimizer import load_changes_from_json
+
+    changes = load_changes_from_json(ctx.args.changes) if ctx.args.changes else []
+    changes = _validate_changes_schema(changes, source=ctx.args.changes)
+    changes = [c for c in changes
+               if c.get("optimized_text", "").strip() != c.get("original_text", "").strip()]
+    ctx.changes = changes
+    if not ctx.is_json:
+        print(f"🔧 步骤2/3 内容优化（路径 B，{len(changes)} 处变更）...")
+
+
+def _full_review_stage_inject_comments(ctx):
+    """O9 阶段3：一次生成中间稿 + 注入批注 + 验证（source_path 由 ctx.model 携带）。"""
+    import io
+    from engine.core.document.generator import generate_docx
+    from engine.core.document.annotator import GongwenAnnotator, CommentSuggestion
+
+    buf = io.BytesIO()
+    generate_docx(ctx.model, buf)  # 内存生成中间稿
+
+    out_name = ctx.output or ctx.input_path.parent / _build_output_name(ctx.input_path, "B", "审校")
+    suggestions = [
+        CommentSuggestion(
+            para_index=c.get("paragraph_index", 0),
+            start_offset=0,
+            end_offset=len(c.get("original_text", "")),
+            comment_text=f"建议修改：{c.get('optimized_text', '')}｜{c.get('reason', '')}",
+            category=c.get("style", "内容优化"),
+        )
+        for c in ctx.changes
+    ]
+    ann = GongwenAnnotator()
+    buf.seek(0)
+    result = ann.inject_comments(buf, suggestions, out_name)
+
+    # 0 处批注时直接通过（无变更 → 无 comments.xml 属正常，不应误报失败）
+    ok = True if len(suggestions) == 0 else ann.verify_comments(result)
+    ctx.set("comments", len(suggestions))
+    ctx.set("verified", bool(ok))
+    ctx.set("out_name", out_name)
 
 
 def cmd_bold_first(args):
