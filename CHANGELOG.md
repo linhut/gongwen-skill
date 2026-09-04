@@ -4,7 +4,7 @@
   Licensed under the MIT License. See the LICENSE file for details.
 -->
 
-## Unreleased（整改补强 · 2026-09-04）
+## v2.10.0 (2026-09-04)
 
 ### Added
 - **测试补强（整改 A / P1-1）**：新增 `tests/test_checker.py`/`test_optimize.py`/`test_content_cmds.py`/`test_json_output.py` 26 用例，覆盖 check/optimize/content 核心路径与 `--json` 输出（tests/ 本地-only，不同步仓库）

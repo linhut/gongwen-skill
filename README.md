@@ -377,7 +377,7 @@ DSH 采用 **Cordis 模块化微内核架构**：技能体系基于本地文件�
 git clone https://github.com/linhut/gongwen-skill.git
 cd gongwen-skill
 pip install -r requirements.txt   # 或 pip install gongwen-skill（已上 PyPI）
-python -m gongwen --version       # 检验：gongwen-skill v2.9.0
+python -m gongwen --version       # 检验：gongwen-skill v2.10.0
 ```
 
 ### 方式一：作为 DSH Skill 注册（基于本地文件系统）
@@ -433,7 +433,7 @@ pnpm add -w gongwen-skill
   "dependencies": {
     "@deepseek-ai/dsh-base": "...",
     "@deepseek-ai/dsh-web-app": "...",
-    "gongwen-skill": "^2.9.0"
+    "gongwen-skill": "^2.10.0"
   },
   "dsh": {
     "profile": {
@@ -622,7 +622,7 @@ pip install -r requirements.txt
 用户：帮我优化这份会议通知的第二章节措辞
 
 Agent：📋 合规自检报告
-Skill 版本: v2.9.0（版本自检已确认最新）
+Skill 版本: v2.10.0（版本自检已确认最新）
 路径判定: B（内容优化）
 依据: 用户指定了已有文档，且要求"优化措辞"
 命令调用: 1. python -m gongwen optimize-content 会议通知.docx --changes changes.json --apply --paragraphs "5-8"
@@ -666,7 +666,7 @@ Skill 定位为**工具层**，默认不依赖 LLM（确定性工作全自包含
 
 **原理**：安全 DNS（DoH，DNS over HTTPS）通过加密 HTTP 查询 DNS，避免中间设备篡改解析结果，可拿到域名的真实 IP。本工具内置阿里（dns.alidns.com）、腾讯（doh.pub / 1.12.12.12）等国内公共 DoH 端点，多端点自动降级；可通过环境变量 GONGWEN_DOH 覆盖为自定义端点（如自建的 DoH 服务）。
 
-**自动兜底（v2.9.0）**：`font install` 下载字体、`check-update` 查 PyPI 时若常规请求失败（疑似 DNS 污染），自动用 DoH 真实 IP + TLS SNI 直连重试——TLS 证书仍按真实域名校验，安全不降级，用户零操作。
+**自动兜底（v2.10.0）**：`font install` 下载字体、`check-update` 查 PyPI 时若常规请求失败（疑似 DNS 污染），自动用 DoH 真实 IP + TLS SNI 直连重试——TLS 证书仍按真实域名校验，安全不降级，用户零操作。
 
 **处置建议**（按推荐度）：
 1. 若使用了代理工具（Clash/V2Ray 等）且系统解析命中 198.18.x Fake-IP，优先检查其 DNS 模式的 fake-ip-filter 是否漏掉 GitHub 域名（比改 hosts 更治本）
