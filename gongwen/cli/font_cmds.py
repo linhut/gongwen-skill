@@ -116,8 +116,8 @@ def _is_font_installed(font_name: str) -> bool:
                     except OSError:
                         break
                 winreg.CloseKey(key)
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.debug("查询系统字体注册表失败: %s", e)
         return False
     else:
         # Linux/macOS: 检查常见字体目录
@@ -165,8 +165,8 @@ def _install_font_file(font_path: Path, font_name: str) -> bool:
                 reg_name = f"{font_name} (TrueType)"
                 winreg.SetValueEx(key, reg_name, 0, winreg.REG_SZ, dest.name)
                 winreg.CloseKey(key)
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.debug("注册表指向已存在字体失败（跳过注册，不影响复制）: %s", e)
             print(f"  ⏭️  {font_name}: 已存在（跳过）")
             return True
 
@@ -212,8 +212,8 @@ def _install_font_file(font_path: Path, font_name: str) -> bool:
             import subprocess
             subprocess.run(["fc-cache", "-f", str(fonts_dir)],
                            capture_output=True, timeout=30)
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.debug("刷新 fc-cache 失败（字体已复制，重启应用后生效）: %s", e)
         print(f"  ✅ {font_name}: 已安装 → {dest}")
         return True
 

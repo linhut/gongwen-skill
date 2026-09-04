@@ -22,6 +22,7 @@
 """
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
@@ -32,6 +33,8 @@ from docx.oxml.ns import qn
 from docx.shared import Mm, Cm, Pt, RGBColor
 
 from engine.core.document.font_utils import set_run_font, BODY_FONT, LATIN_FONT
+
+_logger = logging.getLogger(__name__)
 
 # V2.3：导语/过渡词开头 → 不是主送机关/称呼段（与 modifier.detect_paragraph_type 的
 # _INTRODUCTION_RE/_TRANSITION_RE 逻辑对齐，避免"为深入贯彻落实…通知如下："短导语被
@@ -147,9 +150,9 @@ def _apply_doc_defaults(doc: Document, body_pt: float = 16.0) -> None:
             szCs = OxmlElement("w:szCs")
             rPr.append(szCs)
         szCs.set(qn("w:val"), str(int(body_pt * 2)))
-    except Exception:
+    except Exception as e:
         # 失败不影响主流程，仍按逐段显式格式输出
-        pass
+        _logger.debug("设置段落默认字体失败，按逐段显式格式输出: %s", e)
 
 
 def _apply_section(doc: Document, page_setup) -> None:
@@ -404,8 +407,8 @@ def _add_paragraph(doc: Document, para, rules: dict):
                 try:
                     rgb = str(fmt.color).lstrip("#")
                     run.font.color.rgb = RGBColor(int(rgb[0:2], 16), int(rgb[2:4], 16), int(rgb[4:6], 16))
-                except Exception:
-                    pass
+                except Exception as e:
+                    _logger.debug("颜色解析失败，跳过该 run 的字体颜色: %s", e)
     return p
 
 
@@ -582,7 +585,7 @@ def render_model_to_docx(model, output_path, rules: dict | None = None,
     # 统一文档作者（用户要求：生成文档的作者写为 Jose AI）
     try:
         doc.core_properties.author = "Jose AI"
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.debug("设置文档作者失败: %s", e)
     doc.save(out)
     return output_path

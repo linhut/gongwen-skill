@@ -25,11 +25,14 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import logging
 import shutil
 import sys
 import tempfile
 from datetime import date as _dt
 from pathlib import Path
+
+_logger = logging.getLogger(__name__)
 
 
 def _resolve_fm_doc_type(input_src: str, explicit: str | None) -> str:
@@ -134,8 +137,8 @@ def cmd_draft(args: argparse.Namespace) -> int:
             try:
                 import json as _json
                 _opt_json = _json.loads(_opt_out)
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.warning("draft: 解析 optimize --json 输出失败（子结果降级为空）: %s", e)
         else:
             _opt_out = ""
             _opt_json = None

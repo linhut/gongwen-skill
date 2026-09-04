@@ -174,6 +174,17 @@ python -m gongwen style-learn 标准公文.docx -n 模板名
 python -m gongwen style-list            # 列出已学习的模板
 ```
 
+### 🖥️ Windows 控制台编码（GBK 乱码排查）
+
+工具内部已统一按 UTF-8 输出（`gongwen/_bootstrap.py` 强制 stdout/stderr/stdin 重配置为 UTF-8，
+保证管道/Agent 调用无编码问题）。若在原生 `cmd`（默认 GBK 代码页 936）看到中文乱码，任选其一：
+
+- **推荐**：改用 Windows Terminal / VS Code 终端（默认 UTF-8，无乱码）
+- 在 cmd 中先执行 `chcp 65001` 切换 UTF-8 代码页，再运行命令
+- 或设置环境变量 `PYTHONIOENCODING=utf-8`（与工具内部行为一致）
+
+> 说明：GBK 乱码仅影响原生 cmd 的**交互显示**，不影响文件内容与 `--json` 的机器可解析性。
+
 ### 🔤 字体管理
 
 公文标准字体是 GB/T 9704 排版的关键。项目内置 3 个标准字体文件（`assets/fonts/`），支持自动安装：

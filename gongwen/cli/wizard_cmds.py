@@ -22,10 +22,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import shlex
 import subprocess
 import sys
 from pathlib import Path
+
+_logger = logging.getLogger(__name__)
 
 # 路径定义：(键, 标题, 一句话说明, 子命令)
 PATH_DEFS = [
@@ -127,7 +130,7 @@ def _resolve_doc_type(raw: str, types: list[str]) -> str:
             if raw == kw or raw in kw or kw in raw:
                 return tid
     except ImportError:
-        pass
+        _logger.debug("TYPE_KEYWORDS 导入失败，回退子串匹配（不影响主流程）")
 
     # 子串匹配 id（如 "not" → notice）
     hits = [t for t in types if raw.lower() in t]

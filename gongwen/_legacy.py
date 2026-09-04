@@ -229,6 +229,7 @@ def cmd_optimize(args):
         "fixed": 0, "cleaned": 0, "bolded": 0, "blank_lines": 0,
         "ai_declaration_removed": bool(getattr(args, "remove_ai_declaration", False)),
         "verified": None, "verify_issues": None,
+        "verify_executed": False, "verify_passed": False,
         "verify_p0": None, "verify_p1": None, "verify_p2": None,
         "verify_error": None,
     }
@@ -317,6 +318,7 @@ def cmd_optimize(args):
 
     # === 验证闭环（--verify，路径 A 单命令）===
     if getattr(args, "verify", False) and out.exists():
+        result["verify_executed"] = True
         try:
             v_model = parse_docx(str(out))
             v_issues = engine.check(v_model, doc_type)
@@ -324,6 +326,7 @@ def cmd_optimize(args):
             v_p1 = sum(1 for i in v_issues if i.severity == "P1")
             v_p2 = sum(1 for i in v_issues if i.severity == "P2")
             result["verified"] = True
+            result["verify_passed"] = (v_p0 == 0)
             result["verify_issues"] = len(v_issues)
             result["verify_p0"] = v_p0
             result["verify_p1"] = v_p1
