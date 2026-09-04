@@ -173,6 +173,10 @@ def cmd_parse(args):
     text = json.dumps(data, ensure_ascii=False, indent=2)
     if args.output:
         Path(args.output).write_text(text, encoding="utf-8")
+    if getattr(args, "json", False):
+        # --json：强制完整 JSON 到 stdout（即使指定了 -o），Agent 可统一解析
+        print(text)
+    elif args.output:
         print(f"已解析: {args.output} ({len(model.paragraphs)} 段落, {len(model.tables)} 表格)")
     else:
         print(text)
@@ -846,10 +850,21 @@ def cmd_md2docx(args):
     except Exception as e:
         print(f"  ⚠️ 页码注入失败（{e}），跳过", file=sys.stderr)
 
-    print(f"公文已生成: {out}")
-    print(f"  类型: {doc_type}, 段落: {len(model.paragraphs)}, Markdown 转换: {changes} 处")
-    if source_desc != "stdin" and args.input != "-":
-        print(f"  来源: {source_desc}")
+    if getattr(args, "json", False):
+        # --json：结构化摘要（Agent 可直接解析）
+        print(json.dumps({
+            "command": "md2docx",
+            "output": str(out),
+            "doc_type": doc_type,
+            "paragraphs": len(model.paragraphs),
+            "markdown_changes": changes,
+            "source": source_desc if source_desc != "stdin" else "stdin",
+        }, ensure_ascii=False))
+    else:
+        print(f"公文已生成: {out}")
+        print(f"  类型: {doc_type}, 段落: {len(model.paragraphs)}, Markdown 转换: {changes} 处")
+        if source_desc != "stdin" and args.input != "-":
+            print(f"  来源: {source_desc}")
 
 
 def cmd_header(args):
@@ -1023,6 +1038,7 @@ def main():
     p = sub.add_parser("parse", help="解析文档为结构化 JSON")
     p.add_argument("input", help="输入 .docx 路径")
     p.add_argument("-o", "--output", help="输出 JSON 路径（缺省打印到 stdout）")
+    p.add_argument("--json", action="store_true", help="强制 JSON 输出到 stdout（与 -o 同时使用时也打印）")
     p.set_defaults(func=cmd_parse)
 
     p = sub.add_parser("check", help="检查文档格式（只读）")
@@ -1094,6 +1110,8 @@ def main():
                    help="P1: 生成文档不追加 AI 声明段（默认追加）")
     p.add_argument("--config-overrides", default="",
                    help="规则覆盖 JSON（DSH 插件注入）")
+    p.add_argument("--json", action="store_true",
+                   help="输出结构化 JSON 摘要（Agent 可解析）")
     p.set_defaults(func=cmd_md2docx)
 
     # ---- draft：路径 C 一站式生成（Markdown → 国标成品 + 验证）----
@@ -1182,9 +1200,10 @@ def main():
     p.add_argument("--write", metavar="JSON_PATH", help="从 JSON 文件写入交接文档（P2-27）")
     p.set_defaults(func=cmd_handoff)
 
-    p = sub.add_parser("rule-export", help="导出合并后的规则为 YAML")
+    p = sub.add_parser("rule-export", help="导出合并后的规则（YAML/JSON）")
     p.add_argument("type", help="公文类型")
-    p.add_argument("-o", "--output", help="输出 YAML 路径")
+    p.add_argument("-o", "--output", help="输出文件路径")
+    p.add_argument("--json", action="store_true", help="以 JSON 格式输出（缺省 YAML）")
     p.set_defaults(func=cmd_rule_export)
 
     p = sub.add_parser("rule-list", help="列出三层规则")

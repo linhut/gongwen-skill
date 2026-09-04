@@ -20,12 +20,15 @@ _logger = logging.getLogger(__name__)
 
 
 def cmd_rule_export(args):
-    """导出某类型的合并规则为 YAML。"""
+    """导出某类型的合并规则（默认 YAML，--json 输出 JSON）。"""
     from engine.core.rules.manager import load_rules_merged
     import yaml
 
     rules = load_rules_merged(args.type)
-    text = yaml.dump(rules, allow_unicode=True, default_flow_style=False, sort_keys=False)
+    if getattr(args, "json", False):
+        text = json.dumps(rules, ensure_ascii=False, indent=2)
+    else:
+        text = yaml.dump(rules, allow_unicode=True, default_flow_style=False, sort_keys=False)
     if args.output:
         Path(args.output).write_text(text, encoding="utf-8")
         print(f"规则已导出: {args.output} (类型: {args.type})")
