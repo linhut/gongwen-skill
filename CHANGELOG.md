@@ -4,6 +4,24 @@
   Licensed under the MIT License. See the LICENSE file for details.
 -->
 
+## Unreleased（整改补强 · 2026-09-04）
+
+### Added
+- **测试补强（整改 A / P1-1）**：新增 `tests/test_checker.py`/`test_optimize.py`/`test_content_cmds.py`/`test_json_output.py` 26 用例，覆盖 check/optimize/content 核心路径与 `--json` 输出（tests/ 本地-only，不同步仓库）
+- **`parse`/`md2docx`/`rule-export` 统一 `--json`（整改 B / P1-2）**：Agent 高频命令补齐结构化输出，向后兼容（不带 `--json` 保持原行为）
+- **CHK-L003 语义类规则静默跳过**：`language.*` 字段不再刷「未支持检查字段」告警（语言规范类由人工/LLM 审校覆盖，规则定义保留）
+
+### Changed
+- **`main()`/命令注册迁出 `_legacy.py`（整改 C / P0-1）**：29 个 add_parser 注册 + 命令分组/格式化器迁至 `gongwen/cli/app.py`；`_legacy.py` 1320→936 行，仅保留 10 个核心命令实现与兼容转发；入口 `from gongwen.cli.app import main`；迁移前后 29 命令 help/version 快照零差异
+
+### Fixed
+- `tests/test_netcheck.py` 既有 F841（未使用变量）清理
+
+### Notes
+- 审计整改 D 决策（2026-09-04）：remote token 保持现状（已查证未进入 git 历史，风险记录在本地审计报告）；CI 接受现状（本地跑测试作发布门禁），详见 `docs/design/2026-09-04-project-audit-report.md` §6（本地存档）
+
+---
+
 ## v2.9.0 (2026-09-04)
 
 ### Added
