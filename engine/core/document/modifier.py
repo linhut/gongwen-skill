@@ -940,7 +940,7 @@ def fix_bold_range(model: DocumentModel, doc_type: str | None = None) -> int:
     """
     changes = 0
     # B-01：整段加粗为规范要求的文种（讲话稿/主持词）
-    _SPEECH_SKIP_TYPES = {'speech'}
+    _SPEECH_SKIP_TYPES = {'speech', 'host_speech'}
     if doc_type and str(doc_type).lower() in _SPEECH_SKIP_TYPES:
         return 0
     # B-10（方案九）：移除 _EXCLUDE_ROLES 分支，完全统一到 should_bold_first_sentence

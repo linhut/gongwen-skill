@@ -2,28 +2,57 @@
 # https://github.com/linhut/gongwen-skill
 # Licensed under the MIT License. See the LICENSE file for details.
 
-template_name: 讲话稿/主持词
+template_name: 讲话稿
 document_type: speech
 
-# --- 讲话稿/主持词特有格式覆盖 ---
-# 主持词/讲话稿是台前朗读件（read-aloud document），非印发公文。
-# 正文字号比 GB/T 9704 标准公文大 2pt + 加粗，便于远距离阅读。
+# --- 讲话稿特有格式覆盖（以筹委会最终版定稿为准）---
+# 讲话稿是台前朗读件（read-aloud document），非印发公文：
+#   - 页边距为国标 GB/T 9704 默认值（上3.7/下3.5/左2.8/右2.6cm）
+#   - 标题：方正小标宋简体 24pt（比标准公文 22pt 大 2pt），行距 35pt
+#   - 一级标题（一、…）：黑体 18pt；二级标题（第一…/一是…）：楷体_GB2312 18pt
+#   - 署名/日期：楷体_GB2312 18pt 居中，行距 35pt
+#   - 正文：仿宋_GB2312 18pt 不加粗，行距 30pt，首行缩进 2 字
+
+page_setup:
+  margins:
+    top: 3.7cm
+    bottom: 3.5cm
+    left: 2.8cm
+    right: 2.6cm
+  header_distance: 1.5cm
+  footer_distance: 1.75cm
 
 title:
   size: 24pt
   line_spacing: 35pt
   bold: false
 
+heading_1:
+  size: 18pt
+  line_spacing: 30pt
+
+heading_2:
+  size: 18pt
+  line_spacing: 30pt
+
 body:
   size: 18pt
-  bold: true
-  line_spacing: 33pt
+  bold: false
+  line_spacing: 30pt
 
 signature:
+  font: "楷体_GB2312"
+  font_fallback: "KaiTi"
   size: 18pt
+  line_spacing: 35pt
+  align: center
 
 date:
+  font: "楷体_GB2312"
+  font_fallback: "KaiTi"
   size: 18pt
+  line_spacing: 35pt
+  align: center
 
 check_rules:
   - id: CHK-S001
@@ -43,11 +72,11 @@ check_rules:
     category: format
 
   - id: CHK-S003
-    name: 正文加粗检查（讲话稿）
+    name: 正文行距检查（讲话稿）
     severity: P1
-    field: body.bold
-    expected: true
-    message: 讲话稿正文应加粗，便于台前朗读
+    field: body.line_spacing
+    expected: 30pt
+    message: 讲话稿正文行距应为30pt（按最终版定稿）
     category: format
 
   - id: CHK-S004
@@ -55,15 +84,31 @@ check_rules:
     severity: P1
     field: title.line_spacing
     expected: 35pt
-    message: 讲话稿标题行距建议35pt，略大于正文以提升视觉份量
+    message: 讲话稿标题行距应为35pt，略大于正文以提升视觉份量
     category: format
 
   - id: CHK-S005
-    name: 主持人信息字号检查
+    name: 署名/日期格式检查
     severity: P1
     field: signature.size
     expected: 18pt
-    message: 主持人信息应使用小三(18pt)
+    message: 署名与日期应使用楷体_GB2312 小三(18pt)居中，行距35pt
+    category: format
+
+  - id: CHK-S006
+    name: 一级标题字号检查（讲话稿）
+    severity: P1
+    field: heading_1.size
+    expected: 18pt
+    message: 讲话稿一级标题应使用三号黑体(18pt)
+    category: format
+
+  - id: CHK-S007
+    name: 二级标题字号检查（讲话稿）
+    severity: P1
+    field: heading_2.size
+    expected: 18pt
+    message: 讲话稿二级标题应使用三号楷体_GB2312(18pt)
     category: format
 
 fix_rules:
@@ -81,12 +126,30 @@ fix_rules:
 
   - id: FIX-S003
     ref_check: CHK-S003
-    action: set_bold
+    action: set_line_spacing
     target: body
-    value: true
+    value: 30pt
 
   - id: FIX-S004
     ref_check: CHK-S004
     action: set_line_spacing
     target: doc_title
     value: 35pt
+
+  - id: FIX-S005
+    ref_check: CHK-S005
+    action: set_size
+    target: signature
+    value: 18pt
+
+  - id: FIX-S006
+    ref_check: CHK-S006
+    action: set_size
+    target: heading_1
+    value: 18pt
+
+  - id: FIX-S007
+    ref_check: CHK-S007
+    action: set_size
+    target: heading_2
+    value: 18pt

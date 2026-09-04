@@ -35,7 +35,7 @@ TYPE_KEYWORDS = {
     "指示": "instruction", "制度": "regulation", "公报": "communique",
     "意见": "opinion", "总结": "summary", "方案": "work_plan",
     "计划": "work_plan", "桌签": "table_sign", "决议": "resolution",
-    "讲话稿": "speech", "主持词": "speech", "新闻稿": "news", "简报": "news",
+    "讲话稿": "speech", "主持词": "host_speech", "新闻稿": "news", "简报": "news",
 }
 
 # 官方镜像仓库（GitHub 为 check-update 备用判定渠道，GitCode/AtomGit 作国内镜像）

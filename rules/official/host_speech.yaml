@@ -1,0 +1,127 @@
+# (c) 2026 Jose AI (https://www.linhut.cn)
+# https://github.com/linhut/gongwen-skill
+# Licensed under the MIT License. See the LICENSE file for details.
+
+template_name: 主持词
+document_type: host_speech
+
+# --- 主持词特有格式覆盖（以筹委会最终版定稿为准）---
+# 主持词是台前朗读件（read-aloud document），非印发公文：
+#   - 标题：方正小标宋简体 24pt（比标准公文 22pt 大 2pt），行距 35pt
+#   - 主持人信息/日期：楷体_GB2312 18pt 居中，行距 30pt
+#   - 正文：仿宋_GB2312 18pt 不加粗，行距 30pt，首行缩进 2 字
+#   - 议程引导句（"下面，进行第X项议程…"）可局部加粗
+
+page_setup:
+  header_distance: 1.27cm
+  footer_distance: 2.5cm
+
+title:
+  size: 24pt
+  line_spacing: 35pt
+  bold: false
+
+body:
+  size: 18pt
+  bold: false
+  line_spacing: 30pt
+
+signature:
+  font: "楷体_GB2312"
+  font_fallback: "KaiTi"
+  size: 18pt
+  line_spacing: 30pt
+  align: center
+
+date:
+  font: "楷体_GB2312"
+  font_fallback: "KaiTi"
+  size: 18pt
+  line_spacing: 30pt
+  align: center
+
+check_rules:
+  - id: CHK-H001
+    name: 标题字号检查（主持词）
+    severity: P0
+    field: title.size
+    expected: 24pt
+    message: 主持词标题应使用二号(24pt)，比标准公文(22pt)大2pt
+    category: format
+
+  - id: CHK-H002
+    name: 标题行距检查（主持词）
+    severity: P1
+    field: title.line_spacing
+    expected: 35pt
+    message: 主持词标题行距应为35pt
+    category: format
+
+  - id: CHK-H003
+    name: 正文字号检查（主持词）
+    severity: P0
+    field: body.size
+    expected: 18pt
+    message: 主持词正文字号应使用小三(18pt)，比标准公文(16pt)大2pt
+    category: format
+
+  - id: CHK-H004
+    name: 正文行距检查（主持词）
+    severity: P1
+    field: body.line_spacing
+    expected: 30pt
+    message: 主持词正文行距应为30pt
+    category: format
+
+  - id: CHK-H005
+    name: 主持人信息格式检查
+    severity: P1
+    field: signature.size
+    expected: 18pt
+    message: 主持人信息应使用楷体_GB2312 小三(18pt)居中
+    category: format
+
+  - id: CHK-H006
+    name: 日期格式检查
+    severity: P1
+    field: date.size
+    expected: 18pt
+    message: 日期应使用楷体_GB2312 小三(18pt)居中
+    category: format
+
+fix_rules:
+  - id: FIX-H001
+    ref_check: CHK-H001
+    action: set_size
+    target: doc_title
+    value: 24pt
+
+  - id: FIX-H002
+    ref_check: CHK-H002
+    action: set_line_spacing
+    target: doc_title
+    value: 35pt
+
+  - id: FIX-H003
+    ref_check: CHK-H003
+    action: set_size
+    target: body
+    value: 18pt
+
+  - id: FIX-H004
+    ref_check: CHK-H004
+    action: set_line_spacing
+    target: body
+    value: 30pt
+
+  - id: FIX-H005
+    ref_check: CHK-H005
+    action: set_size
+    target: signature
+    value: 18pt
+
+  - id: FIX-H006
+    ref_check: CHK-H006
+    action: set_size
+    target: date
+    value: 18pt

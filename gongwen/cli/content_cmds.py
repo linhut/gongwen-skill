@@ -692,7 +692,7 @@ def cmd_optimize_content(args):
         "letter": "请示商洽", "request": "请示商洽",
         "report": "宏观概括", "summary": "宏观概括",
         "minutes": "平实简洁", "regulation": "法规条文",
-        "speech": "会议主持词", "news": "庄重严谨",
+        "speech": "会议主持词", "host_speech": "会议主持词", "news": "庄重严谨",
     }
     style_name = _validate_style(
         getattr(args, 'style', None)          # 1. --style 显式指定

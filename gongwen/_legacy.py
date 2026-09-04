@@ -272,7 +272,7 @@ def cmd_optimize(args):
     # B-03（方案八）：optimize 增加首句加粗能力——修复后补齐缺失的首句加粗，
     # 与 fix-common 行为对齐（speech 文种跳过：整段加粗为朗读件规范）
     n_bold = 0
-    if doc_type != 'speech':
+    if doc_type not in ('speech', 'host_speech'):
         n_bold = bold_first_sentence_of_body(fixed)
     # 改动9：按 blank_line_rules 配置主动插入必要空行（省筹委会规范：标题前后/落款前/附件后）
     try:

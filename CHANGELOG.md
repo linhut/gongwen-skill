@@ -4,6 +4,22 @@
   Licensed under the MIT License. See the LICENSE file for details.
 -->
 
+## Unreleased
+
+### Added
+- **区分主持词/讲话稿两种朗读件类型**：新增 `host_speech`（主持词）规则文件 `rules/official/host_speech.yaml`；`list-types` 现支持 25 种类型；`-t` 类型识别：`主持词` → `host_speech`、`讲话稿` → `speech`
+- **GitHub Packages scoped 发布**：publish-npm 发布 `@linhut/gongwen-skill` 到 `npm.pkg.github.com`（GitHub Packages 仅支持 scoped 包；原非 scoped 名 E404）
+
+### Changed
+- **讲话稿（speech）规则按筹委会最终版定稿更新**：页边距改国标默认（上3.7/下3.5/左2.8/右2.6cm）；正文改为仿宋_GB2312 18pt 不加粗、行距 30pt；一级标题黑体 18pt、二级标题楷体_GB2312 18pt；署名/日期改楷体_GB2312 18pt 居中、行距 35pt
+- **主持词（host_speech）新增独立样式**：页边距沿用普通公文（2.8/2.8/2.7/2.7cm）；标题 24pt/35pt；主持人信息/日期楷体_GB2312 18pt 居中、行距 30pt；正文 18pt 不加粗、行距 30pt，议程引导句可局部加粗
+- **README/SKILL 同步**：类型数 24→25、讲话稿/主持词分别列出样式说明与差异
+
+### Fixed
+- **GitHub Packages E404**：非 scoped 包名无法发布到 GitHub Packages（v2.1.0~v2.10.0 均受影响）；现发布前 `npm pkg set name="@linhut/gongwen-skill"` 再 publish，并关联回本仓库
+
+---
+
 ## v2.10.0 (2026-09-04)
 
 ### Added
