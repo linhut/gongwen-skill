@@ -52,7 +52,6 @@
   },
   "files": [
     "dsh/",
-    ".dsh/",
     "engine/",
     "gongwen/",
     "rules/",
