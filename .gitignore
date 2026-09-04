@@ -16,9 +16,10 @@ htmlcov/
 # 测试用例（仅本地保留，不推送远程仓库）
 tests/
 
-# 本地设计文档/方案/分析报告（仅本地保留，不推送远程仓库）
+# 本地设计文档/方案/分析报告/发布流程说明（仅本地保留，不推送远程仓库）
 docs/design/
 docs/superpowers/
+RELEASE.md
 
 # DSH 技能注册副本（仅本机保留，不推送远程仓库；根 SKILL.md 已在仓库）
 .dsh/skills/
