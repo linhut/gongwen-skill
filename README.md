@@ -102,13 +102,13 @@ Licensed under the MIT License. See the LICENSE file for details.
 
 项目内置以下文字性资源，纯对话 AI 可以直接读取，用作**公文写作指导的知识库**：
 
-| 资源 | 位置 | 内容 | 行数 |
-|:-----|:-----|:------|:----:|
-| **公文语言风格提示词库** | `prompts/style-prompts.md` | 6 套风格（庄重严谨/平实简洁/宏观概括/请示商洽/法规条文/讲话稿），每套含用词规范、句式和语气指导 | 205 |
-| **使用指引与决策速查** | `prompts/usage-prompts.md` | 最小可用指引、决策速查、每种公文类型的用法模板、常见问题解答 | 381 |
-| **公文类型规则库** | `rules/official/*.yaml`（25 个文件） | 每种公文类型的格式规范 + 内容层定义（如"请示应以'妥否，请批示'结尾""通知应以'特此通知'结尾"） | 25 文件 |
-| **通用格式标准** | `rules/official/_common.yaml` | GB/T 9704 国标全文参数：字体/字号/行距/页边距等 | 836 |
-| **技能完整指令** | `SKILL.md` | 路径路由、执行标准、质量评审、禁令清单、审稿机制 | 2854 |
+| 资源 | 位置 | 内容 |
+|:-----|:-----|:------|
+| **公文语言风格提示词库** | `prompts/style-prompts.md` | 6 套风格（庄重严谨/平实简洁/宏观概括/请示商洽/法规条文/讲话稿），每套含用词规范、句式和语气指导 |
+| **使用指引与决策速查** | `prompts/usage-prompts.md` | 最小可用指引、决策速查、每种公文类型的用法模板、常见问题解答 |
+| **公文类型规则库** | `rules/official/*.yaml`（25 个文件） | 每种公文类型的格式规范 + 内容层定义（如"请示应以'妥否，请批示'结尾""通知应以'特此通知'结尾"） |
+| **通用格式标准** | `rules/official/_common.yaml` | GB/T 9704 国标全文参数：字体/字号/行距/页边距等 |
+| **技能完整指令** | `SKILL.md` | 路径路由、执行标准、质量评审、禁令清单、审稿机制 |
 
 **使用方式**：纯对话 AI 在回答用户关于公文写作的问题时，可直接引用上述资源中的内容，例如：
 - 用户问"通知怎么写" → 引用 `rules/official/notice.yaml` 的结语规范和 `style-prompts.md` 的庄重严谨风格
@@ -192,8 +192,8 @@ python -m gongwen style-list            # 列出已学习的模板
 | 字体 | 用途 | TTF 大小 |
 |:-----|:-----|:---------|
 | 方正小标宋简体 | 公文大标题 | 3.7 MB |
-| 仿宋_GB2312 | 正文 | 3.9 MB |
-| 楷体_GB2312 | 二级标题 | 4.0 MB |
+| 仿宋_GB2312 | 正文 | 3.8 MB |
+| 楷体_GB2312 | 二级标题 | 3.9 MB |
 
 **安装方式**：
 - **git clone 用户**：字体文件在 `assets/fonts/` 中，直接安装
@@ -297,7 +297,7 @@ python -m gongwen wizard --answers 答案.json --dry-run  # 只打印将执行�
 {"path": "A", "input": "原文.docx", "doc_type": "notice", "output": "成品.docx", "apply": true}
 ```
 
-路径：A 格式优化（`optimize`）｜B 内容优化（`optimize-content`）｜C 生成模板（`template`）｜D 一键格式修复（`fix-common`）。A/B/D 默认先预览再 y/n 确认；不写 `apply` 时非交互模式仅预览不执行（安全默认）。
+路径：A 格式优化（`optimize`）｜B 内容优化（`optimize-content`）｜C 生成模板（`template`）｜D 一键格式修复（`fix-common`）｜E 样式学习（`style-learn`）。A/B/D 默认先预览再 y/n 确认；不写 `apply` 时非交互模式仅预览不执行（安全默认）。
 
 ## 📐 GB/T 9704 标准格式
 
@@ -310,11 +310,11 @@ python -m gongwen wizard --answers 答案.json --dry-run  # 只打印将执行�
 | **正文** | 仿宋_GB2312 | 三号（16pt） | 首行缩进2字符 |
 | **西文/数字** | Times New Roman | 与中文字号一致 | — |
 | **页码** | 宋体（4号半角） | 四号（14pt） | 单页右/双页左（双面打印） |
-| **页边距** | — | — | 上3.7/下3.5/左2.8/右2.6 cm |
+| **页边距** | — | — | 上2.8/下2.8/左2.7/右2.7 cm（工具实际采用值，见 `_common.yaml`） |
 
 ### 讲话稿/主持词（speech 朗读件）
 
-标题方正小标宋简体 24pt 居中、主持人信息/日期楷体_GB2312 18pt 居中、正文仿宋_GB2312 18pt 加粗、正文行距 33pt exact、标题行距 35pt；跳过版头/版记/发文字号/密级检查。
+标题方正小标宋简体 24pt 居中、主持人信息仿宋_GB2312 18pt 居中、日期仿宋_GB2312 18pt、正文仿宋_GB2312 18pt 加粗、正文行距 33pt exact、标题行距 35pt；跳过版头/版记/发文字号/密级检查。
 
 ## 📚 支持的 24 种公文类型
 
@@ -332,7 +332,7 @@ python -m gongwen wizard --answers 答案.json --dry-run  # 只打印将执行�
 ```bash
 python -m gongwen rule-export notice -o notice_rules.yaml
 python -m gongwen rule-import my_company -f 公司规范.yaml
-python -m gongwen rule-list notice
+python -m gongwen rule-list --source all
 ```
 
 ## ⚠️ 使用红线
