@@ -107,6 +107,12 @@ def check_document(model: DocumentModel, rules: dict[str, Any]) -> list[CheckIss
             # 单元格边距）——此前 _common.yaml 的 table 配置块为死配置，无任何 CHK 规则
             issues.extend(_check_table_style(model, rule_id, severity, name, field_path,
                                              expected, message))
+        elif field_path.startswith("language."):
+            # 整改补强：CHK-L003（language.formal 语言规范）等语义类规则——
+            # 语言是否规范/得体/简明属人工或 LLM 审校范畴（optimize-content/review 覆盖），
+            # 规则引擎无法机械判定；保留规则定义（文档意图），静默跳过避免告警噪音
+            logger.debug("check_document: 语义类检查字段 '%s'（rule %s）由人工/LLM 审校覆盖，跳过",
+                         field_path, rule_id)
         else:
             # P1-6 修复：删除 generic else 中的硬编码索引逻辑（model.paragraphs[0]/[1]
             # 不一定是标题/正文，检查结果会指向错误段落），未识别的 field 直接 skip + warning
