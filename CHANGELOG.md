@@ -4,6 +4,32 @@
   Licensed under the MIT License. See the LICENSE file for details.
 -->
 
+## v2.9.0 (2026-09-04)
+
+### Added
+- **`optimize --verify` 单命令闭环**：修复后自动复检输出文件，存在 P0 时退出码非 0（Agent 可感知），`--json` 结构化输出（`verified`/`verify_p0` 等字段）
+- **`draft` 一站式生成**：Markdown 草稿 → 国标成品（md2docx + optimize + 校验四步合一），`--json` 输出完整执行轨迹
+- **`wizard` 交互引导补 E 路径**：A/B/C/D/E 五路径菜单 + `--answers` 非交互 + `--dry-run` 只打印命令
+- **`optimize-content --preset` 参数收敛**：`quick|full|review` 三档预设映射参数组合，显式参数优先
+- **`optimize-content --precheck` 预检**：逐段比对 changes.json 与原文一致性的三级递进匹配（精确/归一化/去空格），`--json` 输出、不匹配项退出码 1
+- **规则加载共享缓存**：`load_rules_merged` 模块级缓存（mtime 失效 + deepcopy 隔离），重复调用零解析开销
+- **`--help` 按场景分组**：6 组（生成/格式/内容/审校/版式/运维）29 命令全覆盖，单命令 `--help` 不变
+- **统一 Pipeline 编排层（O9）**：新增 `engine/core/pipeline.py`（PipelineContext + Pipeline 阶段注册/顺序执行），`full-review` 重构为 3 阶段试点（一次解析、多次操作、一次生成，source_path 全程携带）
+- **DSH 插件位置参数修复（O12）**：`POSITIONAL_ARGS` 补 `draft`/`rule-import`/`font` 声明，修复插件转发构造 `--input`/`--key`/`--action` 导致的调用失败
+
+### Changed
+- **内容优化引擎阶段化（O10）**：`cmd_optimize_content`（原 ~800 行）内联块机械抽取为 `_run_comment_mode`/`_run_tracked_change_mode`/`_run_tracked_mode` 三个阶段函数，主函数变编排者；输出/退出码/批注与重构前一致
+- **SKILL.md 命令计数修正（O11）**：命令速查表计数 26→29（实测 29 命令全覆盖），三处副本字节级同步（修复 CRLF/LF 行尾差异）
+- **README 能力概述 25 项→29 项命令能力**；新增「架构边界（O12 · DSH 插件）」小节（CLI 唯一业务入口）
+
+### Fixed
+- 清理 `doctor_cmds.py` 既有 15 处 F541（无占位符 f-string），CI lint 门槛保持绿色
+- 修复 `.dsh/skills` 副本行尾符不一致导致的 doctor「SKILL.md 同步」误报
+
+### Notes
+- 工具链仅支持 OOXML .docx；旧版 .doc（OLE2/WPS）需经 WPS COM `SaveAs(dst, 12)` 转换后使用（README/SKILL 已注明）
+- 正式发布流程：见 RELEASE.md（一键 bump + 三 remote 推送触发 CI 自动发布）
+
 ## v2.8.0 (2026-09-03)
 
 ### Added

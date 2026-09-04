@@ -55,7 +55,7 @@ from engine.core.document.font_utils import (
     PAGE_NUMBER_FONT,
     PAGE_NUMBER_SIZE_PT,
 )
-__version__ = "2.8.0"
+__version__ = "2.9.0"
 # 版本号应与 gongwen/__init__.py 保持一致，每次发版同步更新
 """
 中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
