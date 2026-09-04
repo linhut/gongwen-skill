@@ -110,9 +110,10 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Publish to GitHub Packages
         run: |
-          # GITHUB_TOKEN 发布到仓库命名空间（linhut/gongwen-skill/pkgs/npm/gongwen-skill）
-          # 包名保留为 gongwen-skill（与仓库名一致），无需 scoped 格式
-          # setup-node 仅配置了 registry.npmjs.org 的认证，需为 npm.pkg.github.com 单独写入 token
+          # GitHub Packages npm registry 只支持 scoped 包（官方规则）：
+          # 包名必须为 @owner/name 格式。临时改写包名为 @linhut/gongwen-skill 后再发布，
+          # 不影响已完成的 npmjs 步骤（npmjs 用原名 gongwen-skill）。
+          npm pkg set name="@linhut/gongwen-skill"
           echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
           npm publish --registry=https://npm.pkg.github.com --access public
         env:
