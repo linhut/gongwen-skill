@@ -130,348 +130,8 @@ def _precheck_changes(input_path: str, changes: list[dict], changes_src: str = "
     }
 
 
-def cmd_optimize_content(args):
-    """内容优化差异对比：原文灰色+删除线，修改后红色高亮，附修改说明。
-
-    默认预览模式：列出变更摘要 → 提示下一步。
-    加 --apply 才真正生成差异对比文档。
-    加 --mode tracked 生成 Word 原生修订+批注（审阅面板逐条接受/拒绝）。
-    """
-    import time
-    _t_start = time.time()
-    from optimizer import load_changes_from_json, create_diff_document
-
-    # O6：--preset 预设组合映射（显式参数优先；full=完整默认无需映射）
-    _preset = getattr(args, 'preset', '')
-    if _preset == 'quick':
-        if not hasattr(args, 'reviewers'):
-            args.reviewers = 3
-        args.no_style_enhance = True
-    elif _preset == 'review':
-        if not hasattr(args, 'reviewers'):
-            args.reviewers = 6
-        args.show_confirmed = True
-    if _preset and not getattr(args, 'quiet', False) and not getattr(args, 'json', False):
-        _desc = {"quick": "精简快速（3角色+跳过风格增强）",
-                 "full": "完整默认（6角色+风格增强+事实核验）",
-                 "review": "完整审稿（6角色+已确认实体批注）"}[_preset]
-        print(f"🎛️ preset {_preset}: {_desc}")
-
-    # P0-4 修复：_m 在函数开头显式初始化（此前仅事实核验分支内赋值，
-    # --output-tasks 模式到达 'if _m is None' 时触发 UnboundLocalError）
-    _m = None
-    # P0-3 修复：W 命名空间常量（此前 tracked 分支内 f'{{{W}}}comment' 引用未定义变量，NameError 被静默吞掉）
-    # FIX-A003 修复：不带花括号——f'{{{W}}}comment' 展开为 {http://...}comment，与 lxml 元素 tag 一致；
-    # 原带花括号时展开为 {{http://...}}comment，findall 永远匹配 0 条（验证误报）
-    W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
-
-    # 改进 A：加载文档类型规则（structure/focus_checks/skip_checks/title 内容层定义）
-    # P1-1 修复：统一传 None（空字符串与 None 虽同为 falsy，但混用有维护隐患）
-    doc_type, type_source = _detect_doc_type(
-        Path(args.input), getattr(args, 'doc_type', None))
-    content_rules: dict = {}
-    try:
-        from engine.core.rules.manager import load_rules_merged
-        rules = load_rules_merged(doc_type)
-        content_rules = _extract_content_rules(rules)
-        if getattr(args, 'show_rules', False):
-            print(f"📋 文档类型: {content_rules.get('doc_type_display') or doc_type}（{type_source}）")
-            if content_rules.get("structure"):
-                print(f"  段落结构: {len(content_rules['structure'])} 段")
-            if content_rules.get("focus_checks"):
-                print(f"  重点检查: {len(content_rules['focus_checks'])} 项")
-    except Exception as e:
-        print(f"  ⚠️ 规则加载失败（{e}），继续使用默认流程")
-
-    # 改进 E：无 changes.json 时，基于内置规则 + 风格提示词自动生成优化建议
-    if not getattr(args, 'changes', None) and getattr(args, 'auto_generate', False):
-        from auto_optimizer import auto_generate_changes, llm_configured
-        # P2-30 修复：auto_generate 分支内 changes 尚未赋值，先声明空列表，
-        # 避免 _extract_dominant_style(changes) 引用未绑定变量（UnboundLocalError）
-        changes: list = []
-        style_name_e = _validate_style(_extract_dominant_style(changes) or "") if changes else "庄重严谨"
-        style_prompt_e = _load_style_prompt(style_name_e)
-        if not llm_configured():
-            print("⚠️ LLM 未配置（设置 GONGWEN_LLM_API 或 GONGWEN_OPTIMIZE_LLM_API 可启用），仅生成规则级结构建议")
-        changes = auto_generate_changes(
-            input_path=str(args.input),
-            doc_type=doc_type,
-            content_rules=content_rules,
-            style_prompt=style_prompt_e,
-        )
-        print(f"🤖 基于内置规则自动生成 {len(changes)} 处优化建议")
-    else:
-        # B27 修复：既未指定 --changes 也未启用 --auto-generate 时友好提示，而非 FileNotFoundError
-        if not args.changes:
-            print("❌ 未指定 --changes 且未启用 --auto-generate，无法加载变更", file=sys.stderr)
-            print("   用法：python -m gongwen optimize-content 原文.docx --changes changes.json [--apply]")
-            return 2
-        changes = load_changes_from_json(args.changes)
-    _echo_progress(args, 1, 6, "加载变更", f"{len(changes)} 处变更已加载")
-
-    # P5 修复：schema 校验（必填字段/类型/空文本），仅保留有效条目
-    changes = _validate_changes_schema(changes, source=args.changes)
-
-    # P4 修复：预检过滤零修改条目（optimized_text == original_text，无意义）
-    _valid_before = len(changes)
-    changes = [c for c in changes
-               if c.get("optimized_text", "").strip() != c.get("original_text", "").strip()]
-    _n_filtered = _valid_before - len(changes)
-    if _n_filtered > 0:
-        print(f"  ℹ️ 预检过滤：移除 {_n_filtered} 条零修改条目（optimized_text == original_text）")
-
-    # V1 修复：--output-tasks 与 --input-tasks 互斥
-    if args.output_tasks and args.input_tasks:
-        print("❌ --output-tasks 与 --input-tasks 不能同时指定", file=sys.stderr)
-        return 2
-
-    # B29 修复：style_name 提前计算（仅依赖 args.style/changes/doc_type，均已就绪）
-    # ——必须位于 --input-tasks 分支之前，否则该分支内引用 style_name 触发 NameError
-    TYPE_STYLE_MAP = {
-        "notice": "庄重严谨", "decision": "庄重严谨", "opinion": "庄重严谨",
-        "letter": "请示商洽", "request": "请示商洽",
-        "report": "宏观概括", "summary": "宏观概括",
-        "minutes": "平实简洁", "regulation": "法规条文",
-        "speech": "会议主持词", "news": "庄重严谨",
-    }
-    style_name = _validate_style(
-        getattr(args, 'style', None)          # 1. --style 显式指定
-        or _extract_dominant_style(changes)    # 2. changes.json style 字段
-        or TYPE_STYLE_MAP.get(doc_type, "")    # 3. doc_type 自动推断
-        or "庄重严谨")                         # 4. 兜底
-
-    # V1：--input-tasks 读入 Agent 回填结果，合并到 changes（事实核验修正 + 风格建议）
-    # B3 修复：合并前按 (paragraph_index, original_text) 去重 + 整段/局部包含检查
-    # B4 修复：style_enhance 合并补 revision_author="风格审校"
-    # B5 修复：收集 confirmed_entities 供后续事实核验过滤
-    # B12 修复：error+auto_fix 实体无条件加入 confirmed_entities（含去重跳过时）
-    # B15 修复：seen_keys 精确 (pi, orig) 去重
-    # R1 修复：风格增强直接合入已有变更 optimized_text（auto-accept），不生成独立修订
-    if args.input_tasks:
-        try:
-            # P2-7 修复：顶层已导入 json，删除冗余 import json as _json
-            task_data = json.loads(Path(args.input_tasks).read_text(encoding="utf-8"))
-            n_merge = 0
-            confirmed_entities = set()  # B5：已确认实体集合
-            seen_keys = set()  # B15：精确去重键集合
-            for c in changes:
-                seen_keys.add((c.get("paragraph_index", 0), c.get("original_text", "")))
-            n_style_auto_accept = 0  # R1：已自动应用的风格建议数
-
-            def _is_covered_by_existing(change: dict) -> bool:
-                """B3：新变更是否已被已有变更覆盖（整段替换包含局部替换）。"""
-                pi = change.get("paragraph_index", 0)
-                orig = change.get("original_text", "")
-                opt = change.get("optimized_text", "")
-                for ec in changes:
-                    if ec.get("paragraph_index", 0) != pi:
-                        continue
-                    ex_orig = ec.get("original_text", "")
-                    ex_opt = ec.get("optimized_text", "")
-                    if orig and orig in ex_orig and opt and opt in ex_opt:
-                        return True
-                return False
-
-            for task in task_data.get("tasks", []):
-                tid = task.get("task_id", "")
-                if tid == "fact_check":
-                    for r in task.get("results", []):
-                        # B12：confirmed 与 error 实体均视为已处理
-                        if r.get("status") in ("confirmed", "error"):
-                            confirmed_entities.add(r.get("entity_name", ""))
-                        if r.get("status") == "error" and r.get("auto_fix"):
-                            fix = r["auto_fix"]
-                            key = (fix.get("paragraph_index", 0), fix.get("original_text", ""))
-                            if key in seen_keys or _is_covered_by_existing(fix):
-                                print(
-                                    f"  ℹ️ --input-tasks: 跳过重复修正 {fix.get('original_text', '')[:20]}…", file=sys.stderr)
-                                continue
-                            changes.append({
-                                "paragraph_index": fix.get("paragraph_index", 0),
-                                "original_text": fix.get("original_text", ""),
-                                "optimized_text": fix.get("optimized_text", ""),
-                                "reason": fix.get("reason", ""),
-                                "category": "事实核验",
-                                "style": style_name,  # B29：style_name 已提前计算，不再用 dir() 判断
-                                "reference": f"Agent事实核验（来源：{r.get('source', '未知')}）",
-                            })
-                            seen_keys.add(key)
-                            n_merge += 1
-                elif tid == "style_enhance":
-                    for sc in task.get("results", []):
-                        sc_pi = sc.get("paragraph_index", 0)
-                        sc_orig = sc.get("original_text", "") or ""
-                        sc_opt = sc.get("optimized_text", "") or ""
-                        key = (sc_pi, sc_orig)
-                        # R1+B24：风格增强直接合入同段已有变更的 optimized_text（auto-accept）
-                        # B24 增强：sc_orig 在 c.original_text 中但不在 optimized_text 中时，
-                        # 用 difflib 映射 sc_orig 到 optimized_text 对应区间，风格审校覆盖用语优化
-                        merged = False
-                        if sc_orig:
-                            for c in changes:
-                                if c.get("paragraph_index", 0) != sc_pi:
-                                    continue
-                                ex_opt = c.get("optimized_text", "")
-                                # Case 1：精确匹配（原逻辑）
-                                if sc_orig in ex_opt:
-                                    c["optimized_text"] = ex_opt.replace(sc_orig, sc_opt, 1)
-                                    merged = True
-                                    n_style_auto_accept += 1
-                                    print(f"  ℹ️ R1: 风格增强直接合入 pi={sc_pi}: {sc_orig[:20]}→{sc_opt[:20]}")
-                                    break
-                                # Case 2（B24）：sc_orig 在 original_text 中但不在 optimized_text 中
-                                # → change 的修改改变了 sc_orig 部分内容，difflib 映射后合入
-                                if sc_orig in c.get("original_text", ""):
-                                    _ok, _new_opt = _merge_style_mapped(c, sc_orig, sc_opt)
-                                    if _ok:
-                                        c["optimized_text"] = _new_opt
-                                        merged = True
-                                        n_style_auto_accept += 1
-                                        print(f"  ℹ️ R1+B24: 风格增强映射合入 pi={sc_pi}: {sc_orig[:20]}→{sc_opt[:20]}")
-                                        break
-                        if merged:
-                            continue
-                        if key in seen_keys or _is_covered_by_existing(sc):
-                            print(f"  ℹ️ --input-tasks: 跳过重复风格建议 {sc.get('original_text', '')[:20]}…", file=sys.stderr)
-                            continue
-                        changes.append({
-                            "paragraph_index": sc_pi,
-                            "original_text": sc_orig,
-                            "optimized_text": sc_opt,
-                            "reason": sc.get("reason", ""),
-                            "category": sc.get("category", "风格优化"),  # B8：默认风格优化
-                            "style": style_name,  # B29：style_name 已提前计算，不再用 dir() 判断
-                            "reference": "风格增强（Agent）",
-                            "revision_author": "风格审校",  # B4：独立修订作者
-                        })
-                        seen_keys.add(key)
-                        n_merge += 1
-            if n_merge:
-                print(f"🤝 --input-tasks: 合并 {n_merge} 条 Agent 回填建议到变更列表")
-            if n_style_auto_accept:
-                print(f"🎨 R1: {n_style_auto_accept} 条风格建议已自动应用（合入已有变更，不生成独立修订）")
-            # E3 修复：收集 Agent 风格建议中 fixes_issue_id 标记（表明该 structure_issue 已被风格建议修复）
-            fixed_issue_ids = set()
-            for task in task_data.get("tasks", []):
-                if task.get("task_id") == "style_enhance":
-                    for sc in task.get("results", []):
-                        fix_id = sc.get("fixes_issue_id")
-                        if fix_id:
-                            fixed_issue_ids.add(fix_id)
-            if fixed_issue_ids:
-                print(f"🔗 E3: 检测到 {len(fixed_issue_ids)} 条已被风格建议修复的结构问题（将跳过重复批注）")
-            # B5：将已确认实体集合传递到后续事实核验（供批注生成过滤）
-            args._confirmed_entities = confirmed_entities
-            # E3：将已修复结构问题集合传递到结构检查批注生成（供过滤）
-            args._fixed_issue_ids = fixed_issue_ids
-        except Exception as e:
-            print(f"  ⚠️ --input-tasks 读取失败（{e}），忽略回填", file=sys.stderr)
-
-    # --paragraphs 范围过滤
-    if hasattr(args, 'paragraphs') and args.paragraphs:
-        indices = set()
-        for part in args.paragraphs.split(','):
-            part = part.strip()
-            if '-' in part:
-                try:
-                    a, b = part.split('-', 1)
-                    indices.update(range(int(a.strip()), int(b.strip()) + 1))
-                except ValueError:
-                    print(f"⚠️ 无效段落范围: {part}", file=sys.stderr)
-            else:
-                try:
-                    indices.add(int(part))
-                except ValueError:
-                    print(f"⚠️ 无效段落号: {part}", file=sys.stderr)
-        before = len(changes)
-        changes = [c for c in changes if c.get('paragraph_index', -1) in indices]
-        print(f"📌 --paragraphs {args.paragraphs}: 过滤 {before}→{len(changes)} 处变更")
-
-    # O7：--precheck 预检——逐段比对 changes 与原文，输出不匹配清单与相似度诊断
-    if getattr(args, 'precheck', False):
-        _pc = _precheck_changes(args.input, changes, getattr(args, 'changes', ''))
-        if getattr(args, 'json', False):
-            print(json.dumps(_pc, ensure_ascii=False, indent=2))
-        else:
-            print(f"🔍 changes 预检（--precheck）: 共 {_pc['total']} 处变更")
-            print(f"  ✅ 完全匹配: {_pc['matched']} 处")
-            print(f"  ❌ 不匹配: {_pc['mismatched']} 处")
-            print(f"  ⚠️ 索引越界: {_pc['out_of_range']} 处")
-            for it in _pc['items']:
-                if it['status'] == 'ok':
-                    continue
-                print(f"  [{it['status']}] #{it['change_index']} pi={it['paragraph_index']} "
-                      f"相似度 {it['similarity']}")
-                print(f"      JSON: {it['original_text'][:60]}...")
-                if it['para_text']:
-                    print(f"      DOCX: {it['para_text'][:60]}...")
-                print(f"      {it['detail']}")
-            if _pc['mismatched'] or _pc['out_of_range']:
-                print("  建议：修正 changes.json 的 original_text（需与原文段落文本完全一致），"
-                      "或调整 paragraph_index 后重试")
-        # 有未匹配/越界项时返回 1（供 Agent 感知）；全部匹配返回 0
-        return 1 if (_pc['mismatched'] + _pc['out_of_range']) > 0 else 0
-
-    # 预览：列出变更摘要
-    print(f"📄 文件: {Path(args.input).name}")
-    print(f"📝 变更: 共 {len(changes)} 处")
-    for c in changes[:5]:
-        pi = c.get("paragraph_index", "?")
-        orig = c.get("original_text", "")[:40]
-        opt = c.get("optimized_text", "")[:40]
-        reason = c.get("reason", "")[:30]
-        style = c.get("style", "")
-        print(f"  #{pi} 原文: {orig}...")
-        print(f"     → {opt}...")
-        if reason:
-            print(f"     说明: {reason}")
-        if style:
-            print(f"     风格: {style}")
-    if len(changes) > 5:
-        print(f"  ... 还有 {len(changes) - 5} 处变更未列出")
-
-    if not args.apply:
-        print()
-        print("─── 预览模式 ───")
-        print("以上是变更内容预览。")
-        print("加 --apply 生成差异对比文档。")
-        print("示例:")
-        print(f"  python -m gongwen optimize-content {args.input} --changes {args.changes} --apply")
-        return 0
-
-    # 执行模式
-    out_name = args.output or _build_output_name(args.input, "B", _extract_dominant_style(changes))
-
-    # 改进 D：加载风格提示词（供 Agent/LLM 生成建议时参考，输出风格信息）
-    # B29 修复：style_name 已在上方（--input-tasks 之前）提前计算，此处不再重复
-    style_prompt = _load_style_prompt(style_name)
-    if style_prompt:
-        print(f"🎨 风格: {style_name}（已加载 style-prompts.md 对应提示词 {len(style_prompt)} 字）")
-    else:
-        print(f"🎨 风格: {style_name}（style-prompts.md 未找到对应段落）")
-
-    # B1（路线 B）+ V3：--changes 路径风格增强——LLM 按 style_prompt 追加风格级建议
-    # V3 修复：默认开启，--no-style-enhance 显式禁用
-    if style_prompt and not getattr(args, 'no_style_enhance', False):
-        try:
-            from auto_optimizer import style_enhance_changes, llm_configured
-            if llm_configured():
-                from engine.core.document.parser import parse_docx
-                _se_model = parse_docx(str(args.input))
-                _se_paras = [p.text for p in _se_model.paragraphs if p.text and p.text.strip()]
-                style_changes = style_enhance_changes(_se_paras, style_prompt, changes)
-                if style_changes:
-                    # V3：风格增强变更以独立修订作者"风格审校"注入
-                    for _sc in style_changes:
-                        _sc["revision_author"] = "风格审校"
-                    changes.extend(style_changes)
-                    print(f"🎨 风格增强: 追加 {len(style_changes)} 条风格级建议（修订作者：风格审校）")
-            else:
-                print("🎨 风格增强: 未配置 GONGWEN_LLM_API，跳过（不影响现有流程）")
-        except Exception as e:
-            print(f"  ⚠️ 风格增强跳过（{e}）")
-
-    # --comment-mode：Word 原生批注模式（可审阅→接受/拒绝）
+def _run_comment_mode(args, changes, out_name):
+    """O10 阶段：--comment-mode 批注模式（内联块机械抽取，行为不变）。"""
     if getattr(args, 'comment_mode', False):
         from engine.core.document.annotator import GongwenAnnotator, CommentSuggestion
         from engine.core.document.reviewer_comments import resolve_role
@@ -500,7 +160,9 @@ def cmd_optimize_content(args):
         print(f"  批注完整性验证: {'通过' if ok else '失败'}")
         return
 
-    # --tracked-change：Word 原生修订标记模式（审阅面板逐条接受/拒绝）
+
+def _run_tracked_change_mode(args, changes, out_name):
+    """O10 阶段：--tracked-change 修订标记模式（内联块机械抽取，行为不变）。"""
     if getattr(args, 'tracked_change', False):
         from engine.core.document.tracked_changes import inject_tracked_changes
         tc_changes = [{
@@ -515,7 +177,14 @@ def cmd_optimize_content(args):
         print(f"  共 {len(tc_changes)} 处修订标记（Word 打开后可通过「审阅→修订」逐条接受/拒绝）")
         return
 
-    # --mode tracked：Word 原生修订（del/ins）+ 批注（修改说明）统一模式
+
+def _run_tracked_mode(args, changes, style_name, style_prompt, content_rules, doc_type, out_name):
+    """O10 阶段：--mode tracked 统一修订+批注模式（内联块机械抽取，行为不变）。"""
+    import time
+    _t_start = time.time()
+    # W 命名空间常量（原 cmd_optimize_content 内定义，随块迁移）
+    W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+    _m = None
     mode = getattr(args, 'mode', 'tracked')
     if mode == 'tracked':
         from engine.core.document.tracked_annotator import inject_tracked_with_comments
@@ -926,6 +595,354 @@ def cmd_optimize_content(args):
         print(f"  批注完整性验证: {'通过' if ok else '失败'}")
         if not getattr(args, 'quiet', False):
             print(f"  ── 统计：{len(tc_changes)} 处变更 / {len(suggestions)} 条批注 / 耗时 {_t_elapsed:.1f}s")
+        return
+
+
+def cmd_optimize_content(args):
+    """内容优化差异对比：原文灰色+删除线，修改后红色高亮，附修改说明。
+
+    默认预览模式：列出变更摘要 → 提示下一步。
+    加 --apply 才真正生成差异对比文档。
+    加 --mode tracked 生成 Word 原生修订+批注（审阅面板逐条接受/拒绝）。
+    """
+    import time
+    _t_start = time.time()
+    from optimizer import load_changes_from_json, create_diff_document
+
+    # O6：--preset 预设组合映射（显式参数优先；full=完整默认无需映射）
+    _preset = getattr(args, 'preset', '')
+    if _preset == 'quick':
+        if not hasattr(args, 'reviewers'):
+            args.reviewers = 3
+        args.no_style_enhance = True
+    elif _preset == 'review':
+        if not hasattr(args, 'reviewers'):
+            args.reviewers = 6
+        args.show_confirmed = True
+    if _preset and not getattr(args, 'quiet', False) and not getattr(args, 'json', False):
+        _desc = {"quick": "精简快速（3角色+跳过风格增强）",
+                 "full": "完整默认（6角色+风格增强+事实核验）",
+                 "review": "完整审稿（6角色+已确认实体批注）"}[_preset]
+        print(f"🎛️ preset {_preset}: {_desc}")
+
+    # 改进 A：加载文档类型规则（structure/focus_checks/skip_checks/title 内容层定义）
+    # P1-1 修复：统一传 None（空字符串与 None 虽同为 falsy，但混用有维护隐患）
+    doc_type, type_source = _detect_doc_type(
+        Path(args.input), getattr(args, 'doc_type', None))
+    content_rules: dict = {}
+    try:
+        from engine.core.rules.manager import load_rules_merged
+        rules = load_rules_merged(doc_type)
+        content_rules = _extract_content_rules(rules)
+        if getattr(args, 'show_rules', False):
+            print(f"📋 文档类型: {content_rules.get('doc_type_display') or doc_type}（{type_source}）")
+            if content_rules.get("structure"):
+                print(f"  段落结构: {len(content_rules['structure'])} 段")
+            if content_rules.get("focus_checks"):
+                print(f"  重点检查: {len(content_rules['focus_checks'])} 项")
+    except Exception as e:
+        print(f"  ⚠️ 规则加载失败（{e}），继续使用默认流程")
+
+    # 改进 E：无 changes.json 时，基于内置规则 + 风格提示词自动生成优化建议
+    if not getattr(args, 'changes', None) and getattr(args, 'auto_generate', False):
+        from auto_optimizer import auto_generate_changes, llm_configured
+        # P2-30 修复：auto_generate 分支内 changes 尚未赋值，先声明空列表，
+        # 避免 _extract_dominant_style(changes) 引用未绑定变量（UnboundLocalError）
+        changes: list = []
+        style_name_e = _validate_style(_extract_dominant_style(changes) or "") if changes else "庄重严谨"
+        style_prompt_e = _load_style_prompt(style_name_e)
+        if not llm_configured():
+            print("⚠️ LLM 未配置（设置 GONGWEN_LLM_API 或 GONGWEN_OPTIMIZE_LLM_API 可启用），仅生成规则级结构建议")
+        changes = auto_generate_changes(
+            input_path=str(args.input),
+            doc_type=doc_type,
+            content_rules=content_rules,
+            style_prompt=style_prompt_e,
+        )
+        print(f"🤖 基于内置规则自动生成 {len(changes)} 处优化建议")
+    else:
+        # B27 修复：既未指定 --changes 也未启用 --auto-generate 时友好提示，而非 FileNotFoundError
+        if not args.changes:
+            print("❌ 未指定 --changes 且未启用 --auto-generate，无法加载变更", file=sys.stderr)
+            print("   用法：python -m gongwen optimize-content 原文.docx --changes changes.json [--apply]")
+            return 2
+        changes = load_changes_from_json(args.changes)
+    _echo_progress(args, 1, 6, "加载变更", f"{len(changes)} 处变更已加载")
+
+    # P5 修复：schema 校验（必填字段/类型/空文本），仅保留有效条目
+    changes = _validate_changes_schema(changes, source=args.changes)
+
+    # P4 修复：预检过滤零修改条目（optimized_text == original_text，无意义）
+    _valid_before = len(changes)
+    changes = [c for c in changes
+               if c.get("optimized_text", "").strip() != c.get("original_text", "").strip()]
+    _n_filtered = _valid_before - len(changes)
+    if _n_filtered > 0:
+        print(f"  ℹ️ 预检过滤：移除 {_n_filtered} 条零修改条目（optimized_text == original_text）")
+
+    # V1 修复：--output-tasks 与 --input-tasks 互斥
+    if args.output_tasks and args.input_tasks:
+        print("❌ --output-tasks 与 --input-tasks 不能同时指定", file=sys.stderr)
+        return 2
+
+    # B29 修复：style_name 提前计算（仅依赖 args.style/changes/doc_type，均已就绪）
+    # ——必须位于 --input-tasks 分支之前，否则该分支内引用 style_name 触发 NameError
+    TYPE_STYLE_MAP = {
+        "notice": "庄重严谨", "decision": "庄重严谨", "opinion": "庄重严谨",
+        "letter": "请示商洽", "request": "请示商洽",
+        "report": "宏观概括", "summary": "宏观概括",
+        "minutes": "平实简洁", "regulation": "法规条文",
+        "speech": "会议主持词", "news": "庄重严谨",
+    }
+    style_name = _validate_style(
+        getattr(args, 'style', None)          # 1. --style 显式指定
+        or _extract_dominant_style(changes)    # 2. changes.json style 字段
+        or TYPE_STYLE_MAP.get(doc_type, "")    # 3. doc_type 自动推断
+        or "庄重严谨")                         # 4. 兜底
+
+    # V1：--input-tasks 读入 Agent 回填结果，合并到 changes（事实核验修正 + 风格建议）
+    # B3 修复：合并前按 (paragraph_index, original_text) 去重 + 整段/局部包含检查
+    # B4 修复：style_enhance 合并补 revision_author="风格审校"
+    # B5 修复：收集 confirmed_entities 供后续事实核验过滤
+    # B12 修复：error+auto_fix 实体无条件加入 confirmed_entities（含去重跳过时）
+    # B15 修复：seen_keys 精确 (pi, orig) 去重
+    # R1 修复：风格增强直接合入已有变更 optimized_text（auto-accept），不生成独立修订
+    if args.input_tasks:
+        try:
+            # P2-7 修复：顶层已导入 json，删除冗余 import json as _json
+            task_data = json.loads(Path(args.input_tasks).read_text(encoding="utf-8"))
+            n_merge = 0
+            confirmed_entities = set()  # B5：已确认实体集合
+            seen_keys = set()  # B15：精确去重键集合
+            for c in changes:
+                seen_keys.add((c.get("paragraph_index", 0), c.get("original_text", "")))
+            n_style_auto_accept = 0  # R1：已自动应用的风格建议数
+
+            def _is_covered_by_existing(change: dict) -> bool:
+                """B3：新变更是否已被已有变更覆盖（整段替换包含局部替换）。"""
+                pi = change.get("paragraph_index", 0)
+                orig = change.get("original_text", "")
+                opt = change.get("optimized_text", "")
+                for ec in changes:
+                    if ec.get("paragraph_index", 0) != pi:
+                        continue
+                    ex_orig = ec.get("original_text", "")
+                    ex_opt = ec.get("optimized_text", "")
+                    if orig and orig in ex_orig and opt and opt in ex_opt:
+                        return True
+                return False
+
+            for task in task_data.get("tasks", []):
+                tid = task.get("task_id", "")
+                if tid == "fact_check":
+                    for r in task.get("results", []):
+                        # B12：confirmed 与 error 实体均视为已处理
+                        if r.get("status") in ("confirmed", "error"):
+                            confirmed_entities.add(r.get("entity_name", ""))
+                        if r.get("status") == "error" and r.get("auto_fix"):
+                            fix = r["auto_fix"]
+                            key = (fix.get("paragraph_index", 0), fix.get("original_text", ""))
+                            if key in seen_keys or _is_covered_by_existing(fix):
+                                print(
+                                    f"  ℹ️ --input-tasks: 跳过重复修正 {fix.get('original_text', '')[:20]}…", file=sys.stderr)
+                                continue
+                            changes.append({
+                                "paragraph_index": fix.get("paragraph_index", 0),
+                                "original_text": fix.get("original_text", ""),
+                                "optimized_text": fix.get("optimized_text", ""),
+                                "reason": fix.get("reason", ""),
+                                "category": "事实核验",
+                                "style": style_name,  # B29：style_name 已提前计算，不再用 dir() 判断
+                                "reference": f"Agent事实核验（来源：{r.get('source', '未知')}）",
+                            })
+                            seen_keys.add(key)
+                            n_merge += 1
+                elif tid == "style_enhance":
+                    for sc in task.get("results", []):
+                        sc_pi = sc.get("paragraph_index", 0)
+                        sc_orig = sc.get("original_text", "") or ""
+                        sc_opt = sc.get("optimized_text", "") or ""
+                        key = (sc_pi, sc_orig)
+                        # R1+B24：风格增强直接合入同段已有变更的 optimized_text（auto-accept）
+                        # B24 增强：sc_orig 在 c.original_text 中但不在 optimized_text 中时，
+                        # 用 difflib 映射 sc_orig 到 optimized_text 对应区间，风格审校覆盖用语优化
+                        merged = False
+                        if sc_orig:
+                            for c in changes:
+                                if c.get("paragraph_index", 0) != sc_pi:
+                                    continue
+                                ex_opt = c.get("optimized_text", "")
+                                # Case 1：精确匹配（原逻辑）
+                                if sc_orig in ex_opt:
+                                    c["optimized_text"] = ex_opt.replace(sc_orig, sc_opt, 1)
+                                    merged = True
+                                    n_style_auto_accept += 1
+                                    print(f"  ℹ️ R1: 风格增强直接合入 pi={sc_pi}: {sc_orig[:20]}→{sc_opt[:20]}")
+                                    break
+                                # Case 2（B24）：sc_orig 在 original_text 中但不在 optimized_text 中
+                                # → change 的修改改变了 sc_orig 部分内容，difflib 映射后合入
+                                if sc_orig in c.get("original_text", ""):
+                                    _ok, _new_opt = _merge_style_mapped(c, sc_orig, sc_opt)
+                                    if _ok:
+                                        c["optimized_text"] = _new_opt
+                                        merged = True
+                                        n_style_auto_accept += 1
+                                        print(f"  ℹ️ R1+B24: 风格增强映射合入 pi={sc_pi}: {sc_orig[:20]}→{sc_opt[:20]}")
+                                        break
+                        if merged:
+                            continue
+                        if key in seen_keys or _is_covered_by_existing(sc):
+                            print(f"  ℹ️ --input-tasks: 跳过重复风格建议 {sc.get('original_text', '')[:20]}…", file=sys.stderr)
+                            continue
+                        changes.append({
+                            "paragraph_index": sc_pi,
+                            "original_text": sc_orig,
+                            "optimized_text": sc_opt,
+                            "reason": sc.get("reason", ""),
+                            "category": sc.get("category", "风格优化"),  # B8：默认风格优化
+                            "style": style_name,  # B29：style_name 已提前计算，不再用 dir() 判断
+                            "reference": "风格增强（Agent）",
+                            "revision_author": "风格审校",  # B4：独立修订作者
+                        })
+                        seen_keys.add(key)
+                        n_merge += 1
+            if n_merge:
+                print(f"🤝 --input-tasks: 合并 {n_merge} 条 Agent 回填建议到变更列表")
+            if n_style_auto_accept:
+                print(f"🎨 R1: {n_style_auto_accept} 条风格建议已自动应用（合入已有变更，不生成独立修订）")
+            # E3 修复：收集 Agent 风格建议中 fixes_issue_id 标记（表明该 structure_issue 已被风格建议修复）
+            fixed_issue_ids = set()
+            for task in task_data.get("tasks", []):
+                if task.get("task_id") == "style_enhance":
+                    for sc in task.get("results", []):
+                        fix_id = sc.get("fixes_issue_id")
+                        if fix_id:
+                            fixed_issue_ids.add(fix_id)
+            if fixed_issue_ids:
+                print(f"🔗 E3: 检测到 {len(fixed_issue_ids)} 条已被风格建议修复的结构问题（将跳过重复批注）")
+            # B5：将已确认实体集合传递到后续事实核验（供批注生成过滤）
+            args._confirmed_entities = confirmed_entities
+            # E3：将已修复结构问题集合传递到结构检查批注生成（供过滤）
+            args._fixed_issue_ids = fixed_issue_ids
+        except Exception as e:
+            print(f"  ⚠️ --input-tasks 读取失败（{e}），忽略回填", file=sys.stderr)
+
+    # --paragraphs 范围过滤
+    if hasattr(args, 'paragraphs') and args.paragraphs:
+        indices = set()
+        for part in args.paragraphs.split(','):
+            part = part.strip()
+            if '-' in part:
+                try:
+                    a, b = part.split('-', 1)
+                    indices.update(range(int(a.strip()), int(b.strip()) + 1))
+                except ValueError:
+                    print(f"⚠️ 无效段落范围: {part}", file=sys.stderr)
+            else:
+                try:
+                    indices.add(int(part))
+                except ValueError:
+                    print(f"⚠️ 无效段落号: {part}", file=sys.stderr)
+        before = len(changes)
+        changes = [c for c in changes if c.get('paragraph_index', -1) in indices]
+        print(f"📌 --paragraphs {args.paragraphs}: 过滤 {before}→{len(changes)} 处变更")
+
+    # O7：--precheck 预检——逐段比对 changes 与原文，输出不匹配清单与相似度诊断
+    if getattr(args, 'precheck', False):
+        _pc = _precheck_changes(args.input, changes, getattr(args, 'changes', ''))
+        if getattr(args, 'json', False):
+            print(json.dumps(_pc, ensure_ascii=False, indent=2))
+        else:
+            print(f"🔍 changes 预检（--precheck）: 共 {_pc['total']} 处变更")
+            print(f"  ✅ 完全匹配: {_pc['matched']} 处")
+            print(f"  ❌ 不匹配: {_pc['mismatched']} 处")
+            print(f"  ⚠️ 索引越界: {_pc['out_of_range']} 处")
+            for it in _pc['items']:
+                if it['status'] == 'ok':
+                    continue
+                print(f"  [{it['status']}] #{it['change_index']} pi={it['paragraph_index']} "
+                      f"相似度 {it['similarity']}")
+                print(f"      JSON: {it['original_text'][:60]}...")
+                if it['para_text']:
+                    print(f"      DOCX: {it['para_text'][:60]}...")
+                print(f"      {it['detail']}")
+            if _pc['mismatched'] or _pc['out_of_range']:
+                print("  建议：修正 changes.json 的 original_text（需与原文段落文本完全一致），"
+                      "或调整 paragraph_index 后重试")
+        # 有未匹配/越界项时返回 1（供 Agent 感知）；全部匹配返回 0
+        return 1 if (_pc['mismatched'] + _pc['out_of_range']) > 0 else 0
+
+    # 预览：列出变更摘要
+    print(f"📄 文件: {Path(args.input).name}")
+    print(f"📝 变更: 共 {len(changes)} 处")
+    for c in changes[:5]:
+        pi = c.get("paragraph_index", "?")
+        orig = c.get("original_text", "")[:40]
+        opt = c.get("optimized_text", "")[:40]
+        reason = c.get("reason", "")[:30]
+        style = c.get("style", "")
+        print(f"  #{pi} 原文: {orig}...")
+        print(f"     → {opt}...")
+        if reason:
+            print(f"     说明: {reason}")
+        if style:
+            print(f"     风格: {style}")
+    if len(changes) > 5:
+        print(f"  ... 还有 {len(changes) - 5} 处变更未列出")
+
+    if not args.apply:
+        print()
+        print("─── 预览模式 ───")
+        print("以上是变更内容预览。")
+        print("加 --apply 生成差异对比文档。")
+        print("示例:")
+        print(f"  python -m gongwen optimize-content {args.input} --changes {args.changes} --apply")
+        return 0
+
+    # 执行模式
+    out_name = args.output or _build_output_name(args.input, "B", _extract_dominant_style(changes))
+
+    # 改进 D：加载风格提示词（供 Agent/LLM 生成建议时参考，输出风格信息）
+    # B29 修复：style_name 已在上方（--input-tasks 之前）提前计算，此处不再重复
+    style_prompt = _load_style_prompt(style_name)
+    if style_prompt:
+        print(f"🎨 风格: {style_name}（已加载 style-prompts.md 对应提示词 {len(style_prompt)} 字）")
+    else:
+        print(f"🎨 风格: {style_name}（style-prompts.md 未找到对应段落）")
+
+    # B1（路线 B）+ V3：--changes 路径风格增强——LLM 按 style_prompt 追加风格级建议
+    # V3 修复：默认开启，--no-style-enhance 显式禁用
+    if style_prompt and not getattr(args, 'no_style_enhance', False):
+        try:
+            from auto_optimizer import style_enhance_changes, llm_configured
+            if llm_configured():
+                from engine.core.document.parser import parse_docx
+                _se_model = parse_docx(str(args.input))
+                _se_paras = [p.text for p in _se_model.paragraphs if p.text and p.text.strip()]
+                style_changes = style_enhance_changes(_se_paras, style_prompt, changes)
+                if style_changes:
+                    # V3：风格增强变更以独立修订作者"风格审校"注入
+                    for _sc in style_changes:
+                        _sc["revision_author"] = "风格审校"
+                    changes.extend(style_changes)
+                    print(f"🎨 风格增强: 追加 {len(style_changes)} 条风格级建议（修订作者：风格审校）")
+            else:
+                print("🎨 风格增强: 未配置 GONGWEN_LLM_API，跳过（不影响现有流程）")
+        except Exception as e:
+            print(f"  ⚠️ 风格增强跳过（{e}）")
+
+    # --comment-mode：Word 原生批注模式（可审阅→接受/拒绝）
+    if getattr(args, 'comment_mode', False):
+        return _run_comment_mode(args, changes, out_name)
+
+    # --tracked-change：Word 原生修订标记模式（审阅面板逐条接受/拒绝）
+    if getattr(args, 'tracked_change', False):
+        return _run_tracked_change_mode(args, changes, out_name)
+
+    # --mode tracked：Word 原生修订（del/ins）+ 批注（修改说明）统一模式
+    mode = getattr(args, 'mode', 'tracked')
+    if mode == 'tracked':
+        _run_tracked_mode(args, changes, style_name, style_prompt, content_rules, doc_type, out_name)
         return
 
     kwargs = {}
