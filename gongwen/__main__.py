@@ -8,7 +8,7 @@
 # python -m gongwen entry point
 # Usage: python -m gongwen check input.docx -t notice
 
-from gongwen._legacy import main
+from gongwen.cli.app import main
 
 if __name__ == "__main__":
     main()
