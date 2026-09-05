@@ -1,3 +1,7 @@
+# (c) 2026 Jose AI (https://www.linhut.cn)
+# https://github.com/linhut/gongwen-skill
+# Licensed under the MIT License. See the LICENSE file for details.
+
 # logo 图片仅用于 GitHub README 展示，从发布压缩包（git archive）中排除，
 # 使下载导入的 skill 包保持精简（仅含运行必需的代码/规则/文档）。
 logo/ export-ignore

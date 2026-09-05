@@ -66,7 +66,6 @@
 
 ### Notes
 - 工具链仅支持 OOXML .docx；旧版 .doc（OLE2/WPS）需经 WPS COM `SaveAs(dst, 12)` 转换后使用（README/SKILL 已注明）
-- 正式发布流程：见 RELEASE.md（一键 bump + 三 remote 推送触发 CI 自动发布）
 
 ## v2.8.0 (2026-09-03)
 
