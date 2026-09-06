@@ -1,18 +1,23 @@
-// 公文全流程处理工具 - DSH plugin bridge (gongwen-skill, v2.10.0+)
+// 公文全流程处理工具 - DSH plugin bridge (gongwen-skill, v2.11.0+)
 // (c) 2026 Jose AI (https://www.linhut.cn)
 // https://github.com/linhut/gongwen-skill
 // Licensed under the MIT License. See the LICENSE file for details.
 //
 // 分层架构：
 // - Python CLI：纯工具层，通过 --config-overrides 接收规则覆盖 JSON
-// - DSH 插件 Host (本文件)：配置管理者 + AI 工作指引 + Web API 路由 + 系统设置
-//   * apply() 生命周期管理（ctx.effect 全部可逆）
-//   * installSettingsSection + schemastery Schema 校验
-//   * webServer 路由：/plugins/gongwen-skill/api/config (GET/POST)
-//   * call() 透传 Python CLI + 自动注入 --config-overrides
-//   * config 命令支持 show/set/get/reset/init
-//   * systemPrompt section 注入 AI 工作指引
+// - DSH 插件 Host (本文件)：配置管理者 + AI 工作指引 + 模型工具 + 系统设置
+//   * inject: ['tools'] — 官方 ctx.tools.register(defineTool(...)) 注册模型工具，
+//     schema 自动流入系统提示词组装（无需手动拼接工具 schema）
+//   * ctx.systemPrompt.section 注入 AI 工作指引（可选服务，缺失不阻塞）
+//   * ctx.settings.register('gongwen-skill') 官方设置命名空间（schemastery schema），
+//     scope.watch 回写 ~/.gongwen-skill/dsh-config.json 保持 CLI 兼容
+//   * ctx.skills.register 运行时注册 SKILL.md（可选服务）
+//   * call() 透传 Python CLI（向后兼容旧调用方）
 //
+// 官方依据：DeepSeek Harness Bluebook Developer Guide
+//   - Host Services & Events：inject 硬依赖 / ctx.get 可选依赖 / ctx.effect 可逆副作用
+//   - Registering Tools：defineTool + ctx.tools.register
+//   - User Guide · Skills：ctx.skills.register(SkillRegistration)
 // 纯 CLI 用户完全不受影响（不使用 DSH 插件时不会读取 dsh-config.json）
 
 import { spawn } from "node:child_process";
@@ -20,20 +25,26 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
+import { defineTool } from "@deepseek-ai/dsh-tools";
+import Schema from "@deepseek-ai/schemastery";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// DSH 插件配置文件路径
+// DSH 插件配置文件路径（CLI 侧事实源；settings 命名空间是 DSH 侧编辑入口）
 const APP_DATA_DIR = join(homedir(), ".gongwen-skill");
 const CONFIG_FILE = join(APP_DATA_DIR, "dsh-config.json");
 const DEFAULTS_FILE = join(resolve(__dirname, ".."), "etc", "dsh-config-defaults.json");
 
-// AI 工作指引
-const GONGWEN_GUIDANCE = `本机已安装公文全流程处理工具插件（gongwen-skill）。能力：.docx 公文全流程——列出公文类型（list-types）、解析文档（parse）、格式检查（check）、自动修复（optimize）、内容修订对比版（optimize-content）、模板生成（template）、样式学习（style-learn/style-list，从标准文档学习排版样式）、全面诊断（doctor，22 项自检）、自动修复（repair）、Markdown 转公文（md2docx）、JSON 模型生成（generate）、版头/版记/页码注入（header/footer/pagenum）、首句加粗（bold-first）、一键格式修复（fix-common）、桌签生成（table-signs）、审稿流转单（review）、完整审校（full-review）、文档审计（audit）、规则管理（rule-export/import/list）、版本自检（check-update）、会话交接（handoff）、字体管理（font）。覆盖通知/请示/报告/函/会议纪要等 24 类公文。完全自包含，克隆即用，无需数据库或后端服务。用户提到「公文 / 红头文件 / 版式 / 排版 / 格式检查 / 公文模板 / 样式学习 / 自定义模板 / 党政机关公文」时即指本插件。DSH 插件支持配置化排版参数（页边距/行距/字体等），配置文件位于 ~/.gongwen-skill/dsh-config.json，可通过 config 命令或 DSH 系统设置→插件配置管理。`;
+// settings 命名空间（官方要求小写 kebab-case；与浏览器卡片同名配对）
+const SETTINGS_NS = "gongwen-skill";
 
-// Web API 路由前缀
-const API_PREFIX = "/plugins/gongwen-skill/api";
+// 系统提示段落名（官方约定 plugin:<name>，重复注册会抛错）
+const SECTION_NAME = "plugin:gongwen-skill";
+const SECTION_ORDER = 100;
+
+// AI 工作指引（模型可见的能力说明；工具 schema 由 defineTool 自动注入）
+const GONGWEN_GUIDANCE = `本机已安装公文全流程处理工具插件（gongwen-skill）。能力：.docx 公文全流程——列出公文类型（list-types）、解析文档（parse）、格式检查（check）、自动修复（optimize）、内容修订对比版（optimize-content）、模板生成（template）、样式学习（style-learn/style-list，从标准文档学习排版样式）、全面诊断（doctor）、自动修复（repair）、Markdown 转公文（md2docx）、JSON 模型生成（generate）、版头/版记/页码注入（header/footer/pagenum）、首句加粗（bold-first）、一键格式修复（fix-common）、桌签生成（table-signs）、审稿流转单（review）、完整审校（full-review）、文档审计（audit）、规则管理（rule-export/import/list）、版本自检（check-update）、会话交接（handoff）、字体管理（font）。覆盖通知/请示/报告/函/会议纪要等 24 类公文。完全自包含，克隆即用，无需数据库或后端服务。用户提到「公文 / 红头文件 / 版式 / 排版 / 格式检查 / 公文模板 / 样式学习 / 自定义模板 / 党政机关公文」时即指本插件。DSH 插件支持配置化排版参数（页边距/行距/字体等）：在系统设置 → 插件配置 → gongwen-skill 中调整，写入官方 settings 命名空间并同步到 ~/.gongwen-skill/dsh-config.json。`;
 
 // 定位 gongwen CLI 真实安装根目录
 function _resolve_gongwen_root() {
@@ -68,7 +79,7 @@ function _to_cli_args(args, positionalKeys = []) {
   return cliArgs;
 }
 
-// 各命令的位置参数定义
+// 各命令的位置参数定义（CLI 是唯一业务入口，此处仅转发）
 const POSITIONAL_ARGS = {
   template: ["type"],
   parse: ["input"],
@@ -236,279 +247,72 @@ function _handle_config(args) {
   return { success: false, error: `未知的 config action: ${action}` };
 }
 
-// HTTP JSON 响应工具
-function _json_response(res, status, data) {
-  const body = JSON.stringify(data);
-  res.writeHead(status, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Content-Length": Buffer.byteLength(body),
-  });
-  res.end(body);
-}
-
-// 构建系统设置 Schema（schemastery 格式）
+// 构建系统设置 Schema（schemastery 官方 API：Schema.object / Schema.string ...）
 function _build_settings_schema() {
-  // 尝试动态 import schemastery
-  try {
-    const z = require("schemastery");
-    return z.object({
-      default_doc_type: z.string().default("notice").description("默认公文类型"),
-      page_setup: z.object({
-        margins: z.object({
-          top: z.string().default("2.8cm").description("上边距"),
-          bottom: z.string().default("2.8cm").description("下边距"),
-          left: z.string().default("2.7cm").description("左边距"),
-          right: z.string().default("2.7cm").description("右边距"),
-        }).description("页边距"),
-        header_distance: z.string().default("1.5cm").description("页眉距"),
-        footer_distance: z.string().default("2.3cm").description("页脚距"),
-      }).description("页面设置"),
-      body: z.object({
-        font: z.string().default("仿宋_GB2312").description("正文字体"),
-        font_fallback: z.string().default("FangSong").description("字体回退"),
-        size: z.string().default("16pt").description("正文字号"),
-        line_spacing: z.string().default("33pt").description("行距"),
-        first_line_indent: z.string().default("2em").description("首行缩进"),
-        align: z.string().default("justify").description("对齐方式"),
-      }).description("正文格式"),
-      doc_title: z.object({
-        font: z.string().default("方正小标宋简体").description("标题字体"),
-        font_fallback: z.string().default("SimSun").description("字体回退"),
-        size: z.string().default("22pt").description("标题字号"),
-        align: z.string().default("center").description("对齐方式"),
-        bold: z.boolean().default(false).description("是否加粗"),
-        line_spacing: z.string().default("33pt").description("行距"),
-      }).description("公文标题"),
-      heading_1: z.object({
-        font: z.string().default("黑体").description("一级标题字体"),
-        font_fallback: z.string().default("SimHei").description("字体回退"),
-        size: z.string().default("16pt").description("字号"),
-        line_spacing: z.string().default("33pt").description("行距"),
-        first_line_indent: z.string().default("2em").description("首行缩进"),
-      }).description("一级标题"),
-      heading_2: z.object({
-        font: z.string().default("楷体_GB2312").description("二级标题字体"),
-        font_fallback: z.string().default("KaiTi").description("字体回退"),
-        size: z.string().default("16pt").description("字号"),
-        line_spacing: z.string().default("33pt").description("行距"),
-        first_line_indent: z.string().default("2em").description("首行缩进"),
-      }).description("二级标题"),
-      heading_3: z.object({
-        font: z.string().default("仿宋_GB2312").description("三级标题字体"),
-        font_fallback: z.string().default("FangSong").description("字体回退"),
-        size: z.string().default("16pt").description("字号"),
-        bold: z.boolean().default(true).description("是否加粗"),
-        line_spacing: z.string().default("33pt").description("行距"),
-        first_line_indent: z.string().default("2em").description("首行缩进"),
-      }).description("三级标题"),
-      signature: z.object({
-        font: z.string().default("仿宋_GB2312").description("署名字体"),
-        font_fallback: z.string().default("FangSong").description("字体回退"),
-        size: z.string().default("18pt").description("署名字号"),
-        align: z.string().default("center").description("对齐方式"),
-      }).description("署名格式"),
-    });
-  } catch {
-    return null;
-  }
+  return Schema.object({
+    default_doc_type: Schema.string().default("notice").description("默认公文类型"),
+    page_setup: Schema.object({
+      margins: Schema.object({
+        top: Schema.string().default("2.8cm").description("上边距"),
+        bottom: Schema.string().default("2.8cm").description("下边距"),
+        left: Schema.string().default("2.7cm").description("左边距"),
+        right: Schema.string().default("2.7cm").description("右边距"),
+      }).description("页边距"),
+      header_distance: Schema.string().default("1.5cm").description("页眉距"),
+      footer_distance: Schema.string().default("2.3cm").description("页脚距"),
+    }).description("页面设置"),
+    body: Schema.object({
+      font: Schema.string().default("仿宋_GB2312").description("正文字体"),
+      font_fallback: Schema.string().default("FangSong").description("字体回退"),
+      size: Schema.string().default("16pt").description("正文字号"),
+      line_spacing: Schema.string().default("33pt").description("行距"),
+      first_line_indent: Schema.string().default("2em").description("首行缩进"),
+      align: Schema.string().default("justify").description("对齐方式"),
+    }).description("正文格式"),
+    doc_title: Schema.object({
+      font: Schema.string().default("方正小标宋简体").description("标题字体"),
+      font_fallback: Schema.string().default("SimSun").description("字体回退"),
+      size: Schema.string().default("22pt").description("标题字号"),
+      align: Schema.string().default("center").description("对齐方式"),
+      bold: Schema.boolean().default(false).description("是否加粗"),
+      line_spacing: Schema.string().default("33pt").description("行距"),
+    }).description("公文标题"),
+    heading_1: Schema.object({
+      font: Schema.string().default("黑体").description("一级标题字体"),
+      font_fallback: Schema.string().default("SimHei").description("字体回退"),
+      size: Schema.string().default("16pt").description("字号"),
+      line_spacing: Schema.string().default("33pt").description("行距"),
+      first_line_indent: Schema.string().default("2em").description("首行缩进"),
+    }).description("一级标题"),
+    heading_2: Schema.object({
+      font: Schema.string().default("楷体_GB2312").description("二级标题字体"),
+      font_fallback: Schema.string().default("KaiTi").description("字体回退"),
+      size: Schema.string().default("16pt").description("字号"),
+      line_spacing: Schema.string().default("33pt").description("行距"),
+      first_line_indent: Schema.string().default("2em").description("首行缩进"),
+    }).description("二级标题"),
+    heading_3: Schema.object({
+      font: Schema.string().default("仿宋_GB2312").description("三级标题字体"),
+      font_fallback: Schema.string().default("FangSong").description("字体回退"),
+      size: Schema.string().default("16pt").description("字号"),
+      bold: Schema.boolean().default(true).description("是否加粗"),
+      line_spacing: Schema.string().default("33pt").description("行距"),
+      first_line_indent: Schema.string().default("2em").description("首行缩进"),
+    }).description("三级标题"),
+    signature: Schema.object({
+      font: Schema.string().default("仿宋_GB2312").description("署名字体"),
+      font_fallback: Schema.string().default("FangSong").description("字体回退"),
+      size: Schema.string().default("18pt").description("署名字号"),
+      align: Schema.string().default("center").description("对齐方式"),
+    }).description("署名格式"),
+  });
 }
 
-export const name = "gongwen-skill";
-export const description =
-  "中文公文全流程处理工具 - GB/T 9704 格式检查/修复/内容优化/模板生成/版式注入";
-
-// apply() — Cordis 生命周期管理（ctx.effect 全部可逆）
-export function apply(ctx) {
-  const disposers = [];
-
-  try {
-    const projectRoot = _resolve_gongwen_root();
-
-    // 1. 注入 AI 工作指引
-    if (ctx?.systemPrompt?.section) {
-      const d = ctx.systemPrompt.section({
-        name: "plugin:gongwen-skill",
-        order: 100,
-        text: GONGWEN_GUIDANCE,
-      });
-      if (d) disposers.push(d);
-    }
-
-    // 2. 注册系统设置（installSettingsSection）
-    const settings = ctx.get("settings");
-    if (settings && typeof settings.register === "function") {
-      try {
-        const schema = _build_settings_schema();
-        if (schema) {
-          const scope = settings.register("gongwen-skill", schema, {
-            description: "公文排版参数配置（页边距/字体/行距等）",
-          });
-          if (scope) {
-            // 同步：settings → dsh-config.json
-            if (scope.onChange) {
-              scope.onChange((val) => {
-                try {
-                  const config = {};
-                  for (const [k, v] of Object.entries(val)) {
-                    if (!k.startsWith("_")) config[k] = v;
-                  }
-                  _write_config(config);
-                } catch (e) {
-                  console.error("[gongwen-skill] settings sync failed:", e);
-                }
-              });
-            }
-            // setSource：从 dsh-config.json 读取初始值
-            if (scope.setSource) {
-              const config = _read_config();
-              if (config) scope.setSource(() => config);
-            }
-          }
-        }
-      } catch (e) {
-        console.error("[gongwen-skill] settings registration failed:", e);
-      }
-    }
-
-    // 3. 注册 Web API 路由
-    const webServer = ctx.get("webServer");
-    if (webServer && typeof webServer.register === "function") {
-      try {
-        // GET /plugins/gongwen-skill/api/config — 获取当前配置
-        const d1 = webServer.register({
-          kind: "exact",
-          path: `${API_PREFIX}/config`,
-          method: "GET",
-          handler: (req, res) => {
-            const config = _read_config();
-            const defaults = _read_defaults();
-            _json_response(res, 200, {
-              ok: true,
-              config: config || defaults,
-              config_file: CONFIG_FILE,
-              defaults_file: DEFAULTS_FILE,
-            });
-          },
-        });
-        if (d1) disposers.push(d1);
-
-        // POST /plugins/gongwen-skill/api/config — 更新配置
-        const d2 = webServer.register({
-          kind: "exact",
-          path: `${API_PREFIX}/config`,
-          method: "POST",
-          handler: (req, res) => {
-            let body = "";
-            req.on("data", (chunk) => (body += chunk));
-            req.on("end", () => {
-              try {
-                const patch = JSON.parse(body);
-                let config = _read_config() || {};
-                // 浅合并顶层 + 深合并嵌套对象
-                for (const [k, v] of Object.entries(patch)) {
-                  if (typeof v === "object" && !Array.isArray(v) && typeof config[k] === "object") {
-                    config[k] = { ...config[k], ...v };
-                  } else {
-                    config[k] = v;
-                  }
-                }
-                _write_config(config);
-                _json_response(res, 200, { ok: true, config });
-              } catch (e) {
-                _json_response(res, 400, { ok: false, error: e.message });
-              }
-            });
-          },
-        });
-        if (d2) disposers.push(d2);
-
-        // GET /plugins/gongwen-skill/api/defaults — 获取默认配置
-        const d3 = webServer.register({
-          kind: "exact",
-          path: `${API_PREFIX}/defaults`,
-          method: "GET",
-          handler: (req, res) => {
-            _json_response(res, 200, { ok: true, defaults: _read_defaults() });
-          },
-        });
-        if (d3) disposers.push(d3);
-
-        // GET /plugins/gongwen-skill/api/version — 获取版本信息
-        const d4 = webServer.register({
-          kind: "exact",
-          path: `${API_PREFIX}/version`,
-          method: "GET",
-          handler: (req, res) => {
-            try {
-              const root = _resolve_gongwen_root();
-              const pyproject = readFileSync(join(root, "pyproject.toml"), "utf-8");
-              const m = pyproject.match(/version\s*=\s*"([^"]+)"/);
-              _json_response(res, 200, {
-                ok: true,
-                version: m ? m[1] : "unknown",
-                package: "gongwen-skill",
-              });
-            } catch (e) {
-              _json_response(res, 500, { ok: false, error: e.message });
-            }
-          },
-        });
-        if (d4) disposers.push(d4);
-      } catch (e) {
-        console.error("[gongwen-skill] webServer route registration failed:", e);
-      }
-    }
-
-    // 4. 注册 runtime skill（自动激活，使 AI 可在安装后自动发现并使用）
-    if (ctx?.skills?.register) {
-      try {
-        const skillPath = join(resolve(__dirname, ".."), "SKILL.md");
-        if (existsSync(skillPath)) {
-          const skillContent = readFileSync(skillPath, "utf-8");
-          const skillD = ctx.skills.register({
-            name: "gongwen-skill",
-            description: "中文公文全流程处理：格式检查/自动修复/content润色/模板生成/样式学习/Markdown转公文/版头版记注入",
-            content: skillContent,
-            resourceBase: { kind: "directory", path: resolve(__dirname, "..") },
-            invocation: { modelInvocable: true, userInvocable: true },
-          });
-          if (skillD) disposers.push(skillD);
-          if (ctx?.logger) ctx.logger.info("gongwen-skill: runtime skill registered");
-        }
-      } catch (e) {
-        if (ctx?.logger) ctx.logger.warn(`gongwen-skill: runtime skill registration skipped: ${e.message}`);
-      }
-    }
-
-    if (ctx?.logger) {
-      ctx.logger.info(`gongwen-skill plugin loaded (projectRoot=${projectRoot})`);
-    }
-  } catch (err) {
-    if (ctx?.logger) ctx.logger.error(`gongwen-skill plugin apply failed: ${err.message}`);
-  }
-
-  // 注册全部 disposer 到 ctx.effect（确保可逆）
-  ctx.effect(() => {
-    return () => {
-      for (const d of disposers) {
-        try { if (typeof d === "function") d(); } catch {}
-      }
-    };
-  }, "gongwen-skill: apply cleanup");
-}
-
-// call() — 透传 Python CLI（保留向后兼容）
-export async function call(ctx, args) {
-  const { command, ...rest } = args;
-  if (!command) {
-    return { success: false, error: "missing required field: command" };
-  }
-
-  // config 命令由 DSH 侧直接处理
-  if (command === "config") {
-    return _handle_config(rest);
-  }
-
+// 运行一条 gongwen CLI 命令（call() 与模型工具 execute 共用）
+// @param command - gongwen 命令名
+// @param args - CLI 参数对象（键名即参数名，含位置参数）
+// @param options - { cwd?, signal? }
+async function runCli(command, args = {}, options = {}) {
   let projectRoot;
   try {
     projectRoot = _resolve_gongwen_root();
@@ -516,10 +320,11 @@ export async function call(ctx, args) {
     return { success: false, error: err.message };
   }
 
-  // 读取 DSH 配置
-  const config = _read_config();
+  const { cwd = projectRoot, signal } = options;
+  const rest = { ...args };
 
-  // 仅对支持 --config-overrides 的命令注入规则覆盖
+  // 读取 DSH 配置并注入 --config-overrides（仅支持的命令）
+  const config = _read_config();
   let configOverrides = null;
   if (config && CONFIG_OVERRIDE_COMMANDS.has(command)) {
     configOverrides = {};
@@ -563,40 +368,42 @@ export async function call(ctx, args) {
   const positionalKeys = POSITIONAL_ARGS[command] || [];
   const cliArgs = ["-m", "gongwen", command, ..._to_cli_args(rest, positionalKeys)];
 
-  const cwd = ctx?.cwd || projectRoot;
-
-  return await new Promise((resolve) => {
+  return await new Promise((resolvePromise) => {
     const child = spawn("python", cliArgs, {
       cwd,
       env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
       windowsHide: true,
     });
+    const abort = () => child.kill();
+    signal?.addEventListener("abort", abort, { once: true });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (chunk) => (stdout += chunk.toString("utf-8")));
     child.stderr.on("data", (chunk) => (stderr += chunk.toString("utf-8")));
-    child.on("error", (err) =>
-      resolve({
+    child.on("error", (err) => {
+      signal?.removeEventListener("abort", abort);
+      resolvePromise({
         success: false,
         error: `python spawn failed: ${err.message}`,
         cli: `python ${cliArgs.join(" ")}`,
         cwd,
-      }),
-    );
+      });
+    });
     child.on("close", (code) => {
+      signal?.removeEventListener("abort", abort);
       if (code === 0) {
         const trimmed = stdout.trim();
         if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
           try {
-            resolve({ success: true, data: JSON.parse(trimmed), stderr: stderr.trim() });
+            resolvePromise({ success: true, data: JSON.parse(trimmed), stderr: stderr.trim() });
             return;
           } catch {
             // 非 JSON
           }
         }
-        resolve({ success: true, output: trimmed, stderr: stderr.trim() });
+        resolvePromise({ success: true, output: trimmed, stderr: stderr.trim() });
       } else {
-        resolve({
+        resolvePromise({
           success: false,
           exit_code: code,
           output: stdout.trim(),
@@ -607,4 +414,230 @@ export async function call(ctx, args) {
       }
     });
   });
+}
+
+// 模型工具参数 → CLI 参数对象（camel/snake → CLI kebab 映射）
+function toolArgsToCli(args) {
+  const out = {};
+  // extra：JSON 对象字符串（模型按 description 构造），解析失败则忽略
+  if (typeof args.extra === "string" && args.extra.trim() !== "") {
+    try {
+      const parsed = JSON.parse(args.extra);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        Object.assign(out, parsed);
+      }
+    } catch {
+      // 非 JSON 忽略（execute 层会报告）
+    }
+  }
+  const map = {
+    input: "input",
+    output: "output",
+    docType: "doc-type",
+    template: "template",
+    style: "style",
+    mode: "mode",
+    changes: "changes",
+    apply: "apply",
+    json: "json",
+  };
+  for (const [key, cliKey] of Object.entries(map)) {
+    const v = args[key];
+    if (v !== undefined && v !== null) out[cliKey] = v;
+  }
+  return out;
+}
+
+// 工具输出渲染（模型可见）
+function renderToolResult(_args, value) {
+  if (typeof value === "string") {
+    return [{ type: "text", text: value }];
+  }
+  return [{ type: "text", text: JSON.stringify(value, null, 2) }];
+}
+
+// 注册官方模型工具（defineTool + ctx.tools.register，schema 自动流入系统提示词）
+function registerGongwenTool(ctx) {
+  ctx.tools.register(defineTool({
+    name: "gongwen",
+    description:
+      "运行公文全流程处理工具（gongwen-skill）CLI 命令：check（格式检查）、optimize（自动修复）、optimize-content（内容修订对比版）、md2docx（Markdown 转公文）、template（模板生成）、style-learn（样式学习）、list-types（列出公文类型）、doctor（全面诊断）、handoff（会话交接）等。",
+    parameters: {
+      command: {
+        type: "string",
+        required: true,
+        description:
+          "要执行的 gongwen 命令名，如 check、optimize、optimize-content、md2docx、template、style-learn、list-types、doctor、handoff。",
+      },
+      input: { type: "string", description: "输入文件路径（多数命令的位置参数）" },
+      output: { type: "string", description: "输出文件路径（-o / --output）" },
+      docType: {
+        type: "string",
+        description: "公文类型（--doc-type / -t）：notice、request、report、letter、meeting-minutes 等；运行 list-types 查看全部",
+      },
+      template: { type: "string", description: "样式模板名（--template，style-learn 学到的命名模板）" },
+      style: { type: "string", description: "内容优化风格（--style）" },
+      mode: { type: "string", description: "修订模式（--mode），如 tracked" },
+      changes: { type: "string", description: "内容变更 JSON 文件路径（--changes）" },
+      apply: { type: "boolean", description: "直接应用、跳过确认（--apply / -y）" },
+      json: { type: "boolean", description: "输出 JSON（--json）" },
+      extra: {
+        type: "string",
+        description:
+          "其余 CLI 参数透传，JSON 对象字符串：键为参数名（不含 -- 前缀），值为字符串、数字或布尔。例如 {\"doc-type\":\"notice\",\"style\":\"庄重严谨\"}。",
+      },
+    },
+    output: {
+      schema: { type: "object", additionalProperties: true },
+      render: renderToolResult,
+    },
+    async execute(args, exec) {
+      if (!args.command) {
+        return { success: false, error: "缺少必填参数：command" };
+      }
+      // config 命令由 DSH 侧直接处理
+      if (args.command === "config") {
+        return _handle_config(args.extra || {});
+      }
+      return await runCli(args.command, toolArgsToCli(args), { signal: exec?.signal });
+    },
+  }));
+}
+
+export const name = "gongwen-skill";
+export const description =
+  "中文公文全流程处理工具 - GB/T 9704 格式检查/修复/内容优化/模板生成/版式注入";
+
+// 硬依赖：tools（模型工具注册需要）。systemPrompt / settings / skills 为可选服务，
+// 分别用 ctx.get / ctx.inject 处理，避免在未挂载对应提供方的组合中阻塞插件加载。
+export const inject = ["tools"];
+
+// apply() — Cordis 生命周期管理（所有注册均为可逆副作用）
+export function apply(ctx) {
+  const disposers = [];
+
+  // 软探测 gongwen 根目录：找不到仅记录，不阻塞插件自身注册
+  // （工具/设置/skill 注册不依赖项目根；call/runCli 才需要）
+  let projectRoot = null;
+  try {
+    projectRoot = _resolve_gongwen_root();
+  } catch {
+    ctx.logger?.warn?.("gongwen-skill: gongwen 包未定位，CLI 调用将在执行时失败");
+  }
+
+  try {
+    // 1. 注册官方模型工具（inject 硬依赖，fiber dispose 自动注销）
+    try {
+      registerGongwenTool(ctx);
+    } catch (e) {
+      ctx.logger?.warn?.(`gongwen-skill: tool registration failed: ${e.message}`);
+    }
+
+    // 2. 注入 AI 工作指引（可选服务 ctx.systemPrompt）
+    const sp = ctx.get("systemPrompt");
+    if (sp?.section) {
+      try {
+        const d = sp.section({
+          name: SECTION_NAME,
+          order: SECTION_ORDER,
+          text: GONGWEN_GUIDANCE,
+        });
+        if (typeof d === "function") disposers.push(d);
+      } catch (e) {
+        ctx.logger?.warn?.(`gongwen-skill: system prompt registration failed: ${e.message}`);
+      }
+    }
+
+    // 3. 注册官方设置命名空间（ctx.settings 为可选服务，延迟注入，缺失不阻塞）
+    try {
+      ctx.inject(["settings"], (settingsCtx) => {
+        try {
+          const schema = _build_settings_schema();
+          const scope = settingsCtx.settings.register(SETTINGS_NS, schema, { applies: "live" });
+
+          // 一次性迁移：dsh-config.json → settings 命名空间（仅当用户层为空）
+          try {
+            const legacy = _read_config();
+            if (legacy) {
+              const desc = settingsCtx.settings
+                .describe({ redactSecrets: true })
+                .find((d) => d.ns === SETTINGS_NS);
+              const userEmpty = !desc || !desc.user || Object.keys(desc.user).length === 0;
+              if (userEmpty) void scope.update(legacy);
+            }
+          } catch {
+            // 迁移失败不影响注册
+          }
+
+          // watch：settings 变更 → 回写 dsh-config.json（CLI 侧事实源，保持兼容）
+          const off = scope.watch((next) => {
+            try {
+              _write_config(next);
+            } catch (e) {
+              console.error("[gongwen-skill] settings sync failed:", e);
+            }
+          });
+          disposers.push(off);
+          ctx.logger?.info?.("gongwen-skill: settings namespace registered");
+        } catch (e) {
+          console.error("[gongwen-skill] settings registration failed:", e);
+        }
+      });
+    } catch (e) {
+      console.error("[gongwen-skill] settings inject failed:", e);
+    }
+
+    // 4. 注册 runtime skill（可选服务 ctx.skills，使 AI 安装后即可自动发现）
+    const skills = ctx.get("skills");
+    if (skills?.register) {
+      try {
+        const skillPath = join(resolve(__dirname, ".."), "SKILL.md");
+        if (existsSync(skillPath)) {
+          const skillContent = readFileSync(skillPath, "utf-8");
+          const skillD = skills.register({
+            name: "gongwen-skill",
+            description:
+              "中文公文全流程处理：格式检查/自动修复/content润色/模板生成/样式学习/Markdown转公文/版头版记注入",
+            content: skillContent,
+            resourceBase: { kind: "directory", path: resolve(__dirname, "..") },
+            invocation: { modelInvocable: true, userInvocable: true },
+          });
+          if (typeof skillD === "function") disposers.push(skillD);
+          ctx.logger?.info?.("gongwen-skill: runtime skill registered");
+        }
+      } catch (e) {
+        ctx.logger?.warn?.(`gongwen-skill: runtime skill registration skipped: ${e.message}`);
+      }
+    }
+
+    ctx.logger?.info?.(`gongwen-skill plugin loaded${projectRoot ? ` (projectRoot=${projectRoot})` : "（gongwen 包未定位）"}`);
+  } catch (err) {
+    ctx.logger?.error?.(`gongwen-skill plugin apply failed: ${err.message}`);
+  }
+
+  // 注册全部 disposer 到 ctx.effect（确保可逆）
+  ctx.effect(() => {
+    return () => {
+      for (const d of disposers) {
+        try {
+          if (typeof d === "function") d();
+        } catch {}
+      }
+    };
+  }, "gongwen-skill: apply cleanup");
+}
+
+// call() — 透传 Python CLI（保留向后兼容）
+export async function call(ctx, args) {
+  const { command, ...rest } = args;
+  if (!command) {
+    return { success: false, error: "missing required field: command" };
+  }
+
+  // config 命令由 DSH 侧直接处理
+  if (command === "config") {
+    return _handle_config(rest);
+  }
+
+  return await runCli(command, rest, { cwd: ctx?.cwd });
 }

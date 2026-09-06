@@ -381,7 +381,7 @@ DSH 采用 **Cordis 模块化微内核架构**：技能体系基于本地文件�
 git clone https://github.com/linhut/gongwen-skill.git
 cd gongwen-skill
 pip install -r requirements.txt   # 或 pip install gongwen-skill（已上 PyPI）
-python -m gongwen --version       # 检验：gongwen-skill v2.10.0
+python -m gongwen --version       # 检验：gongwen-skill v2.11.0
 ```
 
 ### 方式一：作为 DSH Skill 注册（基于本地文件系统）
@@ -437,7 +437,7 @@ pnpm add -w gongwen-skill
   "dependencies": {
     "@deepseek-ai/dsh-base": "...",
     "@deepseek-ai/dsh-web-app": "...",
-    "gongwen-skill": "^2.10.0"
+    "gongwen-skill": "^2.11.0"
   },
   "dsh": {
     "profile": {
@@ -452,6 +452,8 @@ pnpm add -w gongwen-skill
 ```
 
 > **注意**：若 `add` 启动报错提示子包重复声明，请检查 `dsh.profile.bundles` 数组中**仅包含根包 `gongwen-skill`**，避免同时列入 `engine` 或 `gongwen` 等子目录。
+
+> **DSH 版本要求**：插件按 DeepSeek Harness 官方最新开发文档（Bluebook · Developer Guide）实现——`ctx.tools.register(defineTool(...))`（模型工具）、`ctx.settings.register` + `settings.plugin.item` 卡片（配置）、`ctx.systemPrompt.section`、`ctx.skills.register`。需要承载这些 API 的 DSH 组合（`@deepseek-ai/dsh-base` 等），peerDependencies 已声明 `@deepseek-ai/cordis`、`@deepseek-ai/dsh-tools`、`@deepseek-ai/schemastery` 与 `@deepseek-ai/dsh-client-ui-settings-plugins`。在旧版 DSH（无上述包）上安装会得到 pnpm peer 缺失警告，插件可能无法加载，请升级 DSH 或改用方式一（Skill 文件系统）。
 
 ### 方式三：本地源码链接（用于插件开发）
 
@@ -473,6 +475,8 @@ dsh plugin --profile web add -w "link:/path/to/gongwen-skill"
 - 插件通过 `spawn("python", ["-m", "gongwen", ...])` 子进程转发命令，**不直接 import 引擎、不操作 docx**，避免双入口行为分裂
 - `dsh/index.js` 的 `POSITIONAL_ARGS` 声明各命令的位置参数（如 `draft: ["input"]`）；新增/调整 CLI 命令位置参数时**必须同步更新该表**，否则插件转发会构造出 `--input` 而 CLI 只接受位置参数
 - 插件保持薄层：业务逻辑全在 CLI / engine，改动引擎不影响插件；改动 CLI 参数形态时需同步检查 `dsh/index.js` 转发（doctor 自检覆盖 DSH 文件存在性）
+- **模型工具注册**：插件通过官方 `ctx.tools.register(defineTool({...}))` 注册名为 `gongwen` 的模型工具，工具 schema 自动流入 DSH 系统提示词组装；`defineTool` 校验模型生成的参数后调用 `runCli()` 透传 Python CLI（详见上方「DSH 插件配置化」）
+- **客户端配置卡片**：`dsh/client.js` 注册进官方 `settings.plugin.item` keyed slot（以命名空间 `gongwen-skill` 为键），经 `ctx.settingsScope` 读写官方 settings 文档，UI 样式使用 `--dsw-alias-*` 语义 token（官方 Client UI & Slots 规范）
 
 ### 🚀 启动 DSH Web 服务
 
@@ -497,6 +501,12 @@ dsh --profile web
 | 目录技能格式 (`.dsh/skills/gongwen-skill/SKILL.md`) | ✅ |
 | 单文件技能格式 (`.dsh/skills/gongwen-skill.md`) | ✅ 双格式兼容 |
 | Cordis 插件包：`package.json` + `dsh/` + `cordis.patch.yml` | ✅ |
+| 插件 bundle 声明：`dsh.bundle.patch`（官方「第三方插件」规范） | ✅ |
+| 客户端半侧声明：`dsh.client` + `exports["./client"]`（官方 Client 模块系统） | ✅ |
+| 模型工具注册：`ctx.tools.register(defineTool(...))`（官方 Registering Tools 规范） | ✅ `gongwen` 工具 |
+| 配置面板：官方 `settings.plugin.item` 卡片 + `ctx.settingsScope`（官方 Client UI & Slots） | ✅ |
+| 系统提示注入：`ctx.systemPrompt.section`（官方 Host Services & Events） | ✅ |
+| 运行时技能：`ctx.skills.register`（官方 Skills 注册表） | ✅ |
 | CLI 独立可执行（`python -m gongwen <命令>`） | ✅ |
 | PyPI 上架（`pip install gongwen-skill`） | ✅ |
 | 零外部运行时依赖（仅 python-docx/pydantic/pyyaml） | ✅ |
@@ -505,6 +515,13 @@ dsh --profile web
 ### DSH 插件配置化（v2.6.0+）
 
 DSH 插件支持通过配置文件管理排版参数，Agent 调用时自动注入，纯 CLI 用户不受影响。
+
+**两种配置入口（同一数据，双向同步）**：
+
+1. **DSH Web 设置面板（推荐）**：系统设置 → 插件配置 → **gongwen-skill** 卡片，按官方 `settings.plugin.item` 卡片规范渲染；保存后写入 DSH 官方 settings 文档，并由插件 Host 的 `scope.watch` 自动同步到 `~/.gongwen-skill/dsh-config.json`
+2. **CLI / 配置文件**：直接编辑 `~/.gongwen-skill/dsh-config.json`，或通过插件 `config` 命令管理
+
+> **兼容性**：插件首次在带 settings provider 的 DSH 部署中加载时，会把已存在的 `~/.gongwen-skill/dsh-config.json` 一次性迁移进官方 settings 命名空间（仅当设置面板尚无用户覆盖时），之后以设置面板 / settings 文档为权威源，双向同步。
 
 **配置文件**：`~/.gongwen-skill/dsh-config.json`
 
@@ -626,7 +643,7 @@ pip install -r requirements.txt
 用户：帮我优化这份会议通知的第二章节措辞
 
 Agent：📋 合规自检报告
-Skill 版本: v2.10.0（版本自检已确认最新）
+Skill 版本: v2.11.0（版本自检已确认最新）
 路径判定: B（内容优化）
 依据: 用户指定了已有文档，且要求"优化措辞"
 命令调用: 1. python -m gongwen optimize-content 会议通知.docx --changes changes.json --apply --paragraphs "5-8"

@@ -4,13 +4,18 @@
   Licensed under the MIT License. See the LICENSE file for details.
 -->
 
-## Unreleased
+## v2.11.0 (2026-09-06)
 
 ### Added
 - **区分主持词/讲话稿两种朗读件类型**：新增 `host_speech`（主持词）规则文件 `rules/official/host_speech.yaml`；`list-types` 现支持 25 种类型；`-t` 类型识别：`主持词` → `host_speech`、`讲话稿` → `speech`
 - **GitHub Packages scoped 发布**：publish-npm 发布 `@linhut/gongwen-skill` 到 `npm.pkg.github.com`（GitHub Packages 仅支持 scoped 包；原非 scoped 名 E404）
 
 ### Changed
+- **针对 DSH 新版本（官方最新版 DeepSeek Harness / Bluebook · Developer Guide）进行 DSH 插件优化整改**（仅 DSH 部分，skill 功能不变）：
+  - `dsh/index.js`：修复 ESM 环境下 `require("schemastery")` 导致的设置面板注册静默失败（改为官方 `import Schema from "@deepseek-ai/schemastery"`）；新增官方模型工具注册 `ctx.tools.register(defineTool({...}))`（工具名 `gongwen`，schema 自动流入系统提示词）；settings 改用官方 `ctx.settings.register("gongwen-skill", schema)` + `scope.watch` 回写 `~/.gongwen-skill/dsh-config.json`（保留 CLI 兼容，首次加载自动迁移旧配置）；移除自建 REST API 路由（WebRoute 官方定义无 `method` 字段，配置读写改由官方 settings 桥承担）；`inject: ["tools"]` 硬依赖 + systemPrompt/settings/skills 可选服务容错
+  - `dsh/client.js`：配置面板迁移至官方 `settings.plugin.item` keyed slot（命名空间 `gongwen-skill`），经 `ctx.settingsScope` 读写官方 settings 文档（revision 设栅）；样式改用 `--dsw-alias-*` 语义 token，去除硬编码颜色
+  - `package.json`：`dsh.client.inject` 收敛为官方 `@deepseek-ai/dsh-client-ui-settings-plugins`（提供 `settings.plugin.item` slot 声明）；新增 peerDependencies（`@deepseek-ai/cordis`/`@deepseek-ai/dsh-tools`/`@deepseek-ai/schemastery`/`@deepseek-ai/dsh-client-ui-settings-plugins`）
+  - README DSH 章节同步（兼容性自查表新增官方 API 对照行、架构边界补充模型工具与设置卡片说明、配置化章节说明双向同步）
 - **讲话稿（speech）规则按筹委会最终版定稿更新**：页边距改国标默认（上3.7/下3.5/左2.8/右2.6cm）；正文改为仿宋_GB2312 18pt 不加粗、行距 30pt；一级标题黑体 18pt、二级标题楷体_GB2312 18pt；署名/日期改楷体_GB2312 18pt 居中、行距 35pt
 - **主持词（host_speech）新增独立样式**：页边距沿用普通公文（2.8/2.8/2.7/2.7cm）；标题 24pt/35pt；主持人信息/日期楷体_GB2312 18pt 居中、行距 30pt；正文 18pt 不加粗、行距 30pt，议程引导句可局部加粗
 - **README/SKILL 同步**：类型数 24→25、讲话稿/主持词分别列出样式说明与差异
