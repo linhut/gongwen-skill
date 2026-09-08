@@ -4,7 +4,7 @@
   Licensed under the MIT License. See the LICENSE file for details.
 -->
 
-## Unreleased
+## v2.12.0 (2026-09-08)
 
 ### Added
 - **DSH Agent 预设「公文全流程处理专家」**：新增 `presets/`（`preset.yml` + `agent.cordis.yml`），`dsh/index.js` 在 apply() 时自动安装到 `~/.dsh/.agent-presets/gongwen-skill/`，DSH Web 新建会话可直接切换到该预设开箱即用；内置公文专家 Persona（25 类能力、A/B/C/D/E 路径判定、硬性规则）、完整工具链（fs/shell/jobs/skills/goals/planning/compaction/delegation）；已验证 roster 识别 + standingKeyFor 挂载通过
