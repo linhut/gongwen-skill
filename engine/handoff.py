@@ -70,7 +70,7 @@ def write_handoff(
     """写入交接文档，返回文件路径。
 
     Args:
-        session_id: 唯一标识，如 '民宗委会议材料优化'
+        session_id: 唯一标识，如 '会议材料优化'
         context: 任务上下文（what_we_are_doing / doc_type / input_file / working_directory）
         completed: 已完成事项列表，每项 {"item", "evidence"}
         next_steps: 下一步计划列表，每项 {"action", "status", "depends_on"}

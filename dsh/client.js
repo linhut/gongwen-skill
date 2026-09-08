@@ -1,12 +1,14 @@
-// 公文全流程处理工具 DSH client — 可视化配置卡片（gongwen-skill）
+// 公文全流程处理工具 DSH client — 设置平级菜单「文档样式配置」（gongwen-skill）
 // (c) 2026 Jose AI (https://www.linhut.cn)
 // https://github.com/linhut/gongwen-skill
 // Licensed under the MIT License. See the LICENSE file for details.
 //
 // 官方依据：DeepSeek Harness Bluebook Developer Guide · Client UI & Slots
 //   - 只写纯 JavaScript：无 TS/JSX/import/require，React 用 React.createElement
-//   - UI 必须注册到已查询的 Slot（settings.plugin.item，keyed），apply() 不直接返回元素
+//   - 设置侧边栏平级菜单：注册 settings.section（id=gongwen-styles, order=20,
+//     label=文档样式配置），取代原 settings.plugin.item 插件配置卡片
 //   - 通过 ctx.settingsScope.bind({ namespace }) 读写官方 settings 命名空间（revision 设栅）
+//   - 模板管理/上传经 host webServer 路由（/plugins/gongwen/api/*）
 //   - 样式使用 --dsw-alias-* 语义 token，不写死颜色
 //   - 打包格式 = loader 的 lazy-CJS factory 产物（window.__ModuleLoader__.load）
 
@@ -22,14 +24,47 @@ window.__ModuleLoader__.load({
     var useState = react.useState;
     var useEffect = react.useEffect;
     var useCallback = react.useCallback;
+    var useRef = react.useRef;
 
     // 与 Host 侧 ctx.settings.register 配对的命名空间
     var NS = "gongwen-skill";
 
-    // 扁平字段表：path（嵌套数组）、label、placeholder、type（text|checkbox）
+    // 25 种公文类型（与 rules/official/*.yaml 及 list-types 输出一致）
+    // 用于「默认公文类型」下拉；value 为英文 id（配置存储值，与 CLI --doc-type 兼容），
+    // label 为中文名（取自各 rules/official/<id>.yaml 的 template_name）。
+    // 若 settings 中已有值不在列表内，会追加显示该值。
+    var DOC_TYPES = [
+      { value: "announcement", label: "通告" },
+      { value: "bill", label: "议案" },
+      { value: "bulletin", label: "通报" },
+      { value: "command", label: "命令（令）" },
+      { value: "communique", label: "公报" },
+      { value: "decision", label: "决定" },
+      { value: "host_speech", label: "主持词" },
+      { value: "instruction", label: "指示" },
+      { value: "letter", label: "函" },
+      { value: "meeting", label: "会议纪要" },
+      { value: "minutes", label: "纪要" },
+      { value: "news", label: "新闻稿/简报" },
+      { value: "notice", label: "通知" },
+      { value: "notice_public", label: "公告" },
+      { value: "opinion", label: "意见" },
+      { value: "regulation", label: "制度" },
+      { value: "reply", label: "批复" },
+      { value: "report", label: "报告" },
+      { value: "request", label: "请示" },
+      { value: "resolution", label: "决议" },
+      { value: "speech", label: "讲话稿" },
+      { value: "summary", label: "总结" },
+      { value: "table_sign", label: "座签" },
+      { value: "technical_proposal", label: "技术方案" },
+      { value: "work_plan", label: "工作方案" },
+    ];
+
+    // 扁平字段表：path（嵌套数组）、label、placeholder、type（text|checkbox|select）
     // 与 dsh/index.js 的 settings schema 保持一一对应
     var FIELDS = [
-      { path: ["default_doc_type"], label: "默认公文类型", placeholder: "notice", type: "text" },
+      { path: ["default_doc_type"], label: "默认公文类型", placeholder: "notice", type: "select" },
 
       { path: ["page_setup", "margins", "top"], label: "上边距", placeholder: "2.8cm", type: "text" },
       { path: ["page_setup", "margins", "bottom"], label: "下边距", placeholder: "2.8cm", type: "text" },
@@ -92,7 +127,7 @@ window.__ModuleLoader__.load({
       return JSON.parse(JSON.stringify(v === undefined ? null : v));
     }
 
-    // ---- 卡片 controller：暂存编辑 → scope.mutate 一次性提交 ----
+    // ---- 配置 controller：暂存编辑 → scope.mutate 一次性提交 ----
     function makeCardController(scope) {
       var snapshot = { status: "loading", value: null, writable: false, base: null, user: null };
       var staged = {}; // pathKey -> { value, overridden }
@@ -255,6 +290,51 @@ window.__ModuleLoader__.load({
         );
       }
 
+      if (f.type === "select") {
+        var cur = value === undefined || value === null ? "" : String(value);
+        var opts = DOC_TYPES.slice();
+        if (cur && !opts.some(function (o) { return o.value === cur; })) opts.unshift({ value: cur, label: cur });
+        return h("label", {
+          style: {
+            display: "flex", alignItems: "center", gap: "10px",
+            padding: "5px 0", fontSize: "13px", lineHeight: "1.5",
+            color: "var(--dsw-alias-label-primary)",
+          },
+        },
+          h("span", {
+            style: {
+              minWidth: "140px", flexShrink: 0,
+              color: "var(--dsw-alias-label-secondary)",
+            },
+          }, f.label),
+          h("select", {
+            value: cur,
+            disabled: disabled,
+            onChange: function (e) { onChange(e.target.value); },
+            style: {
+              flex: 1, minWidth: 0, height: "32px", padding: "0 10px",
+              fontSize: "13px", lineHeight: "1.5",
+              border: "1px solid var(--dsw-alias-border-l4)",
+              borderRadius: "6px",
+              background: "var(--dsw-alias-bg-layer-3)",
+              color: "var(--dsw-alias-label-primary)",
+            },
+          },
+            opts.map(function (o) {
+              return h("option", { key: o.value, value: o.value }, o.label);
+            })
+          ),
+          h("span", {
+            style: {
+              flexShrink: 0, fontSize: "11px",
+              color: overridden
+                ? "var(--dsw-alias-label-secondary)"
+                : "var(--dsw-alias-label-tertiary)",
+            },
+          }, overridden ? "已自定义" : "默认"),
+        );
+      }
+
       return h("label", {
         style: {
           display: "flex", alignItems: "center", gap: "10px",
@@ -311,9 +391,262 @@ window.__ModuleLoader__.load({
       );
     }
 
-    function GongwenCard(props) {
+    // ---- 模板样式管理：列表 + YAML 文本编辑 ----
+    function TemplateManager(props) {
+      var refreshToken = props.refreshToken;
+      var [templates, setTemplates] = useState(null); // null = 加载中
+      var [editing, setEditing] = useState(null);     // {name, content}
+      var [busy, setBusy] = useState(false);
+      var [message, setMessage] = useState("");
+
+      function loadTemplates() {
+        fetch("/plugins/gongwen/api/templates")
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (d && d.ok) {
+              setTemplates(d.templates || []);
+            } else {
+              setTemplates([]);
+              setMessage("模板列表加载失败：" + ((d && d.error) || "unknown"));
+            }
+          })
+          .catch(function (e) { setTemplates([]); setMessage("模板列表加载失败：" + e.message); });
+      }
+
+      useEffect(function () { loadTemplates(); }, [refreshToken]);
+
+      function openEdit(name) {
+        setBusy(true);
+        setMessage("");
+        fetch("/plugins/gongwen/api/template?name=" + encodeURIComponent(name))
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (d && d.ok) {
+              setEditing({ name: d.name, content: d.content });
+            } else {
+              setMessage("读取模板失败：" + ((d && d.error) || "unknown"));
+            }
+          })
+          .catch(function (e) { setMessage("读取模板失败：" + e.message); })
+          .then(function () { setBusy(false); });
+      }
+
+      function saveEdit() {
+        if (!editing) return;
+        setBusy(true);
+        setMessage("");
+        fetch("/plugins/gongwen/api/template-save?name=" + encodeURIComponent(editing.name), {
+          method: "PUT",
+          headers: { "Content-Type": "text/plain; charset=utf-8" },
+          body: editing.content,
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (d && d.ok) {
+              setMessage("✅ " + (d.message || "模板已保存"));
+              setEditing(null);
+              loadTemplates();
+            } else {
+              setMessage("保存失败：" + ((d && d.error) || "unknown"));
+            }
+          })
+          .catch(function (e) { setMessage("保存失败：" + e.message); })
+          .then(function () { setBusy(false); });
+      }
+
+      function closeEdit() {
+        setEditing(null);
+        setMessage("");
+      }
+
+      var buttonStyle = {
+        padding: "4px 14px", fontSize: "13px",
+        border: "1px solid var(--dsw-alias-border-l4)",
+        borderRadius: "6px",
+        background: "var(--dsw-alias-bg-layer-2, #f5f5f5)",
+        color: "var(--dsw-alias-label-primary)",
+        cursor: busy ? "not-allowed" : "pointer",
+        opacity: busy ? 0.6 : 1,
+      };
+
+      if (editing) {
+        return h("div", null,
+          h("div", { style: { display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" } },
+            h("span", { style: { fontSize: "13px", fontWeight: 600, color: "var(--dsw-alias-label-primary)" } },
+              "编辑模板：" + editing.name + ".yaml"),
+            h("span", { style: { flex: 1 } }),
+            h("button", { style: buttonStyle, disabled: busy, onClick: saveEdit }, busy ? "保存中..." : "💾 保存"),
+            h("button", { style: buttonStyle, disabled: busy, onClick: closeEdit }, "取消"),
+          ),
+          message && h("div", { style: { padding: "6px 10px", margin: "0 0 8px", borderRadius: "6px", fontSize: "12px", background: "rgba(40,120,60,.12)", color: "var(--dsw-alias-label-success, #2e7d32)" } }, message),
+          h("textarea", {
+            value: editing.content,
+            disabled: busy,
+            onChange: function (e) { setEditing({ name: editing.name, content: e.target.value }); },
+            spellCheck: false,
+            style: {
+              width: "100%", minHeight: "260px", boxSizing: "border-box",
+              padding: "10px", fontFamily: "var(--ds-font-family-code, ui-monospace, monospace)",
+              fontSize: "12px", lineHeight: "1.6",
+              border: "1px solid var(--dsw-alias-border-l4)",
+              borderRadius: "8px",
+              background: "var(--dsw-alias-bg-layer-3)",
+              color: "var(--dsw-alias-label-primary)",
+              whiteSpace: "pre", resize: "vertical",
+            },
+          }),
+          h("div", { style: { marginTop: "6px", fontSize: "11px", color: "var(--dsw-alias-label-tertiary)" } },
+            "提示：首行 template_name 必须与文件名一致；保存后 optimize -t " + editing.name + " 立即生效"),
+        );
+      }
+
+      if (templates === null) {
+        return h("div", { style: { padding: "8px 0", color: "var(--dsw-alias-label-tertiary)", fontSize: "13px" } }, "加载模板列表…");
+      }
+
+      if (templates.length === 0) {
+        return h("div", null,
+          message && h("div", { style: { padding: "6px 10px", margin: "0 0 8px", borderRadius: "6px", fontSize: "12px", background: "rgba(200,40,40,.12)", color: "var(--dsw-alias-label-error)" } }, message),
+          h("div", { style: { padding: "8px 0", color: "var(--dsw-alias-label-tertiary)", fontSize: "13px" } },
+            "暂无自定义样式模板——请在下方「通过文档新增样式模板」上传一份标准 .docx 学习生成。"),
+        );
+      }
+
+      return h("div", null,
+        message && h("div", { style: { padding: "6px 10px", margin: "0 0 8px", borderRadius: "6px", fontSize: "12px", background: "rgba(200,40,40,.12)", color: "var(--dsw-alias-label-error)" } }, message),
+        h("div", { style: { display: "flex", flexWrap: "wrap", gap: "8px" } },
+          templates.map(function (name) {
+            return h("div", {
+              key: name,
+              style: {
+                display: "flex", alignItems: "center", gap: "8px",
+                padding: "6px 10px", fontSize: "13px",
+                border: "1px solid var(--dsw-alias-border-l2)",
+                borderRadius: "8px",
+                background: "var(--dsw-alias-bg-layer-2, #f5f5f5)",
+                color: "var(--dsw-alias-label-primary)",
+              },
+            },
+              h("span", null, name),
+              h("span", { style: { fontSize: "11px", color: "var(--dsw-alias-label-tertiary)" } }, ".yaml"),
+              h("button", {
+                style: {
+                  padding: "2px 10px", fontSize: "12px",
+                  border: "1px solid var(--dsw-alias-border-l4)",
+                  borderRadius: "6px",
+                  background: "var(--dsw-alias-bg-layer-3)",
+                  color: "var(--dsw-alias-label-primary)",
+                  cursor: "pointer",
+                },
+                onClick: function () { openEdit(name); },
+              }, "✏️ 编辑"),
+            );
+          })
+        ),
+        h("div", { style: { marginTop: "8px", fontSize: "11px", color: "var(--dsw-alias-label-tertiary)" } },
+          "模板存储于 ~/.gongwen-skill/user_rules/（仓库之外，git 更新不丢失）"),
+      );
+    }
+
+    // ---- 通过文档新增样式模板：上传 .docx → host → style-learn ----
+    function StyleLearnUploader(props) {
+      var fileRef = useRef(null);
+      var [fileName, setFileName] = useState("");
+      var [templateName, setTemplateName] = useState("");
+      var [busy, setBusy] = useState(false);
+      var [message, setMessage] = useState("");
+      var [ok, setOk] = useState(false);
+
+      function handleFile(e) {
+        var f = e.target.files && e.target.files[0];
+        if (!f) return;
+        setOk(false);
+        setMessage("");
+        setFileName(f.name);
+        // 模板名默认取文件名（去 .docx、非法字符转 _），用户可改
+        var autoName = f.name.replace(/\.docx$/i, "").replace(/[^a-zA-Z0-9_\-\u4e00-\u9fff]/g, "_").slice(0, 60) || "自定义";
+        setTemplateName(autoName);
+        var reader = new FileReader();
+        reader.onload = function () {
+          setBusy(true);
+          setMessage("正在学习文档样式…");
+          fetch("/plugins/gongwen/api/style-learn", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ filename: f.name, name: autoName, data: String(reader.result) }),
+          })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+              if (d && d.ok) {
+                setOk(true);
+                setMessage("✅ 模板「" + d.template_name + "」已生成，可在模板管理区查看/编辑，或用 optimize -t " + d.template_name + " 套用");
+                if (props.onDone) props.onDone();
+              } else {
+                var detail = (d && d.error) || "学习失败";
+                if (d && d.output) detail += " " + d.output;
+                if (d && d.stderr) detail += " " + d.stderr;
+                setMessage("❌ " + detail);
+              }
+            })
+            .catch(function (err) { setMessage("❌ 上传失败：" + err.message); })
+            .then(function () { setBusy(false); });
+        };
+        reader.readAsDataURL(f);
+      }
+
+      var inputStyle = {
+        flex: 1, minWidth: 0, height: "30px", padding: "0 10px",
+        fontSize: "13px", lineHeight: "1.5",
+        border: "1px solid var(--dsw-alias-border-l4)",
+        borderRadius: "6px",
+        background: "var(--dsw-alias-bg-layer-3)",
+        color: "var(--dsw-alias-label-primary)",
+      };
+
+      return h("div", null,
+        message && h("div", {
+          style: {
+            padding: "6px 10px", margin: "0 0 8px", borderRadius: "6px", fontSize: "12px",
+            background: ok ? "rgba(40,120,60,.12)" : "rgba(200,40,40,.12)",
+            color: ok ? "var(--dsw-alias-label-success, #2e7d32)" : "var(--dsw-alias-label-error)",
+          },
+        }, message),
+
+        h("div", { style: { display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" } },
+          h("input", {
+            ref: fileRef,
+            type: "file",
+            accept: ".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            disabled: busy,
+            onChange: handleFile,
+            style: { fontSize: "13px", color: "var(--dsw-alias-label-primary)" },
+          }),
+          h("span", { style: { fontSize: "12px", color: "var(--dsw-alias-label-tertiary)" } }, "→"),
+          h("label", { style: { display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "var(--dsw-alias-label-primary)" } },
+            "模板名：",
+            h("input", {
+              type: "text",
+              value: templateName,
+              disabled: busy,
+              placeholder: "如：单位红头规范",
+              onChange: function (e) { setTemplateName(e.target.value); },
+              style: Object.assign({}, inputStyle, { width: "200px", flex: "none" }),
+            }),
+          ),
+          busy && h("span", { style: { fontSize: "13px", color: "var(--dsw-alias-label-tertiary)" } }, "处理中…"),
+        ),
+
+        h("div", { style: { marginTop: "8px", fontSize: "11px", color: "var(--dsw-alias-label-tertiary)" } },
+          "选择一份标准公文 .docx（如单位定稿红头文件），系统将自动学习其字体/字号/字间距/行距/缩进/页边距并生成为命名模板；选中文件即开始学习，无需额外按钮。" + (fileName ? " 已选：" + fileName : "")),
+      );
+    }
+
+    // ---- 设置页「文档样式配置」主组件（settings.section 内容）----
+    function GongwenStylesSection(props) {
       var face = props.face;
       var [, force] = useState(0);
+      var [tmplRefresh, setTmplRefresh] = useState(0);
+
       useEffect(function () {
         return face.subscribe(function () { force(function (n) { return n + 1; }); });
       }, [face]);
@@ -322,7 +655,6 @@ window.__ModuleLoader__.load({
       var unavailable = meta.status !== "ready";
       var disabled = !meta.writable || meta.saving || unavailable;
 
-      // 按组渲染
       function renderGroup(groupLabel, fields) {
         return h(Section, { title: groupLabel },
           fields.map(function (f) {
@@ -340,7 +672,7 @@ window.__ModuleLoader__.load({
 
       return h("div", {
         style: {
-          padding: "16px 4px", maxWidth: "720px",
+          padding: "16px 4px", maxWidth: "760px",
           fontSize: "14px", lineHeight: "1.6",
           color: "var(--dsw-alias-label-primary)",
         },
@@ -356,7 +688,7 @@ window.__ModuleLoader__.load({
 
         unavailable && h("div", {
           style: { padding: "12px 0", color: "var(--dsw-alias-label-tertiary)" },
-        }, "设置服务不可用（当前部署未挂载 settings provider），卡片只读。"),
+        }, "设置服务不可用（当前部署未挂载 settings provider），排版参数区只读。"),
 
         renderGroup("基础设置", FIELDS.slice(0, 1)),
         renderGroup("页面设置", FIELDS.slice(1, 7)),
@@ -400,10 +732,21 @@ window.__ModuleLoader__.load({
             },
           }, "同步文件: ~/.gongwen-skill/dsh-config.json"),
         ),
+
+        h(Section, { title: "模板样式管理" },
+          h(TemplateManager, { refreshToken: tmplRefresh })
+        ),
+
+        h(Section, { title: "通过文档新增样式模板" },
+          h(StyleLearnUploader, {
+            onDone: function () { setTmplRefresh(function (n) { return n + 1; }); },
+          })
+        ),
       );
     }
 
-    // 导出 apply + inject（官方 Client UI & Slots 注册方式）
+    // 导出 apply + inject（官方 Client UI & Slots 注册方式：
+    // settings.section 在设置侧边栏出现独立平级菜单）
     exports.apply = function (ctx) {
       var slots = ctx.get("slots");
       var settingsScope = ctx.get("settingsScope");
@@ -412,16 +755,18 @@ window.__ModuleLoader__.load({
       var scope = settingsScope.bind({ namespace: NS });
       var controller = makeCardController(scope);
 
-      // 注册进官方插件配置卡片 slot（keyed：以命名空间为键）
-      slots.inject("settings.plugin.item", function () {
+      // 注册设置侧边栏平级菜单「文档样式配置」
+      slots.inject("settings.section", function () {
         return slots.register({
-          name: "settings.plugin.item",
-          key: NS,
-          locale: "settings.gongwenSkill",
+          name: "settings.section",
+          id: "gongwen-styles",
+          order: 20,
+          label: "文档样式配置",
+          locale: "settings",
           inject: function () {
             return { face: controller };
           },
-        }, GongwenCard);
+        }, GongwenStylesSection);
       });
 
       // 插件卸载时释放订阅

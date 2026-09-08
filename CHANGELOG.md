@@ -4,6 +4,20 @@
   Licensed under the MIT License. See the LICENSE file for details.
 -->
 
+## Unreleased
+
+### Added
+- **DSH 设置平级菜单「文档样式配置」**（取代原「插件配置 → gongwen-skill」卡片）：
+  - `dsh/client.js`：新增 `settings.section` 注册（id=`gongwen-styles`，order=20，label=`文档样式配置`），在「系统设置」侧边栏与通用设置/模型/插件平级；页面含默认公文类型下拉（25 种）、完整排版参数（39 字段）、模板样式管理（列表 + YAML 文本编辑）、「通过文档新增样式模板」（上传 .docx 自动 style-learn）；移除原 `settings.plugin.item` 卡片注册
+  - `dsh/index.js`：新增 webServer 可选依赖 + 4 条路由（`GET /plugins/gongwen/api/templates` 列表、`GET /template` 读、`PUT /template-save` 写、`POST /style-learn` 上传），含模板名白名单/首行 `template_name` 一致性校验/zip 魔数校验/同源护栏；`GONGWEN_GUIDANCE` 入口描述同步为「系统设置 → 文档样式配置」
+  - README DSH 章节同步（配置入口、兼容性自查表、架构边界说明）
+
+### Compatibility
+- **DSH 宿主版本要求：支持 DSH ≥ 0.1.2-rc.1**。本版 DSH 插件改用官方 `settings.section` 平级菜单 + `ctx.tools.register(defineTool(...))` + webServer 路由 API，需要宿主提供对应服务；**旧版宿主（installSettingsSection 时代）不兼容**——升级 DSH 到 ≥ 0.1.2-rc.1，或改用纯 Skill 文件系统方式（方式一，无需 DSH 插件）。
+- 设置命名空间内嵌排版参数与 `~/.gongwen-skill/dsh-config.json` 双向同步：首次加载自动迁移旧配置（仅当设置面板尚无用户覆盖时）。
+
+---
+
 ## v2.11.0 (2026-09-06)
 
 ### Added

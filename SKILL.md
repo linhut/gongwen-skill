@@ -1,7 +1,7 @@
 ---
 name: gongwen-skill
-description: 公文全流程处理工具。支持 .docx 公文按 GB/T 9704 国家标准做格式检查（check）、自动修复（optimize）、行内内容修订（optimize-content，红色标注+删除线+修改说明）、模板生成（template）、样式学习（style-learn，从标准文档学习排版样式生成自定义模板）、Markdown 转公文（md2docx），以及版头/版记/页码注入。覆盖通知/请示/报告/函/会议纪要等 24 类公文。完全自包含，克隆即用，无需数据库或后端服务。
-whenToUse: 当用户需要处理中文公文（.docx格式）时，包括格式检查、自动修复、内容润色、模板生成、样式学习（从标准文档学习排版样式生成自定义模板）、Markdown转公文、版头版记注入等场景。适用于通知/请示/报告/函/会议纪要/新闻稿/讲话稿等24种公文类型。
+description: 公文全流程处理工具。支持 .docx 公文按 GB/T 9704 国家标准做格式检查（check）、自动修复（optimize）、行内内容修订（optimize-content，红色标注+删除线+修改说明）、模板生成（template）、样式学习（style-learn，从标准文档学习排版样式生成自定义模板）、Markdown 转公文（md2docx），以及版头/版记/页码注入。覆盖通知/请示/报告/函/会议纪要等 25 类公文。完全自包含，克隆即用，无需数据库或后端服务。
+whenToUse: 当用户需要处理中文公文（.docx格式）时，包括格式检查、自动修复、内容润色、模板生成、样式学习（从标准文档学习排版样式生成自定义模板）、Markdown转公文、版头版记注入等场景。适用于通知/请示/报告/函/会议纪要/新闻稿/讲话稿等25种公文类型。
 user-invocable: true
 metadata:
   author: Jose AI
@@ -9,7 +9,7 @@ metadata:
   license: MIT
   python: ">=3.10"
   dsh_version: compatible
-  doc_types: 24
+  doc_types: 25
   standard: GB/T 9704-2012
 ---
 
@@ -146,7 +146,7 @@ python -c "
 import sys; sys.path.insert(0, '<skill目录>/engine')
 from handoff import write_handoff
 write_handoff(
-    session_id='简短任务描述',                    # 如 '民宗委会议材料优化'
+    session_id='简短任务描述',                    # 如 '会议材料优化'
     handoff_type='long_task',                    # long_task / batch / interrupted
     context={'what_we_are_doing': '我们在做什么', 'doc_type': '公文类型',
              'input_file': '输入文件', 'working_directory': '工作目录'},
@@ -747,7 +747,7 @@ Agent 在交付任何路径产物前，必须扫描全文并自检：
 撰稿人撰写课题汇报初稿
   → 信息技术部负责人（业务审核：核对项目、职责内容）
   → 综合岗文字校对（gongwen-skill 预检 + 人工润色、格式规范）
-  → 筹委会综合专班核稿
+  → 综合专班核稿
   → 分管领导终审签发
 ```
 
@@ -1170,9 +1170,9 @@ python -m gongwen full-review 原文.docx --changes changes.json -o 审校版.do
 上传标准文档，学习其排版样式（含字间距等细微属性），生成自定义命名模板：
 
 ```bash
-python -m gongwen style-learn 单位定稿红头.docx -n 民委红头规范   # 学习并注册模板
+python -m gongwen style-learn 单位定稿红头.docx -n 单位红头规范   # 学习并注册模板
 python -m gongwen style-list                                     # 列出已学习模板
-python -m gongwen optimize 文档.docx -t 民委红头规范 --apply      # 套用模板
+python -m gongwen optimize 文档.docx -t 单位红头规范 --apply      # 套用模板
 ```
 
 模板存储于 `~/.gongwen-skill/user_rules/`（仓库之外），**git pull 更新 skill 不会丢失**。
@@ -1298,7 +1298,7 @@ python -m gongwen optimize-content 原文.docx --changes changes.json --mode tra
 
 1. **关键信息绝对不可删除**：严禁删除包含以下类型信息的整段或整句——
    - 关键里程碑（日期 + 事件，如"2025年3月与省科技厅汇报"）
-   - 领导协调 / 汇报记录（如"向国家民委文宣司汇报"）
+   - 领导协调 / 汇报记录（如"向××部门文宣司汇报"）
    - 资金 / 经费 / 项目预算数据（含具体金额或来源）
    - 政策依据引用（含文号、政策名称）
    - 省情 / 背景分析段落（提供论证基础的信息段）
@@ -1894,7 +1894,7 @@ LLM 根据用户背景和要求，参考下方段落结构模板和惯用语库�
 - 若用户既无名单也不知参会人员 → 跳过桌签生成，不追问
 - **仅询问一次**，用户明确说"不需要"后不再重复追问
 
-> 桌签模板参考：`F:\省民宗委\收集\定稿学习\不确定是否可用的模板\桌签.dotx`
+> 桌签模板由工具内置模板（`engine/templates/table_sign.dotx`）自动生成，无需外部模板文件。
 > 生成时以名单输入文件或标准输入传递人员姓名（每行一人），支持 `--combined` 合并为一个多页文档。
 
 **第二步：md2docx 转换（管线内步骤）**
@@ -2662,7 +2662,7 @@ python -m gongwen check 成品.docx -t <类型> --json
 | 讲话要点标题 | 黑体 | 18pt | 首行缩进2字 | 一、二、三 等层次标题 |
 | 议程导引 | 仿宋_GB2312 | 18pt | 两端对齐 | "首先""下面""现在"等过渡语 |
 
-> **讲话稿（speech）与主持词（host_speech）格式差异**（以筹委会最终版定稿为准）：
+> **讲话稿（speech）与主持词（host_speech）格式差异**（以最终版定稿为准）：
 > - 页边距：讲话稿用国标默认（上3.7/下3.5/左2.8/右2.6cm）；主持词与普通公文一致（上2.8/下2.8/左2.7/右2.7cm）。
 > - 署名/日期行距：讲话稿 35pt；主持词 30pt（均楷体_GB2312 18pt 居中）。
 > - 正文：均为仿宋_GB2312 18pt 不加粗、行距 30pt exact、首行缩进 2 字；主持词议程引导句可局部加粗。

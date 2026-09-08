@@ -232,7 +232,7 @@ python -m gongwen font check      # 检查安装状态
 ### 事实核验
 
 - **默认执行**（不依赖 `--background`）：实体提取（人名/职务/机构全称）→ 互联网交叉核验 → 生成"存疑/已确认/未经核验"批注
-- **实体属性核验**：识别人名+职务配对（如"省民宗委党组成员、副主任XXX"），能发现职务写反等严重事实错误
+- **实体属性核验**：识别人名+职务配对（如"××单位党组成员、副主任XXX"），能发现职务写反等严重事实错误
 - **LLM+规则混合提取**：配置 `GONGWEN_LLM_API` 后 LLM 内容理解提取（主通道）+ 规则提取（兜底）
 - **背景资料增强**：`--background` 传入 docx/pdf/md/txt/URL 构建基准，已确认实体自动过滤
 
@@ -314,11 +314,11 @@ python -m gongwen wizard --answers 答案.json --dry-run  # 只打印将执行�
 
 ### 讲话稿（speech 朗读件）
 
-页边距为国标默认（上3.7/下3.5/左2.8/右2.6 cm）；标题方正小标宋简体 24pt 居中、行距 35pt；一级标题黑体 18pt、二级标题楷体_GB2312 18pt；署名/日期楷体_GB2312 18pt 居中、行距 35pt；正文仿宋_GB2312 18pt 不加粗、行距 30pt exact、首行缩进 2 字符；跳过版头/版记/发文字号/密级检查。（样式以筹委会最终版定稿为准）
+页边距为国标默认（上3.7/下3.5/左2.8/右2.6 cm）；标题方正小标宋简体 24pt 居中、行距 35pt；一级标题黑体 18pt、二级标题楷体_GB2312 18pt；署名/日期楷体_GB2312 18pt 居中、行距 35pt；正文仿宋_GB2312 18pt 不加粗、行距 30pt exact、首行缩进 2 字符；跳过版头/版记/发文字号/密级检查。（样式以最终版定稿为准）
 
 ### 主持词（host_speech 朗读件）
 
-页边距与普通公文一致（上2.8/下2.8/左2.7/右2.7 cm）；标题方正小标宋简体 24pt 居中、行距 35pt；主持人信息/日期楷体_GB2312 18pt 居中、行距 30pt；正文仿宋_GB2312 18pt 不加粗、行距 30pt exact、首行缩进 2 字符，议程引导句（"下面，进行第X项议程…"）可局部加粗；跳过版头/版记/发文字号/密级检查。（样式以筹委会最终版定稿为准）
+页边距与普通公文一致（上2.8/下2.8/左2.7/右2.7 cm）；标题方正小标宋简体 24pt 居中、行距 35pt；主持人信息/日期楷体_GB2312 18pt 居中、行距 30pt；正文仿宋_GB2312 18pt 不加粗、行距 30pt exact、首行缩进 2 字符，议程引导句（"下面，进行第X项议程…"）可局部加粗；跳过版头/版记/发文字号/密级检查。（样式以最终版定稿为准）
 
 ## 📚 支持的 25 种公文类型
 
@@ -453,7 +453,7 @@ pnpm add -w gongwen-skill
 
 > **注意**：若 `add` 启动报错提示子包重复声明，请检查 `dsh.profile.bundles` 数组中**仅包含根包 `gongwen-skill`**，避免同时列入 `engine` 或 `gongwen` 等子目录。
 
-> **DSH 版本要求**：插件按 DeepSeek Harness 官方最新开发文档（Bluebook · Developer Guide）实现——`ctx.tools.register(defineTool(...))`（模型工具）、`ctx.settings.register` + `settings.plugin.item` 卡片（配置）、`ctx.systemPrompt.section`、`ctx.skills.register`。需要承载这些 API 的 DSH 组合（`@deepseek-ai/dsh-base` 等），peerDependencies 已声明 `@deepseek-ai/cordis`、`@deepseek-ai/dsh-tools`、`@deepseek-ai/schemastery` 与 `@deepseek-ai/dsh-client-ui-settings-plugins`。在旧版 DSH（无上述包）上安装会得到 pnpm peer 缺失警告，插件可能无法加载，请升级 DSH 或改用方式一（Skill 文件系统）。
+> **DSH 版本要求**：**支持 DSH ≥ 0.1.2-rc.1**。插件按 DeepSeek Harness 0.1.2-rc.1 官方开发文档（Bluebook · Developer Guide）实现——`ctx.tools.register(defineTool(...))`（模型工具）、`ctx.settings.register` + `settings.section` 平级菜单（配置，设置侧边栏「文档样式配置」）、`ctx.systemPrompt.section`、`ctx.skills.register` 与 webServer 路由。需要承载这些 API 的 DSH 组合（`@deepseek-ai/dsh-base` 等），peerDependencies 已声明 `@deepseek-ai/cordis`、`@deepseek-ai/dsh-tools`、`@deepseek-ai/schemastery` 与 `@deepseek-ai/dsh-client-ui-settings-plugins`。**旧版宿主（installSettingsSection 时代）不兼容**：DSH 0.1.2-rc.1 之前（无上述官方 API / 尚用 installSettingsSection 注入设置卡片的版本）上安装会得到 pnpm peer 缺失警告，插件可能无法加载，请升级 DSH 到 ≥ 0.1.2-rc.1 或改用方式一（Skill 文件系统）。
 
 ### 方式三：本地源码链接（用于插件开发）
 
@@ -476,7 +476,7 @@ dsh plugin --profile web add -w "link:/path/to/gongwen-skill"
 - `dsh/index.js` 的 `POSITIONAL_ARGS` 声明各命令的位置参数（如 `draft: ["input"]`）；新增/调整 CLI 命令位置参数时**必须同步更新该表**，否则插件转发会构造出 `--input` 而 CLI 只接受位置参数
 - 插件保持薄层：业务逻辑全在 CLI / engine，改动引擎不影响插件；改动 CLI 参数形态时需同步检查 `dsh/index.js` 转发（doctor 自检覆盖 DSH 文件存在性）
 - **模型工具注册**：插件通过官方 `ctx.tools.register(defineTool({...}))` 注册名为 `gongwen` 的模型工具，工具 schema 自动流入 DSH 系统提示词组装；`defineTool` 校验模型生成的参数后调用 `runCli()` 透传 Python CLI（详见上方「DSH 插件配置化」）
-- **客户端配置卡片**：`dsh/client.js` 注册进官方 `settings.plugin.item` keyed slot（以命名空间 `gongwen-skill` 为键），经 `ctx.settingsScope` 读写官方 settings 文档，UI 样式使用 `--dsw-alias-*` 语义 token（官方 Client UI & Slots 规范）
+- **客户端配置菜单**：`dsh/client.js` 注册进官方 `settings.section` list slot（id=`gongwen-styles`，order=20，label=`文档样式配置`），在「系统设置」侧边栏与通用设置/模型/插件平级；页面经 `ctx.settingsScope` 读写官方 settings 文档，UI 样式使用 `--dsw-alias-*` 语义 token（官方 Client UI & Slots 规范）；模板管理/上传经插件 webServer 路由（`/plugins/gongwen/api/*`）
 
 ### 🚀 启动 DSH Web 服务
 
@@ -496,6 +496,7 @@ dsh --profile web
 
 | 检查项 | 状态 |
 |:-------|:----:|
+| **DSH 宿主版本要求（≥ 0.1.2-rc.1；旧版宿主「installSettingsSection 时代」不兼容）** | ✅ 需 DSH ≥ 0.1.2-rc.1 |
 | Skill 体系：`SKILL.md` YAML frontmatter (`name + description + whenToUse`) | ✅ |
 | 技能名称规范 (`gongwen-skill`，长度 ≤ 30 字符) | ✅ |
 | 目录技能格式 (`.dsh/skills/gongwen-skill/SKILL.md`) | ✅ |
@@ -504,13 +505,13 @@ dsh --profile web
 | 插件 bundle 声明：`dsh.bundle.patch`（官方「第三方插件」规范） | ✅ |
 | 客户端半侧声明：`dsh.client` + `exports["./client"]`（官方 Client 模块系统） | ✅ |
 | 模型工具注册：`ctx.tools.register(defineTool(...))`（官方 Registering Tools 规范） | ✅ `gongwen` 工具 |
-| 配置面板：官方 `settings.plugin.item` 卡片 + `ctx.settingsScope`（官方 Client UI & Slots） | ✅ |
+| 配置菜单：官方 `settings.section` 平级菜单（「文档样式配置」）+ `ctx.settingsScope`（官方 Client UI & Slots） | ✅ |
 | 系统提示注入：`ctx.systemPrompt.section`（官方 Host Services & Events） | ✅ |
 | 运行时技能：`ctx.skills.register`（官方 Skills 注册表） | ✅ |
 | CLI 独立可执行（`python -m gongwen <命令>`） | ✅ |
 | PyPI 上架（`pip install gongwen-skill`） | ✅ |
 | 零外部运行时依赖（仅 python-docx/pydantic/pyyaml） | ✅ |
-| DSH 配置化排版参数（页边距/行距/字体/默认模板版本） | ✅ v2.6.0+ |
+| DSH 配置化排版参数（页边距/行距/字体/默认公文类型，39 字段） | ✅ v2.6.0+ |
 
 ### DSH 插件配置化（v2.6.0+）
 
@@ -518,7 +519,7 @@ DSH 插件支持通过配置文件管理排版参数，Agent 调用时自动注�
 
 **两种配置入口（同一数据，双向同步）**：
 
-1. **DSH Web 设置面板（推荐）**：系统设置 → 插件配置 → **gongwen-skill** 卡片，按官方 `settings.plugin.item` 卡片规范渲染；保存后写入 DSH 官方 settings 文档，并由插件 Host 的 `scope.watch` 自动同步到 `~/.gongwen-skill/dsh-config.json`
+1. **DSH Web 设置面板（推荐）**：系统设置 → **文档样式配置**（设置侧边栏平级菜单，与通用设置/模型/插件并列），页面含默认公文类型下拉（25 种）、完整排版参数（页边距/字体/行距等 39 字段）、模板样式管理（列表 + YAML 编辑）与「通过文档新增样式模板」（上传 .docx 自动学习）；保存后写入 DSH 官方 settings 文档，并由插件 Host 的 `scope.watch` 自动同步到 `~/.gongwen-skill/dsh-config.json`
 2. **CLI / 配置文件**：直接编辑 `~/.gongwen-skill/dsh-config.json`，或通过插件 `config` 命令管理
 
 > **兼容性**：插件首次在带 settings provider 的 DSH 部署中加载时，会把已存在的 `~/.gongwen-skill/dsh-config.json` 一次性迁移进官方 settings 命名空间（仅当设置面板尚无用户覆盖时），之后以设置面板 / settings 文档为权威源，双向同步。
@@ -535,7 +536,7 @@ node -e "import('./dsh/index.js').then(async m => { console.log(await m.call({},
 cp etc/dsh-config-defaults.json ~/.gongwen-skill/dsh-config.json
 ```
 
-**配置项说明**：
+**配置项说明**（完整 39 字段，与设置面板一一对应）：
 
 | 配置路径 | 说明 | 默认值 |
 |:---------|:-----|:-------|
@@ -544,14 +545,22 @@ cp etc/dsh-config-defaults.json ~/.gongwen-skill/dsh-config.json
 | `page_setup.margins.left/right` | 左右页边距 | `2.7cm` |
 | `page_setup.header_distance` | 页眉距边界 | `1.5cm` |
 | `page_setup.footer_distance` | 页脚距边界 | `2.3cm` |
-| `body.font` | 正文字体 | `仿宋_GB2312` |
+| `body.font` / `body.font_fallback` | 正文字体 / 回退字体 | `仿宋_GB2312` / `FangSong` |
 | `body.size` | 正文字号 | `16pt` |
 | `body.line_spacing` | 正文行距 | `33pt` |
 | `body.first_line_indent` | 首行缩进 | `2em` |
-| `doc_title.font` | 大标题字体 | `方正小标宋简体` |
-| `doc_title.size` | 大标题字号 | `22pt` |
-| `heading_1.font` | 一级标题字体 | `黑体` |
-| `heading_2.font` | 二级标题字体 | `楷体_GB2312` |
+| `body.align` | 正文对齐 | `justify` |
+| `doc_title.font` / `doc_title.font_fallback` | 大标题字体 / 回退字体 | `方正小标宋简体` / `SimSun` |
+| `doc_title.size` / `doc_title.align` / `doc_title.bold` | 大标题字号 / 对齐 / 加粗 | `22pt` / `center` / `false` |
+| `doc_title.line_spacing` | 大标题行距 | `33pt` |
+| `heading_1.font` / `heading_1.font_fallback` | 一级标题字体 / 回退字体 | `黑体` / `SimHei` |
+| `heading_1.size` / `heading_1.line_spacing` / `heading_1.first_line_indent` | 一级标题字号 / 行距 / 首行缩进 | `16pt` / `33pt` / `2em` |
+| `heading_2.font` / `heading_2.font_fallback` | 二级标题字体 / 回退字体 | `楷体_GB2312` / `KaiTi` |
+| `heading_2.size` / `heading_2.line_spacing` / `heading_2.first_line_indent` | 二级标题字号 / 行距 / 首行缩进 | `16pt` / `33pt` / `2em` |
+| `heading_3.font` / `heading_3.font_fallback` | 三级标题字体 / 回退字体 | `仿宋_GB2312` / `FangSong` |
+| `heading_3.size` / `heading_3.bold` / `heading_3.line_spacing` / `heading_3.first_line_indent` | 三级标题字号 / 加粗 / 行距 / 首行缩进 | `16pt` / `true` / `33pt` / `2em` |
+| `signature.font` / `signature.font_fallback` | 署名字体 / 回退字体 | `仿宋_GB2312` / `FangSong` |
+| `signature.size` / `signature.align` | 署名字号 / 对齐 | `18pt` / `center` |
 
 **修改配置**（DSH 插件调用）：
 

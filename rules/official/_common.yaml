@@ -201,28 +201,28 @@ check_rules:
     severity: P0
     field: page_setup.margins.top
     expected: "2.8cm"
-    message: "上边距应为2.8cm（省筹委会规范，红头文件正文区收窄）"
+    message: "上边距应为2.8cm（红头文件正文区收窄）"
 
   - id: CHK-C002
     name: "左边距检查"
     severity: P0
     field: page_setup.margins.left
     expected: "2.7cm"
-    message: "左边距应为2.7cm（省筹委会规范）"
+    message: "左边距应为2.7cm"
 
   - id: CHK-C003
     name: "右边距检查"
     severity: P0
     field: page_setup.margins.right
     expected: "2.7cm"
-    message: "右边距应为2.7cm（省筹委会规范）"
+    message: "右边距应为2.7cm"
 
   - id: CHK-C011
     name: "下边距检查"
     severity: P0
     field: page_setup.margins.bottom
     expected: "2.8cm"
-    message: "下边距应为2.8cm（省筹委会规范）"
+    message: "下边距应为2.8cm"
 
   - id: CHK-C018
     name: "纸张大小检查"
@@ -396,7 +396,7 @@ check_rules:
     severity: P1
     field: body.line_spacing
     expected: 33pt
-    message: "正文行距应为固定值33磅（与标题行距统一，省筹委会规范）"
+    message: "正文行距应为固定值33磅（与标题行距统一）"
 
   - id: CHK-C012
     name: "正文首行缩进检查"

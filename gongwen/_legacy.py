@@ -48,8 +48,8 @@ __version__ = "2.11.0"
   python -m gongwen check input.docx -t notice --json
   python -m gongwen optimize input.docx -o output.docx -t report
   cat input.md | python -m gongwen md2docx - -o 公文.docx    # 管道输入
-  python -m gongwen header in.docx --org-name 国家民委办公厅 --doc-number "民委办发〔2026〕1号"
-  python -m gongwen footer in.docx --cc 各省民委 --printer 国家民委办公厅 --print-date 2026年7月23日
+  python -m gongwen header in.docx --org-name ×××办公厅 --doc-number "×××办发〔2026〕1号"
+  python -m gongwen footer in.docx --cc 各省×× --printer ×××办公厅 --print-date 2026年7月23日
   python -m gongwen pagenum in.docx --alignment right
 """
 import json  # noqa: E402

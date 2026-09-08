@@ -25,6 +25,9 @@ docs/design/
 docs/superpowers/
 RELEASE.md
 
+# 本地调研产物/临时脚本（仅本地保留，不推送远程仓库）
+.research/
+
 # DSH 技能注册副本（仅本机保留，不推送远程仓库；根 SKILL.md 已在仓库）
 .dsh/skills/
 
@@ -54,6 +57,7 @@ _report_*.md
 
 # npm packages
 *.tgz
+node_modules/
 
 # Build artifacts
 dist/
