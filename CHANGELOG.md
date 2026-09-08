@@ -14,6 +14,7 @@
 
 ### Compatibility
 - **DSH 宿主版本要求：支持 DSH ≥ 0.1.2-rc.1**。本版 DSH 插件改用官方 `settings.section` 平级菜单 + `ctx.tools.register(defineTool(...))` + webServer 路由 API，需要宿主提供对应服务；**旧版宿主（installSettingsSection 时代）不兼容**——升级 DSH 到 ≥ 0.1.2-rc.1，或改用纯 Skill 文件系统方式（方式一，无需 DSH 插件）。
+- **peer 适配（以 DSH 0.1.2-rc.1 开发环境为准）**：`@deepseek-ai/dsh-client-ui-settings-plugins` 下限由 `>=0.1.3-alpha.1` 下调至 `>=0.1.2-rc.1`——`settings.section` 在 0.1.2-rc.1 已提供，原下限是 `settings.plugin.item` 时代（v2.11.0）遗留；实测与开发环境安装的 0.1.2-rc.1 匹配，其余 peer（cordis ≥4 / dsh-tools ≥0.1.0 / schemastery ≥3.18.0）均满足
 - 设置命名空间内嵌排版参数与 `~/.gongwen-skill/dsh-config.json` 双向同步：首次加载自动迁移旧配置（仅当设置面板尚无用户覆盖时）。
 
 ---
