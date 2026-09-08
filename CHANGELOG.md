@@ -7,6 +7,7 @@
 ## Unreleased
 
 ### Added
+- **DSH Agent 预设「公文全流程处理专家」**：新增 `presets/`（`preset.yml` + `agent.cordis.yml`），`dsh/index.js` 在 apply() 时自动安装到 `~/.dsh/.agent-presets/gongwen-skill/`，DSH Web 新建会话可直接切换到该预设开箱即用；内置公文专家 Persona（25 类能力、A/B/C/D/E 路径判定、硬性规则）、完整工具链（fs/shell/jobs/skills/goals/planning/compaction/delegation）；已验证 roster 识别 + standingKeyFor 挂载通过
 - **DSH 设置平级菜单「文档样式配置」**（取代原「插件配置 → gongwen-skill」卡片）：
   - `dsh/client.js`：新增 `settings.section` 注册（id=`gongwen-styles`，order=20，label=`文档样式配置`），在「系统设置」侧边栏与通用设置/模型/插件平级；页面含默认公文类型下拉（25 种）、完整排版参数（39 字段）、模板样式管理（列表 + YAML 文本编辑）、「通过文档新增样式模板」（上传 .docx 自动 style-learn）；移除原 `settings.plugin.item` 卡片注册
   - `dsh/index.js`：新增 webServer 可选依赖 + 4 条路由（`GET /plugins/gongwen/api/templates` 列表、`GET /template` 读、`PUT /template-save` 写、`POST /style-learn` 上传），含模板名白名单/首行 `template_name` 一致性校验/zip 魔数校验/同源护栏；`GONGWEN_GUIDANCE` 入口描述同步为「系统设置 → 文档样式配置」

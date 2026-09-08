@@ -21,7 +21,7 @@
 // 纯 CLI 用户完全不受影响（不使用 DSH 插件时不会读取 dsh-config.json）
 
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, copyFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir, tmpdir } from "node:os";
@@ -627,6 +627,28 @@ function registerGongwenRoutes(ctx) {
   }
 }
 
+// Agent 预设安装：把插件包内 presets/（preset.yml + agent.cordis.yml）同步到
+// ~/.dsh/.agent-presets/gongwen-skill/，使 DSH Web 新建会话可选「公文全流程处理专家」预设。
+// 参照官方插件模式（np-ppt）：每次 apply 幂等同步；用户自行修改过的预设会被插件版本覆盖，
+// 如需自定义可从该预设 copy 出新预设再改。
+function ensurePresetInstalled() {
+  try {
+    const userPresetDir = join(homedir(), ".dsh", ".agent-presets", "gongwen-skill");
+    mkdirSync(userPresetDir, { recursive: true });
+    const pluginPresets = join(resolve(__dirname, ".."), "presets");
+    const presetYml = join(pluginPresets, "preset.yml");
+    const agentYml = join(pluginPresets, "agent.cordis.yml");
+    if (existsSync(presetYml)) {
+      copyFileSync(presetYml, join(userPresetDir, "preset.yml"));
+    }
+    if (existsSync(agentYml)) {
+      copyFileSync(agentYml, join(userPresetDir, "agent.cordis.yml"));
+    }
+  } catch {
+    // 预设安装失败不阻塞插件其余能力
+  }
+}
+
 // 模型工具参数 → CLI 参数对象（camel/snake → CLI kebab 映射）
 function toolArgsToCli(args) {
   const out = {};
@@ -831,6 +853,10 @@ export function apply(ctx) {
     } catch (e) {
       ctx.logger?.warn?.(`gongwen-skill: webServer route init failed: ${e.message}`);
     }
+
+    // 6. 安装 Agent 预设（presets/ → ~/.dsh/.agent-presets/gongwen-skill/，
+    //    让 DSH 新建会话可选「公文全流程处理专家」；失败不影响插件其余能力）
+    ensurePresetInstalled();
 
     ctx.logger?.info?.(`gongwen-skill plugin loaded${projectRoot ? ` (projectRoot=${projectRoot})` : "（gongwen 包未定位）"}`);
   } catch (err) {

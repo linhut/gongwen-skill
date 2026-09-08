@@ -61,6 +61,7 @@
     "rules/",
     "prompts/",
     "etc/",
+    "presets/",
     "cordis.patch.yml",
     "SKILL.md",
     "pyproject.toml",

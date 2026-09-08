@@ -492,6 +492,16 @@ dsh --profile web
 
 浏览器访问 [http://127.0.0.1:3080/](http://127.0.0.1:3080/)，在新建会话时即可让 DSH Agent 自动加载 gongwen-skill 调用 Web UI 工具流。
 
+### 🤖 Agent 预设「公文全流程处理专家」
+
+插件装载后会自动把 `presets/`（`preset.yml` + `agent.cordis.yml`）安装到 `~/.dsh/.agent-presets/gongwen-skill/`，DSH Web **新建会话 → 预设选择**中会出现 **「公文全流程处理专家」**，选中即可开箱即用：
+
+- **内置 Persona**：公文专家人设（25 类公文能力、A/B/C/D/E 路径判定：格式优化 / 内容优化 / 生成 / 一键修复 / 样式学习、硬性规则——`bold-first` 先于 `optimize`、交付前 `check` 复核 P0=0 等）
+- **完整工具链**：文件系统（fs/fs-search）、shell（Windows 用 pwsh / 其他用 bash，跑 `python -m gongwen`）、后台任务（jobs）、技能（skills + tool-skill）、目标（goal）、计划模式（plan-mode）、压缩（compaction）、委派（subagent/workflow/ralph）、问答（ask-user）、任务清单（todo）、联网（web）
+- 业务能力由插件 host 平面注册的 `gongwen` 模型工具 + 运行时技能 `gongwen-skill` 提供，无需额外配置
+
+> **自定义预设**：如需修改该预设，可在 DSH 预设列表把它复制为新预设后再编辑（插件升级会覆盖原预设文件）。预设 id 为 `gongwen-skill`，源码在仓库 `presets/`。
+
 ### DSH 兼容性自查
 
 | 检查项 | 状态 |
