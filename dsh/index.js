@@ -21,7 +21,7 @@
 // 纯 CLI 用户完全不受影响（不使用 DSH 插件时不会读取 dsh-config.json）
 
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, copyFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir, tmpdir } from "node:os";
@@ -35,8 +35,6 @@ const __dirname = dirname(__filename);
 const APP_DATA_DIR = join(homedir(), ".gongwen-skill");
 const CONFIG_FILE = join(APP_DATA_DIR, "dsh-config.json");
 const DEFAULTS_FILE = join(resolve(__dirname, ".."), "etc", "dsh-config-defaults.json");
-// 用户样式模板目录（与 engine/config.py USER_RULES_DIR 保持一致）
-const USER_RULES_DIR = join(APP_DATA_DIR, "user_rules");
 
 // settings 命名空间（官方要求小写 kebab-case；与浏览器卡片同名配对）
 const SETTINGS_NS = "gongwen-skill";
@@ -418,214 +416,6 @@ async function runCli(command, args = {}, options = {}) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// WebServer 路由辅助（「文档样式配置」设置页：模板管理 + style-learn 上传）
-// 全部使用 kind:"exact" 路由 + query 参数（不依赖 pattern 路由能力）
-// 可选依赖 ctx.get("webServer")，缺失时仅模板/上传区不可用，不影响其它能力
-// ---------------------------------------------------------------------------
-const TEMPLATE_NAME_RE = /^[a-zA-Z0-9_\-\u4e00-\u9fff]+$/;
-
-function _json(res, status, obj) {
-  try {
-    res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify(obj));
-  } catch {
-    try { res.end("{}"); } catch {}
-  }
-}
-
-function _requireSameOrigin(req, res) {
-  const origin = req.headers?.origin;
-  const host = req.headers?.host;
-  if (!origin || !host) return true; // 无 Origin 视为同源（curl/测试）
-  try {
-    const o = new URL(origin);
-    return o.host === host;
-  } catch {
-    return false;
-  }
-}
-
-function _readBody(req, limit = 50 * 1024 * 1024) {
-  return new Promise((resolvePromise, reject) => {
-    const chunks = [];
-    let size = 0;
-    req.on("data", (chunk) => {
-      size += chunk.length;
-      if (size > limit) {
-        reject(new Error("body-too-large"));
-        req.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-    req.on("end", () => resolvePromise(Buffer.concat(chunks)));
-    req.on("error", reject);
-  });
-}
-
-function _safeTemplateName(name) {
-  if (typeof name !== "string" || !name) return null;
-  const n = name.trim();
-  return TEMPLATE_NAME_RE.test(n) && !n.includes("..") ? n : null;
-}
-
-function _templatePath(name) {
-  const safe = _safeTemplateName(name);
-  if (!safe) return null;
-  return join(USER_RULES_DIR, `${safe}.yaml`);
-}
-
-// GET /plugins/gongwen/api/templates — 列出 user_rules/*.yaml 模板名
-function templatesListRoute() {
-  return {
-    kind: "exact",
-    path: "/plugins/gongwen/api/templates",
-    handler: (req, res) => {
-      if (!_requireSameOrigin(req, res)) return _json(res, 403, { ok: false, error: "forbidden" });
-      if (req.method !== "GET") return _json(res, 405, { ok: false, error: "method-not-allowed" });
-      try {
-        if (!existsSync(USER_RULES_DIR)) return _json(res, 200, { ok: true, templates: [] });
-        const names = [];
-        for (const f of readdirSync(USER_RULES_DIR)) {
-          if (f.endsWith(".yaml")) names.push(f.slice(0, -5));
-        }
-        names.sort();
-        return _json(res, 200, { ok: true, templates: names });
-      } catch (e) {
-        return _json(res, 500, { ok: false, error: e instanceof Error ? e.message : String(e) });
-      }
-    },
-  };
-}
-
-// GET /plugins/gongwen/api/template?name=X — 读模板 YAML 文本
-function templateGetRoute() {
-  return {
-    kind: "exact",
-    path: "/plugins/gongwen/api/template",
-    handler: (req, res) => {
-      if (!_requireSameOrigin(req, res)) return _json(res, 403, { ok: false, error: "forbidden" });
-      if (req.method !== "GET") return _json(res, 405, { ok: false, error: "method-not-allowed" });
-      try {
-        const name = new URL(req.url ?? "/", "http://x").searchParams.get("name") ?? "";
-        const p = _templatePath(name);
-        if (!p) return _json(res, 400, { ok: false, error: "invalid-template-name" });
-        if (!existsSync(p)) return _json(res, 404, { ok: false, error: "template-not-found" });
-        return _json(res, 200, { ok: true, name, content: readFileSync(p, "utf-8") });
-      } catch (e) {
-        return _json(res, 500, { ok: false, error: e instanceof Error ? e.message : String(e) });
-      }
-    },
-  };
-}
-
-// PUT /plugins/gongwen/api/template-save?name=X — 写模板 YAML（body = YAML 文本）
-// 与 GET /template 拆分 path，避免同 path 多 method 路由在 webServer 下行为不确定
-function templatePutRoute() {
-  return {
-    kind: "exact",
-    path: "/plugins/gongwen/api/template-save",
-    handler: (req, res) => {
-      if (!_requireSameOrigin(req, res)) return _json(res, 403, { ok: false, error: "forbidden" });
-      if (req.method !== "PUT") return _json(res, 405, { ok: false, error: "method-not-allowed" });
-      const name = new URL(req.url ?? "/", "http://x").searchParams.get("name") ?? "";
-      const p = _templatePath(name);
-      if (!p) return _json(res, 400, { ok: false, error: "invalid-template-name" });
-      _readBody(req).then((buf) => {
-        try {
-          const text = buf.toString("utf-8").replace(/^\uFEFF/, "");
-          if (!text || text.length > 1024 * 1024) {
-            return _json(res, 400, { ok: false, error: "empty-or-too-large" });
-          }
-          // 轻量校验：首行必须为 template_name: <name>（与 CLI 生成格式一致）
-          const firstLine = text.split(/\r?\n/, 1)[0].trim();
-          if (firstLine !== `template_name: ${name}`) {
-            return _json(res, 400, { ok: false, error: "template_name 与文件名不一致（首行应为 template_name: " + name + "）" });
-          }
-          if (text.includes("\u0000")) return _json(res, 400, { ok: false, error: "invalid-yaml" });
-          mkdirSync(USER_RULES_DIR, { recursive: true });
-          writeFileSync(p, text, "utf-8");
-          return _json(res, 200, { ok: true, name, message: "模板已保存" });
-        } catch (e) {
-          return _json(res, 500, { ok: false, error: e instanceof Error ? e.message : String(e) });
-        }
-      }).catch((e) => _json(res, 400, { ok: false, error: e instanceof Error ? e.message : String(e) }));
-    },
-  };
-}
-
-// POST /plugins/gongwen/api/style-learn — 接收 {filename, name?, data(base64)}，
-// 保存临时 .docx → 调用 CLI style-learn → 生成 user_rules/{name}.yaml
-function styleLearnRoute() {
-  return {
-    kind: "exact",
-    path: "/plugins/gongwen/api/style-learn",
-    handler: (req, res) => {
-      if (!_requireSameOrigin(req, res)) return _json(res, 403, { ok: false, error: "forbidden" });
-      if (req.method !== "POST") return _json(res, 405, { ok: false, error: "method-not-allowed" });
-      _readBody(req).then((buf) => {
-        let payload;
-        try {
-          payload = JSON.parse(buf.toString("utf-8"));
-        } catch {
-          return _json(res, 400, { ok: false, error: "invalid-json" });
-        }
-        const data = typeof payload.data === "string" ? payload.data.replace(/^data:[^;]*;base64,/, "") : "";
-        if (!data) return _json(res, 400, { ok: false, error: "missing-data" });
-        const docBuf = Buffer.from(data, "base64");
-        // .docx = zip 魔数 PK\x03\x04
-        if (docBuf.length < 4 || docBuf[0] !== 0x50 || docBuf[1] !== 0x4b || docBuf[2] !== 0x03 || docBuf[3] !== 0x04) {
-          return _json(res, 400, { ok: false, error: "not-a-docx（缺少 zip 文件头）" });
-        }
-        const fallbackName = (payload.filename || "自定义").replace(/\.docx$/i, "").replace(/[^a-zA-Z0-9_\-\u4e00-\u9fff]/g, "_").slice(0, 60) || "自定义";
-        const name = _safeTemplateName(payload.name) || _safeTemplateName(fallbackName);
-        if (!name) return _json(res, 400, { ok: false, error: "invalid-template-name" });
-        const tmpFile = join(tmpdir(), `gongwen-style-learn-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.docx`);
-        try {
-          writeFileSync(tmpFile, docBuf);
-        } catch (e) {
-          return _json(res, 500, { ok: false, error: "write-tmp-failed: " + (e instanceof Error ? e.message : String(e)) });
-        }
-        runCli("style-learn", { input: tmpFile, name }, {})
-          .then((r) => {
-            try { rmSync(tmpFile, { force: true }); } catch {}
-            if (r.success) {
-              return _json(res, 200, { ok: true, template_name: name, output: r.output || "" });
-            }
-            return _json(res, 500, { ok: false, error: r.error || "style-learn-failed", output: r.output || "", stderr: r.stderr || "" });
-          })
-          .catch((e) => {
-            try { rmSync(tmpFile, { force: true }); } catch {}
-            return _json(res, 500, { ok: false, error: e instanceof Error ? e.message : String(e) });
-          });
-      }).catch((e) => _json(res, 400, { ok: false, error: e instanceof Error ? e.message : String(e) }));
-    },
-  };
-}
-
-function registerGongwenRoutes(ctx) {
-  const webServer = ctx.get("webServer");
-  if (!webServer?.register) return null;
-  const disposers = [];
-  try {
-    for (const route of [templatesListRoute(), templateGetRoute(), templatePutRoute(), styleLearnRoute()]) {
-      disposers.push(webServer.register(route));
-    }
-    ctx.logger?.info?.("gongwen-skill: webServer routes registered (templates + style-learn)");
-    return () => {
-      for (const d of disposers) {
-        try { d(); } catch {}
-      }
-    };
-  } catch (e) {
-    for (const d of disposers) {
-      try { d(); } catch {}
-    }
-    ctx.logger?.warn?.(`gongwen-skill: webServer route registration failed: ${e.message}`);
-    return null;
-  }
-}
 
 // Agent 预设安装：把插件包内 presets/（preset.yml + agent.cordis.yml）同步到
 // ~/.dsh/.agent-presets/gongwen-skill/，使 DSH Web 新建会话可选「公文全流程处理专家」预设。
@@ -843,18 +633,7 @@ export function apply(ctx) {
       }
     }
 
-    // 5. 注册 webServer 路由（可选服务，延迟注入 ctx.inject(["webServer"])，
-    //    模板管理/上传 API 在 webServer 就绪后自动注册；未挂载提供方时不阻塞插件）
-    try {
-      ctx.inject(["webServer"], (webServerCtx) => {
-        const disposeRoutes = registerGongwenRoutes(webServerCtx);
-        if (typeof disposeRoutes === "function") disposers.push(disposeRoutes);
-      });
-    } catch (e) {
-      ctx.logger?.warn?.(`gongwen-skill: webServer route init failed: ${e.message}`);
-    }
-
-    // 6. 安装 Agent 预设（presets/ → ~/.dsh/.agent-presets/gongwen-skill/，
+    // 5. 安装 Agent 预设（presets/ → ~/.dsh/.agent-presets/gongwen-skill/，
     //    让 DSH 新建会话可选「公文全流程处理专家」；失败不影响插件其余能力）
     ensurePresetInstalled();
 

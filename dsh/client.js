@@ -8,7 +8,6 @@
 //   - 设置侧边栏平级菜单：注册 settings.section（id=gongwen-styles, order=20,
 //     label=文档样式配置），取代原 settings.plugin.item 插件配置卡片
 //   - 通过 ctx.settingsScope.bind({ namespace }) 读写官方 settings 命名空间（revision 设栅）
-//   - 模板管理/上传经 host webServer 路由（/plugins/gongwen/api/*）
 //   - 样式使用 --dsw-alias-* 语义 token，不写死颜色
 //   - 打包格式 = loader 的 lazy-CJS factory 产物（window.__ModuleLoader__.load）
 
@@ -24,7 +23,6 @@ window.__ModuleLoader__.load({
     var useState = react.useState;
     var useEffect = react.useEffect;
     var useCallback = react.useCallback;
-    var useRef = react.useRef;
 
     // 与 Host 侧 ctx.settings.register 配对的命名空间
     var NS = "gongwen-skill";
@@ -391,261 +389,10 @@ window.__ModuleLoader__.load({
       );
     }
 
-    // ---- 模板样式管理：列表 + YAML 文本编辑 ----
-    function TemplateManager(props) {
-      var refreshToken = props.refreshToken;
-      var [templates, setTemplates] = useState(null); // null = 加载中
-      var [editing, setEditing] = useState(null);     // {name, content}
-      var [busy, setBusy] = useState(false);
-      var [message, setMessage] = useState("");
-
-      function loadTemplates() {
-        fetch("/plugins/gongwen/api/templates")
-          .then(function (r) { return r.json(); })
-          .then(function (d) {
-            if (d && d.ok) {
-              setTemplates(d.templates || []);
-            } else {
-              setTemplates([]);
-              setMessage("模板列表加载失败：" + ((d && d.error) || "unknown"));
-            }
-          })
-          .catch(function (e) { setTemplates([]); setMessage("模板列表加载失败：" + e.message); });
-      }
-
-      useEffect(function () { loadTemplates(); }, [refreshToken]);
-
-      function openEdit(name) {
-        setBusy(true);
-        setMessage("");
-        fetch("/plugins/gongwen/api/template?name=" + encodeURIComponent(name))
-          .then(function (r) { return r.json(); })
-          .then(function (d) {
-            if (d && d.ok) {
-              setEditing({ name: d.name, content: d.content });
-            } else {
-              setMessage("读取模板失败：" + ((d && d.error) || "unknown"));
-            }
-          })
-          .catch(function (e) { setMessage("读取模板失败：" + e.message); })
-          .then(function () { setBusy(false); });
-      }
-
-      function saveEdit() {
-        if (!editing) return;
-        setBusy(true);
-        setMessage("");
-        fetch("/plugins/gongwen/api/template-save?name=" + encodeURIComponent(editing.name), {
-          method: "PUT",
-          headers: { "Content-Type": "text/plain; charset=utf-8" },
-          body: editing.content,
-        })
-          .then(function (r) { return r.json(); })
-          .then(function (d) {
-            if (d && d.ok) {
-              setMessage("✅ " + (d.message || "模板已保存"));
-              setEditing(null);
-              loadTemplates();
-            } else {
-              setMessage("保存失败：" + ((d && d.error) || "unknown"));
-            }
-          })
-          .catch(function (e) { setMessage("保存失败：" + e.message); })
-          .then(function () { setBusy(false); });
-      }
-
-      function closeEdit() {
-        setEditing(null);
-        setMessage("");
-      }
-
-      var buttonStyle = {
-        padding: "4px 14px", fontSize: "13px",
-        border: "1px solid var(--dsw-alias-border-l4)",
-        borderRadius: "6px",
-        background: "var(--dsw-alias-bg-layer-2, #f5f5f5)",
-        color: "var(--dsw-alias-label-primary)",
-        cursor: busy ? "not-allowed" : "pointer",
-        opacity: busy ? 0.6 : 1,
-      };
-
-      if (editing) {
-        return h("div", null,
-          h("div", { style: { display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" } },
-            h("span", { style: { fontSize: "13px", fontWeight: 600, color: "var(--dsw-alias-label-primary)" } },
-              "编辑模板：" + editing.name + ".yaml"),
-            h("span", { style: { flex: 1 } }),
-            h("button", { style: buttonStyle, disabled: busy, onClick: saveEdit }, busy ? "保存中..." : "💾 保存"),
-            h("button", { style: buttonStyle, disabled: busy, onClick: closeEdit }, "取消"),
-          ),
-          message && h("div", { style: { padding: "6px 10px", margin: "0 0 8px", borderRadius: "6px", fontSize: "12px", background: "rgba(40,120,60,.12)", color: "var(--dsw-alias-label-success, #2e7d32)" } }, message),
-          h("textarea", {
-            value: editing.content,
-            disabled: busy,
-            onChange: function (e) { setEditing({ name: editing.name, content: e.target.value }); },
-            spellCheck: false,
-            style: {
-              width: "100%", minHeight: "260px", boxSizing: "border-box",
-              padding: "10px", fontFamily: "var(--ds-font-family-code, ui-monospace, monospace)",
-              fontSize: "12px", lineHeight: "1.6",
-              border: "1px solid var(--dsw-alias-border-l4)",
-              borderRadius: "8px",
-              background: "var(--dsw-alias-bg-layer-3)",
-              color: "var(--dsw-alias-label-primary)",
-              whiteSpace: "pre", resize: "vertical",
-            },
-          }),
-          h("div", { style: { marginTop: "6px", fontSize: "11px", color: "var(--dsw-alias-label-tertiary)" } },
-            "提示：首行 template_name 必须与文件名一致；保存后 optimize -t " + editing.name + " 立即生效"),
-        );
-      }
-
-      if (templates === null) {
-        return h("div", { style: { padding: "8px 0", color: "var(--dsw-alias-label-tertiary)", fontSize: "13px" } }, "加载模板列表…");
-      }
-
-      if (templates.length === 0) {
-        return h("div", null,
-          message && h("div", { style: { padding: "6px 10px", margin: "0 0 8px", borderRadius: "6px", fontSize: "12px", background: "rgba(200,40,40,.12)", color: "var(--dsw-alias-label-error)" } }, message),
-          h("div", { style: { padding: "8px 0", color: "var(--dsw-alias-label-tertiary)", fontSize: "13px" } },
-            "暂无自定义样式模板——请在下方「通过文档新增样式模板」上传一份标准 .docx 学习生成。"),
-        );
-      }
-
-      return h("div", null,
-        message && h("div", { style: { padding: "6px 10px", margin: "0 0 8px", borderRadius: "6px", fontSize: "12px", background: "rgba(200,40,40,.12)", color: "var(--dsw-alias-label-error)" } }, message),
-        h("div", { style: { display: "flex", flexWrap: "wrap", gap: "8px" } },
-          templates.map(function (name) {
-            return h("div", {
-              key: name,
-              style: {
-                display: "flex", alignItems: "center", gap: "8px",
-                padding: "6px 10px", fontSize: "13px",
-                border: "1px solid var(--dsw-alias-border-l2)",
-                borderRadius: "8px",
-                background: "var(--dsw-alias-bg-layer-2, #f5f5f5)",
-                color: "var(--dsw-alias-label-primary)",
-              },
-            },
-              h("span", null, name),
-              h("span", { style: { fontSize: "11px", color: "var(--dsw-alias-label-tertiary)" } }, ".yaml"),
-              h("button", {
-                style: {
-                  padding: "2px 10px", fontSize: "12px",
-                  border: "1px solid var(--dsw-alias-border-l4)",
-                  borderRadius: "6px",
-                  background: "var(--dsw-alias-bg-layer-3)",
-                  color: "var(--dsw-alias-label-primary)",
-                  cursor: "pointer",
-                },
-                onClick: function () { openEdit(name); },
-              }, "✏️ 编辑"),
-            );
-          })
-        ),
-        h("div", { style: { marginTop: "8px", fontSize: "11px", color: "var(--dsw-alias-label-tertiary)" } },
-          "模板存储于 ~/.gongwen-skill/user_rules/（仓库之外，git 更新不丢失）"),
-      );
-    }
-
-    // ---- 通过文档新增样式模板：上传 .docx → host → style-learn ----
-    function StyleLearnUploader(props) {
-      var fileRef = useRef(null);
-      var [fileName, setFileName] = useState("");
-      var [templateName, setTemplateName] = useState("");
-      var [busy, setBusy] = useState(false);
-      var [message, setMessage] = useState("");
-      var [ok, setOk] = useState(false);
-
-      function handleFile(e) {
-        var f = e.target.files && e.target.files[0];
-        if (!f) return;
-        setOk(false);
-        setMessage("");
-        setFileName(f.name);
-        // 模板名默认取文件名（去 .docx、非法字符转 _），用户可改
-        var autoName = f.name.replace(/\.docx$/i, "").replace(/[^a-zA-Z0-9_\-\u4e00-\u9fff]/g, "_").slice(0, 60) || "自定义";
-        setTemplateName(autoName);
-        var reader = new FileReader();
-        reader.onload = function () {
-          setBusy(true);
-          setMessage("正在学习文档样式…");
-          fetch("/plugins/gongwen/api/style-learn", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ filename: f.name, name: autoName, data: String(reader.result) }),
-          })
-            .then(function (r) { return r.json(); })
-            .then(function (d) {
-              if (d && d.ok) {
-                setOk(true);
-                setMessage("✅ 模板「" + d.template_name + "」已生成，可在模板管理区查看/编辑，或用 optimize -t " + d.template_name + " 套用");
-                if (props.onDone) props.onDone();
-              } else {
-                var detail = (d && d.error) || "学习失败";
-                if (d && d.output) detail += " " + d.output;
-                if (d && d.stderr) detail += " " + d.stderr;
-                setMessage("❌ " + detail);
-              }
-            })
-            .catch(function (err) { setMessage("❌ 上传失败：" + err.message); })
-            .then(function () { setBusy(false); });
-        };
-        reader.readAsDataURL(f);
-      }
-
-      var inputStyle = {
-        flex: 1, minWidth: 0, height: "30px", padding: "0 10px",
-        fontSize: "13px", lineHeight: "1.5",
-        border: "1px solid var(--dsw-alias-border-l4)",
-        borderRadius: "6px",
-        background: "var(--dsw-alias-bg-layer-3)",
-        color: "var(--dsw-alias-label-primary)",
-      };
-
-      return h("div", null,
-        message && h("div", {
-          style: {
-            padding: "6px 10px", margin: "0 0 8px", borderRadius: "6px", fontSize: "12px",
-            background: ok ? "rgba(40,120,60,.12)" : "rgba(200,40,40,.12)",
-            color: ok ? "var(--dsw-alias-label-success, #2e7d32)" : "var(--dsw-alias-label-error)",
-          },
-        }, message),
-
-        h("div", { style: { display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" } },
-          h("input", {
-            ref: fileRef,
-            type: "file",
-            accept: ".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            disabled: busy,
-            onChange: handleFile,
-            style: { fontSize: "13px", color: "var(--dsw-alias-label-primary)" },
-          }),
-          h("span", { style: { fontSize: "12px", color: "var(--dsw-alias-label-tertiary)" } }, "→"),
-          h("label", { style: { display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "var(--dsw-alias-label-primary)" } },
-            "模板名：",
-            h("input", {
-              type: "text",
-              value: templateName,
-              disabled: busy,
-              placeholder: "如：单位红头规范",
-              onChange: function (e) { setTemplateName(e.target.value); },
-              style: Object.assign({}, inputStyle, { width: "200px", flex: "none" }),
-            }),
-          ),
-          busy && h("span", { style: { fontSize: "13px", color: "var(--dsw-alias-label-tertiary)" } }, "处理中…"),
-        ),
-
-        h("div", { style: { marginTop: "8px", fontSize: "11px", color: "var(--dsw-alias-label-tertiary)" } },
-          "选择一份标准公文 .docx（如单位定稿红头文件），系统将自动学习其字体/字号/字间距/行距/缩进/页边距并生成为命名模板；选中文件即开始学习，无需额外按钮。" + (fileName ? " 已选：" + fileName : "")),
-      );
-    }
-
     // ---- 设置页「文档样式配置」主组件（settings.section 内容）----
     function GongwenStylesSection(props) {
       var face = props.face;
       var [, force] = useState(0);
-      var [tmplRefresh, setTmplRefresh] = useState(0);
 
       useEffect(function () {
         return face.subscribe(function () { force(function (n) { return n + 1; }); });
@@ -733,15 +480,6 @@ window.__ModuleLoader__.load({
           }, "同步文件: ~/.gongwen-skill/dsh-config.json"),
         ),
 
-        h(Section, { title: "模板样式管理" },
-          h(TemplateManager, { refreshToken: tmplRefresh })
-        ),
-
-        h(Section, { title: "通过文档新增样式模板" },
-          h(StyleLearnUploader, {
-            onDone: function () { setTmplRefresh(function (n) { return n + 1; }); },
-          })
-        ),
       );
     }
 

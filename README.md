@@ -453,7 +453,7 @@ pnpm add -w gongwen-skill
 
 > **注意**：若 `add` 启动报错提示子包重复声明，请检查 `dsh.profile.bundles` 数组中**仅包含根包 `gongwen-skill`**，避免同时列入 `engine` 或 `gongwen` 等子目录。
 
-> **DSH 版本要求**：**支持 DSH ≥ 0.1.2-rc.1**。插件按 DeepSeek Harness 0.1.2-rc.1 官方开发文档（Bluebook · Developer Guide）实现——`ctx.tools.register(defineTool(...))`（模型工具）、`ctx.settings.register` + `settings.section` 平级菜单（配置，设置侧边栏「文档样式配置」）、`ctx.systemPrompt.section`、`ctx.skills.register` 与 webServer 路由。需要承载这些 API 的 DSH 组合（`@deepseek-ai/dsh-base` 等），peerDependencies 已声明 `@deepseek-ai/cordis`、`@deepseek-ai/dsh-tools`、`@deepseek-ai/schemastery` 与 `@deepseek-ai/dsh-client-ui-settings-plugins`。**旧版宿主（installSettingsSection 时代）不兼容**：DSH 0.1.2-rc.1 之前（无上述官方 API / 尚用 installSettingsSection 注入设置卡片的版本）上安装会得到 pnpm peer 缺失警告，插件可能无法加载，请升级 DSH 到 ≥ 0.1.2-rc.1 或改用方式一（Skill 文件系统）。
+> **DSH 版本要求**：**支持 DSH ≥ 0.1.2-rc.1**。插件按 DeepSeek Harness 0.1.2-rc.1 官方开发文档（Bluebook · Developer Guide）实现——`ctx.tools.register(defineTool(...))`（模型工具）、`ctx.settings.register` + `settings.section` 平级菜单（配置，设置侧边栏「文档样式配置」）、`ctx.systemPrompt.section`、`ctx.skills.register`。需要承载这些 API 的 DSH 组合（`@deepseek-ai/dsh-base` 等），peerDependencies 已声明 `@deepseek-ai/cordis`、`@deepseek-ai/dsh-tools`、`@deepseek-ai/schemastery` 与 `@deepseek-ai/dsh-client-ui-settings-plugins`。**旧版宿主（installSettingsSection 时代）不兼容**：DSH 0.1.2-rc.1 之前（无上述官方 API / 尚用 installSettingsSection 注入设置卡片的版本）上安装会得到 pnpm peer 缺失警告，插件可能无法加载，请升级 DSH 到 ≥ 0.1.2-rc.1 或改用方式一（Skill 文件系统）。
 
 ### 方式三：本地源码链接（用于插件开发）
 
@@ -476,7 +476,7 @@ dsh plugin --profile web add -w "link:/path/to/gongwen-skill"
 - `dsh/index.js` 的 `POSITIONAL_ARGS` 声明各命令的位置参数（如 `draft: ["input"]`）；新增/调整 CLI 命令位置参数时**必须同步更新该表**，否则插件转发会构造出 `--input` 而 CLI 只接受位置参数
 - 插件保持薄层：业务逻辑全在 CLI / engine，改动引擎不影响插件；改动 CLI 参数形态时需同步检查 `dsh/index.js` 转发（doctor 自检覆盖 DSH 文件存在性）
 - **模型工具注册**：插件通过官方 `ctx.tools.register(defineTool({...}))` 注册名为 `gongwen` 的模型工具，工具 schema 自动流入 DSH 系统提示词组装；`defineTool` 校验模型生成的参数后调用 `runCli()` 透传 Python CLI（详见上方「DSH 插件配置化」）
-- **客户端配置菜单**：`dsh/client.js` 注册进官方 `settings.section` list slot（id=`gongwen-styles`，order=20，label=`文档样式配置`），在「系统设置」侧边栏与通用设置/模型/插件平级；页面经 `ctx.settingsScope` 读写官方 settings 文档，UI 样式使用 `--dsw-alias-*` 语义 token（官方 Client UI & Slots 规范）；模板管理/上传经插件 webServer 路由（`/plugins/gongwen/api/*`）
+- **客户端配置菜单**：`dsh/client.js` 注册进官方 `settings.section` list slot（id=`gongwen-styles`，order=20，label=`文档样式配置`），在「系统设置」侧边栏与通用设置/模型/插件平级；页面经 `ctx.settingsScope` 读写官方 settings 文档，UI 样式使用 `--dsw-alias-*` 语义 token（官方 Client UI & Slots 规范）
 
 ### 🚀 启动 DSH Web 服务
 
@@ -529,7 +529,7 @@ DSH 插件支持通过配置文件管理排版参数，Agent 调用时自动注�
 
 **两种配置入口（同一数据，双向同步）**：
 
-1. **DSH Web 设置面板（推荐）**：系统设置 → **文档样式配置**（设置侧边栏平级菜单，与通用设置/模型/插件并列），页面含默认公文类型下拉（25 种）、完整排版参数（页边距/字体/行距等 39 字段）、模板样式管理（列表 + YAML 编辑）与「通过文档新增样式模板」（上传 .docx 自动学习）；保存后写入 DSH 官方 settings 文档，并由插件 Host 的 `scope.watch` 自动同步到 `~/.gongwen-skill/dsh-config.json`
+1. **DSH Web 设置面板（推荐）**：系统设置 → **文档样式配置**（设置侧边栏平级菜单，与通用设置/模型/插件并列），页面含默认公文类型下拉（25 种）与完整排版参数（页边距/字体/行距等 39 字段）；保存后写入 DSH 官方 settings 文档，并由插件 Host 的 `scope.watch` 自动同步到 `~/.gongwen-skill/dsh-config.json`。样式模板的**学习与管理走 CLI**（`style-learn` / `style-list` / `template`，见「样式学习」章节），不占用设置面板，保持插件薄层
 2. **CLI / 配置文件**：直接编辑 `~/.gongwen-skill/dsh-config.json`，或通过插件 `config` 命令管理
 
 > **兼容性**：插件首次在带 settings provider 的 DSH 部署中加载时，会把已存在的 `~/.gongwen-skill/dsh-config.json` 一次性迁移进官方 settings 命名空间（仅当设置面板尚无用户覆盖时），之后以设置面板 / settings 文档为权威源，双向同步。

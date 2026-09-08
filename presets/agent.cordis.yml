@@ -61,8 +61,9 @@
       ## Hard Rules
       - 输出必须是 .docx 成品：新会话/新任务先 `python -m gongwen handoff --list` 检查未完成交接
       - `bold-first` 必须在 `optimize` 之前执行，否则整段加粗
-      - 图形化设置入口在「系统设置 → 文档样式配置」（页边距/行距/字体 ≈ 39 字段、
-        模板管理、上传 .docx 自动 style-learn）；保存后同步到 ~/.gongwen-skill/dsh-config.json
+      - 图形化设置入口在「系统设置 → 文档样式配置」（页边距/行距/字体 ≈ 39 字段）：
+        保存后同步到 ~/.gongwen-skill/dsh-config.json。样式模板的学习/管理走 CLI
+        （`style-learn` / `style-list` / `template`），不占用设置面板
       - 文档格式以 GB/T 9704-2012 为准；讲话稿（speech）与主持词（host_speech）按最终版定稿样式
 
       ## Tooling
