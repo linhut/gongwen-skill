@@ -24,6 +24,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from gongwen import DISPLAY_NAME
+
 _logger = logging.getLogger(__name__)
 
 # 项目根目录（相对于本文件：gongwen/cli/doctor_cmds.py → 项目根）
@@ -598,6 +600,122 @@ def _check_network_dns(offline: bool = False) -> dict:
         }
 
 
+def _check_display_name_consistency() -> dict:
+    """（P2-30）检查各对外承载点的展示名与 DISPLAY_NAME 单一来源一致。
+
+    单一事实来源：gongwen/__init__.py 的 DISPLAY_NAME 常量；此处校验
+    SKILL.md description / .claude-plugin 插件清单 / package.json /
+    pyproject.toml / dsh/index.js 插件描述 是否与其一致，防止文案漂移。
+    只读诊断：承载点文件缺失时按「跳过」处理，不误报 FAIL。
+    """
+    import json as _json
+    import re as _re
+
+    name = DISPLAY_NAME
+    problems = []
+    skipped = 0
+
+    # 1. SKILL.md frontmatter description 首句
+    skill_path = _PROJECT_ROOT / "SKILL.md"
+    if skill_path.exists():
+        desc = ""
+        text = skill_path.read_text(encoding="utf-8-sig")
+        if text.startswith("---"):
+            try:
+                end = text.index("\n---", 4)
+                import yaml
+                fm = yaml.safe_load(text[4:end]) or {}
+                desc = str(fm.get("description", ""))
+            except Exception:
+                desc = ""
+        if not desc.startswith(name):
+            problems.append("SKILL.md description 首句不含展示名")
+    else:
+        skipped += 1
+
+    # 2. .claude-plugin/plugin.json displayName
+    plugin_path = _PROJECT_ROOT / ".claude-plugin" / "plugin.json"
+    if plugin_path.exists():
+        try:
+            data = _json.loads(plugin_path.read_text(encoding="utf-8"))
+            if data.get("displayName") != name:
+                problems.append(f".claude-plugin/plugin.json displayName ≠ {name}")
+        except Exception as e:
+            problems.append(f".claude-plugin/plugin.json 解析失败: {str(e)[:80]}")
+    else:
+        skipped += 1
+
+    # 3. .claude-plugin/marketplace.json plugins[0].displayName
+    market_path = _PROJECT_ROOT / ".claude-plugin" / "marketplace.json"
+    if market_path.exists():
+        try:
+            data = _json.loads(market_path.read_text(encoding="utf-8"))
+            plugins = data.get("plugins") or []
+            if not plugins or plugins[0].get("displayName") != name:
+                problems.append(".claude-plugin/marketplace.json plugins[0].displayName 不一致")
+        except Exception as e:
+            problems.append(f".claude-plugin/marketplace.json 解析失败: {str(e)[:80]}")
+    else:
+        skipped += 1
+
+    # 4. package.json description
+    pkg_path = _PROJECT_ROOT / "package.json"
+    if pkg_path.exists():
+        try:
+            data = _json.loads(pkg_path.read_text(encoding="utf-8"))
+            if not str(data.get("description", "")).startswith(name):
+                problems.append("package.json description 不以展示名开头")
+        except Exception as e:
+            problems.append(f"package.json 解析失败: {str(e)[:80]}")
+    else:
+        skipped += 1
+
+    # 5. pyproject.toml description
+    pyr_path = _PROJECT_ROOT / "pyproject.toml"
+    if pyr_path.exists():
+        m = _re.search(r'^description\s*=\s*"([^"]*)"',
+                       pyr_path.read_text(encoding="utf-8"), _re.M)
+        if not (m and m.group(1).startswith(name)):
+            problems.append("pyproject.toml description 不以展示名开头")
+    else:
+        skipped += 1
+
+    # 6. dsh/index.js 插件描述（description 值可能跨行，取声明块首尾再判断）
+    js_path = _PROJECT_ROOT / "dsh" / "index.js"
+    if js_path.exists():
+        js_text = js_path.read_text(encoding="utf-8")
+        desc_block = ""
+        lines = js_text.splitlines()
+        for i, line in enumerate(lines):
+            if line.strip().startswith("export const description"):
+                block = lines[i:]
+                desc_block = block[0]
+                for bl in block[1:]:
+                    desc_block += bl
+                    if ";" in bl:
+                        break
+                break
+        if name not in desc_block:
+            problems.append("dsh/index.js export description 不含展示名")
+    else:
+        skipped += 1
+
+    skip_note = f"（{skipped} 项文件缺失已跳过）" if skipped else ""
+    if problems:
+        return {
+            "name": "展示名一致性",
+            "ok": False,
+            "detail": "; ".join(problems) + skip_note,
+            "hint": f"以 gongwen/__init__.py 的 DISPLAY_NAME（{name}）为唯一来源统一各承载点",
+        }
+    return {
+        "name": "展示名一致性",
+        "ok": True,
+        "detail": "6 处承载点均与 DISPLAY_NAME（" + name + "）一致" + skip_note,
+        "hint": None,
+    }
+
+
 def _run_all_checks(offline: bool = False) -> dict:
     """运行所有检查，返回结构化报告。"""
     t0 = time.time()
@@ -631,6 +749,7 @@ def _run_all_checks(offline: bool = False) -> dict:
         add(file_result)
     add(_check_skill_sync())
     add(_check_skill_frontmatter())
+    add(_check_display_name_consistency())
     add(_check_git_status())
     add(_check_pycodestyle())
     add(_check_npm_package())
@@ -655,7 +774,7 @@ def cmd_doctor(args):
         return 0 if report["summary"]["failed"] == 0 else 1
 
     s = report["summary"]
-    print("🔍 公文全流程处理专家 健康诊断")
+    print(f"🔍 {DISPLAY_NAME} 健康诊断")
     print(f"   项目根目录: {report['project_root']}")
     print(f"   诊断时间: {report['timestamp']}")
     print(f"   耗时: {report['elapsed_seconds']}s")
@@ -687,7 +806,7 @@ def cmd_repair(args):
     """修复常见问题：自动修复 + 提示修复。"""
     import subprocess as _sp
 
-    print("公文全流程处理专家 修复工具")
+    print(f"{DISPLAY_NAME} 修复工具")
     print(f"{'-' * 60}")
 
     fixes = 0

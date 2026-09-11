@@ -11,6 +11,7 @@
 import argparse
 import sys
 
+from gongwen import DISPLAY_NAME
 from gongwen._legacy import (
     __doc__ as _LEGACY_DOC,
     __version__,
@@ -102,11 +103,11 @@ class _GroupedHelpFormatter(argparse.RawDescriptionHelpFormatter):
 def main():
     parser = argparse.ArgumentParser(
         prog="gongwen",
-        description="公文全流程处理专家（GB/T 9704）—— 格式检查/内容优化/模板生成/版式注入  (c) 2026 Jose AI  https://www.linhut.cn",
+        description=f"{DISPLAY_NAME}（GB/T 9704）—— 格式检查/内容优化/模板生成/版式注入  (c) 2026 Jose AI  https://www.linhut.cn",
         formatter_class=_GroupedHelpFormatter,
         epilog=_LEGACY_DOC,
     )
-    parser.add_argument("--version", action="version", version=f"公文全流程处理专家（gongwen-skill）v{__version__}",
+    parser.add_argument("--version", action="version", version=f"{DISPLAY_NAME}（gongwen-skill）v{__version__}",
                         help="显示版本号并退出")
     sub = parser.add_subparsers(dest="command", help="子命令")
 

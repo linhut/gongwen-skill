@@ -17,6 +17,12 @@
 - **`AGENTS.md`**：面向 Codex 等指令型 Agent 的项目说明（展示名、CLI 入口、29 项命令速查、目录结构、平台适配表）
 - **打包声明同步**：`package.json` `files` 白名单与 `MANIFEST.in` 纳入 `AGENTS.md` 与 `.claude-plugin/`，确保 npm 包与 sdist 携带新增适配文件
 
+### Changed
+- **展示名单一事实来源**：`gongwen/__init__.py` 新增 `DISPLAY_NAME` 常量，CLI `description` / `--version` / `doctor` / `repair` 标题统一引用，消除多处硬编码中文名
+- **doctor 新增「展示名一致性」检查**：校验 SKILL.md frontmatter description、`.claude-plugin/` 两个 JSON 的 `displayName`、`package.json` / `pyproject.toml` description、`dsh/index.js` 插件描述共 6 处承载点与 `DISPLAY_NAME` 一致，防止文案漂移（文件缺失时跳过，不误报）
+- `AGENTS.md` 命令速查表标注「完整操作指南以 SKILL.md 为准」，避免双表维护漂移
+- **`.gitattributes` 统一文本换行**：`*.js/*.py/*.md/*.json/*.yml/*.yaml` 等强制 LF，消除 Windows 检出时的 CRLF 噪音 diff
+
 ---
 
 ## v2.12.0 (2026-09-08)

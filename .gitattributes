@@ -10,3 +10,14 @@ logo/ export-ignore
 # 字体文件（11MB）不从 git archive 导出，通过 `python -m gongwen font install` 安装。
 # PyPI wheel/sdist 也不包含字体（太大），用户克隆仓库后可安装。
 assets/ export-ignore
+
+# 文本文件统一以 LF 存入仓库、检出保持 LF，避免 Windows 下 LF→CRLF 换行噪音 diff。
+*.js text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+MANIFEST.in text eol=lf
+cordis.patch.yml text eol=lf
+pyproject.toml text eol=lf
