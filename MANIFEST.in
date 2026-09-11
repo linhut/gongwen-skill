@@ -3,6 +3,7 @@
 # Licensed under the MIT License. See the LICENSE file for details.
 
 include SKILL.md
+include AGENTS.md
 include CHANGELOG.md
 include LICENSE
 include requirements.txt
@@ -14,3 +15,4 @@ recursive-include prompts/ *.md
 recursive-include gongwen/ *.py
 recursive-include gongwen/ py.typed
 recursive-include etc/ *.json
+recursive-include .claude-plugin *.json

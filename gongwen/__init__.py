@@ -5,7 +5,7 @@
 # https://github.com/linhut/gongwen-skill
 # Licensed under the MIT License. See the LICENSE file for details.
 #
-# 公文全流程处理工具 - gongwen-skill Python package
+# 公文全流程处理专家 - gongwen-skill Python package
 
 __version__ = "2.12.0"
 

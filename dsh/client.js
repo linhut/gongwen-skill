@@ -1,4 +1,4 @@
-// 公文全流程处理工具 DSH client — 设置平级菜单「文档样式配置」（gongwen-skill）
+// 公文全流程处理专家 DSH client — 设置平级菜单「文档样式配置」（gongwen-skill）
 // (c) 2026 Jose AI (https://www.linhut.cn)
 // https://github.com/linhut/gongwen-skill
 // Licensed under the MIT License. See the LICENSE file for details.

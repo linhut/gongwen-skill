@@ -4,6 +4,21 @@
   Licensed under the MIT License. See the LICENSE file for details.
 -->
 
+## Unreleased
+
+### Changed
+- **对外展示名统一为「公文全流程处理专家」**：原称谓「公文全流程处理工具」在全部面向人与模型可见的文案层被替换，覆盖 `SKILL.md`（三副本 frontmatter `description`）、`dsh/index.js`（`GONGWEN_GUIDANCE` 入口描述 / 工具描述 / `export const description` / `skills.register` description / 文件头注释）、CLI `--version` 与命令帮助描述（`gongwen/cli/app.py`）、`README.md`、`package.json` 与 `pyproject.toml` 的 `description`、`doctor` 诊断标题（`gongwen/cli/doctor_cmds.py`）、`gongwen/_legacy.py` / `gongwen/__init__.py` / `cordis.patch.yml` / `dsh/client.js` / `etc/dsh-config-defaults.json` 中的称谓注释
+- **机器标识与用户文档内容一律不变**：包名 `gongwen-skill`、命令名 `gongwen`、`SKILL.md` frontmatter `name`、DSH 插件 id/name/ns（`cordis.patch.yml`、`dsh/index.js`）、以及所有写入用户 `.docx` 的署名字符串保持原样；`CHANGELOG` 历史条目与 `docs/design/` 历史记录不改
+- `dsh/index.js` 工具描述与 `skills.register` description 改为「公文全流程处理专家（gongwen-skill）—— …」形态：中文展示名在前，机器标识 `gongwen-skill` 保留在括号内，便于模型识别调用目标
+
+### Added
+- **`.claude-plugin/plugin.json`**：Claude Code 插件清单（`name: gongwen-skill` + `displayName: 公文全流程处理专家` + 版本/作者/仓库/关键词），使 Claude Code 侧插件列表展示中文名
+- **`.claude-plugin/marketplace.json`**：Claude Code 插件市场清单（顶层 `name`/`owner`/`plugins`，条目含 `source` 与 `displayName`），支持 `/plugin marketplace add` 接入
+- **`AGENTS.md`**：面向 Codex 等指令型 Agent 的项目说明（展示名、CLI 入口、29 项命令速查、目录结构、平台适配表）
+- **打包声明同步**：`package.json` `files` 白名单与 `MANIFEST.in` 纳入 `AGENTS.md` 与 `.claude-plugin/`，确保 npm 包与 sdist 携带新增适配文件
+
+---
+
 ## v2.12.0 (2026-09-08)
 
 ### Added

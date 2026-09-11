@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
-# 公文文档格式化 Skill —— 中文公文全流程处理工具
+# 公文文档格式化 Skill —— 中文公文全流程处理专家
 #
 # (c) 2026 Jose AI (https://www.linhut.cn)
 # https://github.com/linhut/gongwen-skill
@@ -19,7 +19,7 @@ from gongwen.cli.helpers import (
 __version__ = "2.12.0"
 # 版本号应与 gongwen/__init__.py 保持一致，每次发版同步更新
 """
-中文公文全流程处理工具 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
+中文公文全流程处理专家 —— 基于 GB/T 9704《党政机关公文格式》国家标准。
 
 支持格式检查与修复、内容润色（红色标注对比版）、模板生成、Markdown 转公文、
 版头版记页码注入等完整能力。打包为可被 AI Agent 直接调用的 Skill，

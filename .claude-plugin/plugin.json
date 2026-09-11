@@ -1,0 +1,25 @@
+{
+  "name": "gongwen-skill",
+  "displayName": "公文全流程处理专家",
+  "version": "2.12.0",
+  "description": "公文全流程处理专家 —— 面向中文公文（.docx）的 GB/T 9704 全流程工具链：格式检查、自动修复、内容优化（Word 原生修订+批注 / 行内差异对比）、模板生成、样式学习、Markdown 转公文、版头版记页码注入，覆盖 25 类法定公文。",
+  "author": {
+    "name": "Jose AI",
+    "url": "https://www.linhut.cn"
+  },
+  "homepage": "https://github.com/linhut/gongwen-skill",
+  "repository": "https://github.com/linhut/gongwen-skill",
+  "license": "MIT",
+  "category": "productivity",
+  "keywords": [
+    "chinese",
+    "document",
+    "government",
+    "official-document",
+    "GB/T 9704",
+    "docx",
+    "skill",
+    "公文",
+    "格式检查"
+  ]
+}

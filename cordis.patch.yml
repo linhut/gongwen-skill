@@ -2,7 +2,7 @@
 # https://github.com/linhut/gongwen-skill
 # Licensed under the MIT License. See the LICENSE file for details.
 
-# dsh bundle layer: 公文全流程处理工具 (gongwen-skill, host + client)
+# dsh bundle layer: 公文全流程处理专家 (gongwen-skill, host + client)
 - insert:
     - id: gongwen-skill
       name: gongwen-skill

@@ -1,4 +1,4 @@
-// 公文全流程处理工具 - DSH plugin bridge (gongwen-skill, v2.12.0+)
+// 公文全流程处理专家 - DSH plugin bridge (gongwen-skill, v2.12.0+)
 // (c) 2026 Jose AI (https://www.linhut.cn)
 // https://github.com/linhut/gongwen-skill
 // Licensed under the MIT License. See the LICENSE file for details.
@@ -44,7 +44,7 @@ const SECTION_NAME = "plugin:gongwen-skill";
 const SECTION_ORDER = 100;
 
 // AI 工作指引（模型可见的能力说明；工具 schema 由 defineTool 自动注入）
-const GONGWEN_GUIDANCE = `本机已安装公文全流程处理工具插件（gongwen-skill）。能力：.docx 公文全流程——列出公文类型（list-types）、解析文档（parse）、格式检查（check）、自动修复（optimize）、内容修订对比版（optimize-content）、模板生成（template）、样式学习（style-learn/style-list，从标准文档学习排版样式）、全面诊断（doctor）、自动修复（repair）、Markdown 转公文（md2docx）、JSON 模型生成（generate）、版头/版记/页码注入（header/footer/pagenum）、首句加粗（bold-first）、一键格式修复（fix-common）、桌签生成（table-signs）、审稿流转单（review）、完整审校（full-review）、文档审计（audit）、规则管理（rule-export/import/list）、版本自检（check-update）、会话交接（handoff）、字体管理（font）。覆盖通知/请示/报告/函/会议纪要等 25 类公文。完全自包含，克隆即用，无需数据库或后端服务。用户提到「公文 / 红头文件 / 版式 / 排版 / 格式检查 / 公文模板 / 样式学习 / 自定义模板 / 党政机关公文」时即指本插件。DSH 插件支持配置化排版参数（页边距/行距/字体等）：在系统设置 → 文档样式配置 中调整，写入官方 settings 命名空间并同步到 ~/.gongwen-skill/dsh-config.json。`;
+const GONGWEN_GUIDANCE = `本机已安装公文全流程处理专家 插件（gongwen-skill）。能力：.docx 公文全流程——列出公文类型（list-types）、解析文档（parse）、格式检查（check）、自动修复（optimize）、内容修订对比版（optimize-content）、模板生成（template）、样式学习（style-learn/style-list，从标准文档学习排版样式）、全面诊断（doctor）、自动修复（repair）、Markdown 转公文（md2docx）、JSON 模型生成（generate）、版头/版记/页码注入（header/footer/pagenum）、首句加粗（bold-first）、一键格式修复（fix-common）、桌签生成（table-signs）、审稿流转单（review）、完整审校（full-review）、文档审计（audit）、规则管理（rule-export/import/list）、版本自检（check-update）、会话交接（handoff）、字体管理（font）。覆盖通知/请示/报告/函/会议纪要等 25 类公文。完全自包含，克隆即用，无需数据库或后端服务。用户提到「公文 / 红头文件 / 版式 / 排版 / 格式检查 / 公文模板 / 样式学习 / 自定义模板 / 党政机关公文」时即指本插件。DSH 插件支持配置化排版参数（页边距/行距/字体等）：在系统设置 → 文档样式配置 中调整，写入官方 settings 命名空间并同步到 ~/.gongwen-skill/dsh-config.json。`;
 
 // 定位 gongwen CLI 真实安装根目录
 function _resolve_gongwen_root() {
@@ -484,7 +484,7 @@ function registerGongwenTool(ctx) {
   ctx.tools.register(defineTool({
     name: "gongwen",
     description:
-      "运行公文全流程处理工具（gongwen-skill）CLI 命令：check（格式检查）、optimize（自动修复）、optimize-content（内容修订对比版）、md2docx（Markdown 转公文）、template（模板生成）、style-learn（样式学习）、list-types（列出公文类型）、doctor（全面诊断）、handoff（会话交接）等。",
+      "运行公文全流程处理专家（gongwen-skill）CLI 命令：check（格式检查）、optimize（自动修复）、optimize-content（内容修订对比版）、md2docx（Markdown 转公文）、template（模板生成）、style-learn（样式学习）、list-types（列出公文类型）、doctor（全面诊断）、handoff（会话交接）等。",
     parameters: {
       command: {
         type: "string",
@@ -529,7 +529,7 @@ function registerGongwenTool(ctx) {
 
 export const name = "gongwen-skill";
 export const description =
-  "中文公文全流程处理工具 - GB/T 9704 格式检查/修复/内容优化/模板生成/版式注入";
+  "公文全流程处理专家（gongwen-skill）—— 中文公文 GB/T 9704 格式检查/修复/内容优化/模板生成/版式注入";
 
 // 硬依赖：tools（模型工具注册需要）。systemPrompt / settings / skills 为可选服务，
 // 分别用 ctx.get / ctx.inject 处理，避免在未挂载对应提供方的组合中阻塞插件加载。
@@ -620,7 +620,7 @@ export function apply(ctx) {
           const skillD = skills.register({
             name: "gongwen-skill",
             description:
-              "中文公文全流程处理：格式检查/自动修复/content润色/模板生成/样式学习/Markdown转公文/版头版记注入",
+              "公文全流程处理专家：格式检查/自动修复/content润色/模板生成/样式学习/Markdown转公文/版头版记注入",
             content: skillContent,
             resourceBase: { kind: "directory", path: resolve(__dirname, "..") },
             invocation: { modelInvocable: true, userInvocable: true },
