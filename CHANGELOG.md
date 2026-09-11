@@ -4,27 +4,29 @@
   Licensed under the MIT License. See the LICENSE file for details.
 -->
 
-## Unreleased
-
-### Changed
-- **对外展示名统一为「公文全流程处理专家」**：原称谓「公文全流程处理工具」在全部面向人与模型可见的文案层被替换，覆盖 `SKILL.md`（三副本 frontmatter `description`）、`dsh/index.js`（`GONGWEN_GUIDANCE` 入口描述 / 工具描述 / `export const description` / `skills.register` description / 文件头注释）、CLI `--version` 与命令帮助描述（`gongwen/cli/app.py`）、`README.md`、`package.json` 与 `pyproject.toml` 的 `description`、`doctor` 诊断标题（`gongwen/cli/doctor_cmds.py`）、`gongwen/_legacy.py` / `gongwen/__init__.py` / `cordis.patch.yml` / `dsh/client.js` / `etc/dsh-config-defaults.json` 中的称谓注释
-- **机器标识与用户文档内容一律不变**：包名 `gongwen-skill`、命令名 `gongwen`、`SKILL.md` frontmatter `name`、DSH 插件 id/name/ns（`cordis.patch.yml`、`dsh/index.js`）、以及所有写入用户 `.docx` 的署名字符串保持原样；`CHANGELOG` 历史条目与 `docs/design/` 历史记录不改
-- `dsh/index.js` 工具描述与 `skills.register` description 改为「公文全流程处理专家（gongwen-skill）—— …」形态：中文展示名在前，机器标识 `gongwen-skill` 保留在括号内，便于模型识别调用目标
+## v2.13.0 (2026-09-11)
 
 ### Added
-- **`.claude-plugin/plugin.json`**：Claude Code 插件清单（`name: gongwen-skill` + `displayName: 公文全流程处理专家` + 版本/作者/仓库/关键词），使 Claude Code 侧插件列表展示中文名
-- **`.claude-plugin/marketplace.json`**：Claude Code 插件市场清单（顶层 `name`/`owner`/`plugins`，条目含 `source` 与 `displayName`），支持 `/plugin marketplace add` 接入
-- **`AGENTS.md`**：面向 Codex 等指令型 Agent 的项目说明（展示名、CLI 入口、29 项命令速查、目录结构、平台适配表）
-- **打包声明同步**：`package.json` `files` 白名单与 `MANIFEST.in` 纳入 `AGENTS.md` 与 `.claude-plugin/`，确保 npm 包与 sdist 携带新增适配文件
+- **政策联网检索 `policy-search`**：按主题检索国务院政策文件库（gov.cn，t=zhengcelibrary）→ web 引擎兜底；`--json` 结构化输出供 agent 消费（含 `gov_empty` 诊断字段）；抓取复用 `fact_check._safe_fetch_url`（SSRF 防护）+ `netcheck` DoH 兜底；wizard 新增 F 路径「政策检索」（只读直接执行，dry-run 支持）
+- **渲染验收 `render`**：docx 转逐页图片供版面可视化检查（分页/表格劈裂/签章区），复用 `engine/docx_to_image` 完整链路（LibreOffice/docx2pdf → pdftoppm/PyMuPDF）；`--pages/--dpi/--format/--json`，只读命令
+- **对外展示名承载层**：`.claude-plugin/plugin.json` + `marketplace.json`（`displayName: 公文全流程处理专家`）+ `AGENTS.md`（Codex 等指令型 Agent 说明），并纳入 `package.json` files 与 `MANIFEST.in` 打包声明
+- **`npx skills add linhut/gongwen-skill` 安装渠道**：README 新增方式零一行安装（Claude Code/Codex/Cursor 等通用 harness）
 
 ### Changed
+- **对外展示名统一为「公文全流程处理专家」**：原称谓「公文全流程处理工具」在全部面向人与模型可见的文案层被替换，覆盖 `SKILL.md`（三副本 frontmatter `description`）、`dsh/index.js`（`GONGWEN_GUIDANCE` 入口描述 / 工具描述 / `export const description` / 文件头注释）、CLI `--version` 与命令帮助描述（`gongwen/cli/app.py`）、`README.md`、`package.json` 与 `pyproject.toml` 的 `description`、`doctor` 诊断标题（`gongwen/cli/doctor_cmds.py`）、`gongwen/_legacy.py` / `gongwen/__init__.py` / `cordis.patch.yml` / `dsh/client.js` / `etc/dsh-config-defaults.json` 中的称谓注释
+- **机器标识与用户文档内容一律不变**：包名 `gongwen-skill`、命令名 `gongwen`、`SKILL.md` frontmatter `name`、DSH 插件 id/name/ns（`cordis.patch.yml`、`dsh/index.js`）、以及所有写入用户 `.docx` 的署名字符串保持原样；`CHANGELOG` 历史条目与 `docs/design/` 历史记录不改
 - **展示名单一事实来源**：`gongwen/__init__.py` 新增 `DISPLAY_NAME` 常量，CLI `description` / `--version` / `doctor` / `repair` 标题统一引用，消除多处硬编码中文名
-- **doctor 新增「展示名一致性」检查**：校验 SKILL.md frontmatter description、`.claude-plugin/` 两个 JSON 的 `displayName`、`package.json` / `pyproject.toml` description、`dsh/index.js` 插件描述共 6 处承载点与 `DISPLAY_NAME` 一致，防止文案漂移（文件缺失时跳过，不误报）
+- **doctor 新增「展示名一致性」检查**：校验 SKILL.md frontmatter description、`.claude-plugin/` 两个 JSON 的 `displayName`、`package.json` / `pyproject.toml` description、`dsh/index.js` 插件描述共 6 处承载点与 `DISPLAY_NAME` 一致（文件缺失跳过，不误报）
+- **doctor 新增「DSH 宿主版本」「DSH peer 依赖」检查**：探测本机 `@deepseek-ai/dsh` ≥ 0.1.2-rc.1，peer 下限以 `package.json` peerDependencies 为单一来源；无 DSH 宿主时一致跳过避免误报（asar 布局兼容）
+- **CLI 启动提速约 -72%**：`app.py` 顶层重导入惰性化（`review_cmds` 4 命令经 `_lazy_command` 首次调用时导入、`pagenum` 默认值内联），`--version` 926ms→244ms、`--help` 830ms→234ms
+- **架构导入统一**：28 处旧式顶层导入（`from optimizer/config/fact_check` 等）统一为 `from engine.xxx`，消除对 `_bootstrap` sys.path hack 的运行时依赖
+- **DSH 设置面板精简 39→5 字段（P2-31）**：`dsh/client.js` FIELDS 只保留默认类型+页边距，`dsh/index.js` schema 同步；低频排版参数回归 CLI（`config --set` / `--config-overrides`）
+- **DSH 插件移除运行时技能注册（P2-31）**：`dsh/index.js` 取消 `ctx.skills.register`（与文件系统技能 `~/.dsh/skills/gongwen-skill/` 完全重复），技能发现统一走方式一
 - `AGENTS.md` 命令速查表标注「完整操作指南以 SKILL.md 为准」，避免双表维护漂移
 - **`.gitattributes` 统一文本换行**：`*.js/*.py/*.md/*.json/*.yml/*.yaml` 等强制 LF，消除 Windows 检出时的 CRLF 噪音 diff
-- **DSH 插件移除运行时技能注册（P2-31）**：`dsh/index.js` 取消 `ctx.skills.register`（与文件系统技能 `~/.dsh/skills/gongwen-skill/` 完全重复），技能发现统一走方式一，减少一个随 DSH 版本漂移的 API 耦合面；hint 注释同步更新
 
----
+### Fixed
+- `tests/test_wizard.py`：PATH_DEFS 断言更新为 A–F 并校验 F 路径映射（policy-search）
 
 ## v2.12.0 (2026-09-08)
 
