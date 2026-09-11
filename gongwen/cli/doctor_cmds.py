@@ -716,6 +716,151 @@ def _check_display_name_consistency() -> dict:
     }
 
 
+def _parse_version_tuple(v: str):
+    """解析 1.2.3 / 4 / 3.18.0 / 0.1.2-rc.1 → 可比较元组（rc.N 视为预发布）。
+
+    rc.N 预发布 < 同版本正式版（rc 取有限数，正式版取 inf）。
+    无法解析返回 None（调用方按不满足处理，保守）。
+    """
+    import re as _re
+    m = _re.match(r"^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:-rc\.(\d+))?$", v.strip())
+    if not m:
+        return None
+    return (int(m.group(1)), int(m.group(2) or 0), int(m.group(3) or 0),
+            int(m.group(4)) if m.group(4) else float("inf"))
+
+
+def _dsh_profiles() -> list:
+    """返回本机 DSH profile 的 node_modules 目录（支持 DSH_HOME 环境变量）。"""
+    import os
+    dsh_home = os.environ.get("DSH_HOME") or str(Path.home() / ".dsh")
+    return sorted(
+        p for p in Path(dsh_home).glob("profiles/*/node_modules") if p.is_dir()
+    )
+
+
+def _check_dsh_host_version() -> dict:
+    """（O1）DSH 宿主版本检查：本机 @deepseek-ai/dsh 版本须 ≥ 0.1.2-rc.1。
+
+    DSH 迭代频繁（0.1.0-rc → 0.1.2-rc 一周数版），插件按 Bluebook API 实现，
+    宿主过低时插件可能无法加载；纯 CLI 环境（无 DSH 安装）跳过不误报。
+    """
+    min_key = _parse_version_tuple("0.1.2-rc.1")  # 与 CHANGELOG/README 声明一致
+    found = []
+    for nm in _dsh_profiles():
+        pkg = nm / "@deepseek-ai" / "dsh" / "package.json"
+        if not pkg.exists():
+            continue
+        try:
+            ver = str(json.loads(pkg.read_text(encoding="utf-8")).get("version", ""))
+        except Exception:
+            continue
+        found.append((nm.parent.name, ver))
+    if not found:
+        return {
+            "name": "DSH 宿主版本",
+            "ok": True,
+            "detail": "未检测到 DSH 安装（纯 CLI / 非 DSH 环境，跳过）",
+            "hint": None,
+        }
+    detail = "；".join(f"{name}={ver}" for name, ver in found)
+    low = [f"{name}={ver}" for name, ver in found
+           if (k := _parse_version_tuple(ver)) is None or k < min_key]
+    if low:
+        return {
+            "name": "DSH 宿主版本",
+            "ok": False,
+            "detail": f"{detail}（低于要求 0.1.2-rc.1）",
+            "hint": "升级 DSH 到 ≥ 0.1.2-rc.1，或改用方式一（Skill 文件系统）",
+        }
+    return {
+        "name": "DSH 宿主版本",
+        "ok": True,
+        "detail": f"{detail}（满足 ≥ 0.1.2-rc.1）",
+        "hint": None,
+    }
+
+
+def _load_peer_requirements() -> dict:
+    """从项目 package.json 读取 peerDependencies 作为下限（单一事实来源）。"""
+    try:
+        data = json.loads((_PROJECT_ROOT / "package.json").read_text(encoding="utf-8"))
+        return dict(data.get("peerDependencies") or {})
+    except Exception:
+        return {}
+
+
+def _check_dsh_peer_deps() -> dict:
+    """（O2）peer 依赖满足性检查：本机 DSH 安装须提供插件声明的 peer 包且版本达标。
+
+    下限以 package.json 的 peerDependencies 为权威来源（不硬编码），
+    从本机各 DSH profile 的 node_modules 探测实际安装；
+    未检测到 DSH 宿主（@deepseek-ai/dsh）时跳过，与 O1 口径一致，避免误报。
+    """
+    nm_dirs = _dsh_profiles()
+    if not nm_dirs:
+        return {
+            "name": "DSH peer 依赖",
+            "ok": True,
+            "detail": "未检测到 DSH 安装（跳过）",
+            "hint": None,
+        }
+    # 先确认存在 DSH 宿主：嵌套依赖扁平化（pnpm）时 peer 可能在深层目录，
+    # 逐层探测 @deepseek-ai/dsh 存在性，缺失说明宿主不在此布局，跳过不误报
+    host_found = any(
+        (nm / "@deepseek-ai" / "dsh" / "package.json").exists() for nm in nm_dirs
+    )
+    if not host_found:
+        return {
+            "name": "DSH peer 依赖",
+            "ok": True,
+            "detail": "未检测到 DSH 宿主安装（@deepseek-ai/dsh 不在 profile 目录，跳过）",
+            "hint": None,
+        }
+    peers = _load_peer_requirements()
+    if not peers:
+        return {
+            "name": "DSH peer 依赖",
+            "ok": True,
+            "detail": "package.json 无 peerDependencies（跳过）",
+            "hint": None,
+        }
+    problems = []
+    checked = 0
+    for peer, minimum in peers.items():
+        min_key = _parse_version_tuple(minimum.lstrip(">=").strip())
+        installed = []
+        for nm in nm_dirs:
+            pkg = nm / peer / "package.json"
+            if pkg.exists():
+                try:
+                    ver = str(json.loads(pkg.read_text(encoding="utf-8")).get("version", ""))
+                except Exception:
+                    ver = ""
+                installed.append((nm.parent.name, ver))
+        if not installed:
+            problems.append(f"{peer}: 所有 profile 均未安装（要求 {minimum}）")
+            continue
+        checked += 1
+        for profile, ver in installed:
+            key = _parse_version_tuple(ver)
+            if key is None or key < min_key:
+                problems.append(f"{peer}: {profile}={ver or '未知'}（要求 {minimum}）")
+    if problems:
+        return {
+            "name": "DSH peer 依赖",
+            "ok": False,
+            "detail": "；".join(problems),
+            "hint": "在 DSH profile 下重新安装依赖（npm install），或升级 DSH",
+        }
+    return {
+        "name": "DSH peer 依赖",
+        "ok": True,
+        "detail": f"已探测 {checked} 项 peer 依赖，均满足",
+        "hint": None,
+    }
+
+
 def _run_all_checks(offline: bool = False) -> dict:
     """运行所有检查，返回结构化报告。"""
     t0 = time.time()
@@ -750,6 +895,8 @@ def _run_all_checks(offline: bool = False) -> dict:
     add(_check_skill_sync())
     add(_check_skill_frontmatter())
     add(_check_display_name_consistency())
+    add(_check_dsh_host_version())
+    add(_check_dsh_peer_deps())
     add(_check_git_status())
     add(_check_pycodestyle())
     add(_check_npm_package())

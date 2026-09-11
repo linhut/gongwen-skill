@@ -37,21 +37,25 @@ from gongwen.cli.misc_cmds import (
     cmd_style_list,
     cmd_review,
 )
-from gongwen.cli.review_cmds import (
-    cmd_full_review,
-    cmd_bold_first,
-    cmd_fix_common,
-    cmd_handoff,
-)
 from gongwen.cli.draft_cmds import cmd_draft
 from gongwen.cli.update_cmds import cmd_check_update
 from gongwen.cli.font_cmds import cmd_font
 from gongwen.cli.doctor_cmds import cmd_doctor, cmd_repair
 from gongwen.cli.wizard_cmds import cmd_wizard
-from engine.core.document.font_utils import (
-    PAGE_NUMBER_FONT,
-    PAGE_NUMBER_SIZE_PT,
-)
+
+
+def _lazy_command(module_name: str, func_name: str):
+    """惰性命令包装：argparse 构建阶段不导入重模块（pydantic/docx），首次调用时再导入。
+
+    用于命令实现模块含重量级顶层导入（如 engine.core.document.models）的场景，
+    显著降低 `--help` / `--version` / 轻命令的启动耗时。
+    """
+    def _run(args):
+        import importlib
+        mod = importlib.import_module(module_name)
+        return getattr(mod, func_name)(args)
+    return _run
+
 
 # ---------------------------------------------------------------------------
 #  参数解析
@@ -176,8 +180,9 @@ def main():
     p = sub.add_parser("pagenum", help="注入页码：Word PAGE 域动态页码")
     p.add_argument("input", help="输入 .docx 路径")
     p.add_argument("-o", "--output", help="输出 .docx 路径（默认原地修改）")
-    p.add_argument("--font", default=PAGE_NUMBER_FONT, help="页码字体（默认 宋体）")
-    p.add_argument("--size", type=int, default=PAGE_NUMBER_SIZE_PT, help="页码字号（默认 14）")
+    # 默认值与 engine/core/document/font_utils 的 PAGE_NUMBER_FONT / PAGE_NUMBER_SIZE_PT 保持一致
+    p.add_argument("--font", default="宋体", help="页码字体（默认 宋体）")
+    p.add_argument("--size", type=int, default=14, help="页码字号（默认 14）")
     p.add_argument("--alignment", default="right",
                    choices=["center", "left", "right"],
                    help="对齐（默认 right 单右双左奇偶排版，适配双面打印；center 居中；left 左对齐）")
@@ -272,20 +277,20 @@ def main():
     p = sub.add_parser("bold-first", help="正文段落首句加粗（符合公文规范：点题第一句话默认加粗）")
     p.add_argument("input", help="输入 .docx 路径")
     p.add_argument("-o", "--output", help="输出 .docx 路径（默认输入_加粗首句.docx）")
-    p.set_defaults(func=cmd_bold_first)
+    p.set_defaults(func=_lazy_command("gongwen.cli.review_cmds", "cmd_bold_first"))
 
     p = sub.add_parser("fix-common", help="一键修复常见格式问题（路径D）：段落类型修正/编号拆分/首句加粗/加粗范围修复，不含AI声明段")
     p.add_argument("--json", action="store_true", help="JSON 结构化输出（Agent 可机器解析）")
     p.add_argument("input", help="输入 .docx 路径")
     p.add_argument("-o", "--output", help="输出 .docx 路径（默认输入_fix-common.docx）")
-    p.set_defaults(func=cmd_fix_common)
+    p.set_defaults(func=_lazy_command("gongwen.cli.review_cmds", "cmd_fix_common"))
 
     p = sub.add_parser("handoff", help="查看/写入会话交接文档（跨会话上下文传递，长任务收尾必写）")
     p.add_argument("--list", action="store_true", help="列出所有交接文档摘要")
     p.add_argument("--latest", action="store_true", help="读取最新交接文档（JSON，加 --summary 输出 Markdown 摘要）")
     p.add_argument("--summary", action="store_true", help="以 Markdown 摘要输出（配合 --latest）")
     p.add_argument("--write", metavar="JSON_PATH", help="从 JSON 文件写入交接文档（P2-27）")
-    p.set_defaults(func=cmd_handoff)
+    p.set_defaults(func=_lazy_command("gongwen.cli.review_cmds", "cmd_handoff"))
 
     p = sub.add_parser("rule-export", help="导出合并后的规则（YAML/JSON）")
     p.add_argument("type", help="公文类型")
@@ -327,7 +332,7 @@ def main():
     p.add_argument("-t", "--doc-type", default="", help="公文类型（默认自动检测）")
     p.add_argument("--changes", default="", help="变更 JSON 文件路径（路径B优化建议，可省略则仅格式修复+批注空）")
     p.add_argument("--json", action="store_true", help="JSON 结构化输出（Agent 可机器解析）")
-    p.set_defaults(func=cmd_full_review)
+    p.set_defaults(func=_lazy_command("gongwen.cli.review_cmds", "cmd_full_review"))
 
     # ---- 样式学习（上传标准文档 → 自定义命名模板） ----
     p = sub.add_parser("style-learn", help="从标准 .docx 文档学习排版样式（含字间距等细微属性），生成自定义命名模板并注册")

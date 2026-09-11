@@ -189,20 +189,11 @@ def _run_tracked_mode(args, changes, style_name, style_prompt, content_rules, do
     if mode == 'tracked':
         from engine.core.document.tracked_annotator import inject_tracked_with_comments
         from engine.core.document.annotator import CommentSuggestion
-        from engine.core.document.reviewer_comments import REVIEWER_MAP, resolve_role, get_author
+        from engine.core.document.reviewer_comments import resolve_role, get_author
 
         # F1 + D3 修复：修订作者 = skill 英文名 + "-修订"（与 skill 英文标识统一，保留中文后缀便于中文 Word 用户理解）
         REVISION_AUTHOR = "GongWen-Skill修订"
         # P1 修复：角色解析统一走共享 resolve_role（category 优先 → reason 提示 → 综合审校）
-
-        # M2 修复：--reviewers 白名单模式——事实核验员不被截断
-        # 3 精简版取核心 3 角色；5 完整版取全部 6 角色（含事实核验员）；6 显式完整版
-        # P1-3 修复：fallback 与 argparse 默认值（6）对齐
-        reviewers_count = getattr(args, 'reviewers', 6)
-        if reviewers_count == 3:
-            _ACTIVE_ROLES = ["格式审校员", "用语审校员", "综合审校员"]
-        else:
-            _ACTIVE_ROLES = list(REVIEWER_MAP.keys())  # 5/6 均启用全部角色（含事实核验员）
 
         tc_changes = [{
             "para_index": c.get("paragraph_index", 0),
@@ -605,8 +596,6 @@ def cmd_optimize_content(args):
     加 --apply 才真正生成差异对比文档。
     加 --mode tracked 生成 Word 原生修订+批注（审阅面板逐条接受/拒绝）。
     """
-    import time
-    _t_start = time.time()
     from optimizer import load_changes_from_json, create_diff_document
 
     # O6：--preset 预设组合映射（显式参数优先；full=完整默认无需映射）

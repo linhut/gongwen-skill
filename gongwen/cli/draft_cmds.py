@@ -101,9 +101,7 @@ def cmd_draft(args: argparse.Namespace) -> int:
             _buf1 = __import__("io").StringIO()
             with contextlib.redirect_stdout(_buf1):
                 rc = cmd_md2docx(md_args)
-            _md2docx_out = _buf1.getvalue()
         else:
-            _md2docx_out = ""
             rc = cmd_md2docx(md_args)
         if rc not in (None, 0):
             md2docx_ok = False
