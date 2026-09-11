@@ -11,13 +11,14 @@
 //   * ctx.systemPrompt.section 注入 AI 工作指引（可选服务，缺失不阻塞）
 //   * ctx.settings.register('gongwen-skill') 官方设置命名空间（schemastery schema），
 //     scope.watch 回写 ~/.gongwen-skill/dsh-config.json 保持 CLI 兼容
-//   * ctx.skills.register 运行时注册 SKILL.md（可选服务）
 //   * call() 透传 Python CLI（向后兼容旧调用方）
+//
+// 技能发现走文件系统（~/.dsh/skills/gongwen-skill/，方式一），插件不再
+// 运行时注册 SKILL.md（P2-31：与文件系统技能重复，去掉冗余 API 面）。
 //
 // 官方依据：DeepSeek Harness Bluebook Developer Guide
 //   - Host Services & Events：inject 硬依赖 / ctx.get 可选依赖 / ctx.effect 可逆副作用
 //   - Registering Tools：defineTool + ctx.tools.register
-//   - User Guide · Skills：ctx.skills.register(SkillRegistration)
 // 纯 CLI 用户完全不受影响（不使用 DSH 插件时不会读取 dsh-config.json）
 
 import { spawn } from "node:child_process";
@@ -610,30 +611,7 @@ export function apply(ctx) {
       console.error("[gongwen-skill] settings inject failed:", e);
     }
 
-    // 4. 注册 runtime skill（可选服务 ctx.skills，使 AI 安装后即可自动发现）
-    const skills = ctx.get("skills");
-    if (skills?.register) {
-      try {
-        const skillPath = join(resolve(__dirname, ".."), "SKILL.md");
-        if (existsSync(skillPath)) {
-          const skillContent = readFileSync(skillPath, "utf-8");
-          const skillD = skills.register({
-            name: "gongwen-skill",
-            description:
-              "公文全流程处理专家：格式检查/自动修复/content润色/模板生成/样式学习/Markdown转公文/版头版记注入",
-            content: skillContent,
-            resourceBase: { kind: "directory", path: resolve(__dirname, "..") },
-            invocation: { modelInvocable: true, userInvocable: true },
-          });
-          if (typeof skillD === "function") disposers.push(skillD);
-          ctx.logger?.info?.("gongwen-skill: runtime skill registered");
-        }
-      } catch (e) {
-        ctx.logger?.warn?.(`gongwen-skill: runtime skill registration skipped: ${e.message}`);
-      }
-    }
-
-    // 5. 安装 Agent 预设（presets/ → ~/.dsh/.agent-presets/gongwen-skill/，
+    // 4. 安装 Agent 预设（presets/ → ~/.dsh/.agent-presets/gongwen-skill/，
     //    让 DSH 新建会话可选「公文全流程处理专家」；失败不影响插件其余能力）
     ensurePresetInstalled();
 

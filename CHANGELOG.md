@@ -22,6 +22,7 @@
 - **doctor 新增「展示名一致性」检查**：校验 SKILL.md frontmatter description、`.claude-plugin/` 两个 JSON 的 `displayName`、`package.json` / `pyproject.toml` description、`dsh/index.js` 插件描述共 6 处承载点与 `DISPLAY_NAME` 一致，防止文案漂移（文件缺失时跳过，不误报）
 - `AGENTS.md` 命令速查表标注「完整操作指南以 SKILL.md 为准」，避免双表维护漂移
 - **`.gitattributes` 统一文本换行**：`*.js/*.py/*.md/*.json/*.yml/*.yaml` 等强制 LF，消除 Windows 检出时的 CRLF 噪音 diff
+- **DSH 插件移除运行时技能注册（P2-31）**：`dsh/index.js` 取消 `ctx.skills.register`（与文件系统技能 `~/.dsh/skills/gongwen-skill/` 完全重复），技能发现统一走方式一，减少一个随 DSH 版本漂移的 API 耦合面；hint 注释同步更新
 
 ---
 
