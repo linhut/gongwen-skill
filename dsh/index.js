@@ -250,6 +250,8 @@ function _handle_config(args) {
 
 // 构建系统设置 Schema（schemastery 官方 API：Schema.object / Schema.string ...）
 function _build_settings_schema() {
+  // P2-31 精简：Web 面板只保留高频 5 字段（默认类型 + 页边距）；
+  // 字体/字号/行距等低频排版参数走 CLI（config --set / --config-overrides）
   return Schema.object({
     default_doc_type: Schema.string().default("notice").description("默认公文类型"),
     page_setup: Schema.object({
@@ -259,53 +261,7 @@ function _build_settings_schema() {
         left: Schema.string().default("2.7cm").description("左边距"),
         right: Schema.string().default("2.7cm").description("右边距"),
       }).description("页边距"),
-      header_distance: Schema.string().default("1.5cm").description("页眉距"),
-      footer_distance: Schema.string().default("2.3cm").description("页脚距"),
     }).description("页面设置"),
-    body: Schema.object({
-      font: Schema.string().default("仿宋_GB2312").description("正文字体"),
-      font_fallback: Schema.string().default("FangSong").description("字体回退"),
-      size: Schema.string().default("16pt").description("正文字号"),
-      line_spacing: Schema.string().default("33pt").description("行距"),
-      first_line_indent: Schema.string().default("2em").description("首行缩进"),
-      align: Schema.string().default("justify").description("对齐方式"),
-    }).description("正文格式"),
-    doc_title: Schema.object({
-      font: Schema.string().default("方正小标宋简体").description("标题字体"),
-      font_fallback: Schema.string().default("SimSun").description("字体回退"),
-      size: Schema.string().default("22pt").description("标题字号"),
-      align: Schema.string().default("center").description("对齐方式"),
-      bold: Schema.boolean().default(false).description("是否加粗"),
-      line_spacing: Schema.string().default("33pt").description("行距"),
-    }).description("公文标题"),
-    heading_1: Schema.object({
-      font: Schema.string().default("黑体").description("一级标题字体"),
-      font_fallback: Schema.string().default("SimHei").description("字体回退"),
-      size: Schema.string().default("16pt").description("字号"),
-      line_spacing: Schema.string().default("33pt").description("行距"),
-      first_line_indent: Schema.string().default("2em").description("首行缩进"),
-    }).description("一级标题"),
-    heading_2: Schema.object({
-      font: Schema.string().default("楷体_GB2312").description("二级标题字体"),
-      font_fallback: Schema.string().default("KaiTi").description("字体回退"),
-      size: Schema.string().default("16pt").description("字号"),
-      line_spacing: Schema.string().default("33pt").description("行距"),
-      first_line_indent: Schema.string().default("2em").description("首行缩进"),
-    }).description("二级标题"),
-    heading_3: Schema.object({
-      font: Schema.string().default("仿宋_GB2312").description("三级标题字体"),
-      font_fallback: Schema.string().default("FangSong").description("字体回退"),
-      size: Schema.string().default("16pt").description("字号"),
-      bold: Schema.boolean().default(true).description("是否加粗"),
-      line_spacing: Schema.string().default("33pt").description("行距"),
-      first_line_indent: Schema.string().default("2em").description("首行缩进"),
-    }).description("三级标题"),
-    signature: Schema.object({
-      font: Schema.string().default("仿宋_GB2312").description("署名字体"),
-      font_fallback: Schema.string().default("FangSong").description("字体回退"),
-      size: Schema.string().default("18pt").description("署名字号"),
-      align: Schema.string().default("center").description("对齐方式"),
-    }).description("署名格式"),
   });
 }
 

@@ -43,6 +43,7 @@ from gongwen.cli.font_cmds import cmd_font
 from gongwen.cli.doctor_cmds import cmd_doctor, cmd_repair
 from gongwen.cli.wizard_cmds import cmd_wizard
 from gongwen.cli.policy_cmds import cmd_policy_search
+from gongwen.cli.render_cmds import cmd_render
 
 
 def _lazy_command(module_name: str, func_name: str):
@@ -69,6 +70,7 @@ COMMAND_GROUPS = [
     ("✍️ 内容", ["optimize-content", "review", "handoff", "wizard"]),
     ("🔎 审校", ["full-review", "audit"]),
     ("🔎 检索", ["policy-search"]),
+    ("🖼️ 渲染", ["render"]),
     ("🎨 版式", ["header", "footer", "pagenum", "font", "table-signs"]),
     ("⚙️ 运维", ["rule-export", "rule-list", "rule-import", "check-update", "doctor", "repair"]),
 ]
@@ -361,6 +363,12 @@ def main():
     from gongwen.cli.policy_cmds import add_policy_args
     add_policy_args(p)
     p.set_defaults(func=cmd_policy_search)
+
+    # ---- 渲染验收（docx → 逐页图片，版面可视化检查，只读） ----
+    p = sub.add_parser("render", help="渲染验收：docx 转逐页图片，检查分页/表格劈裂/签章区等版面（只读）")
+    from gongwen.cli.render_cmds import add_render_args
+    add_render_args(p)
+    p.set_defaults(func=cmd_render)
 
     # ---- 审稿流转单生成 ----
     p = sub.add_parser("review", help="生成公文审稿流转单（五角色/三角色审核模板）")

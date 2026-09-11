@@ -198,15 +198,18 @@ def cmd_policy_search(args):
 
     results = _search_gov(query, max_results, timeout)
     source = "gov.cn"
-    if not results:
+    gov_empty = not results
+    if gov_empty:
         results = _search_web(query, max_results, timeout)
         source = "web"
 
     if getattr(args, "json", False):
-        # agent 场景：稳定 JSON 结构 + 退出码（0=有结果，1=无结果/失败）
+        # agent 场景：稳定 JSON 结构 + 退出码（0=有结果，1=无结果/失败）；
+        # gov_empty 字段让 agent 获知 gov 库未命中（接口受限/无结果），便于判断引用来源
         print(json.dumps({
             "query": query,
             "source": source,
+            "gov_empty": gov_empty,
             "count": len(results),
             "results": results,
         }, ensure_ascii=False, indent=2))
@@ -214,7 +217,7 @@ def cmd_policy_search(args):
 
     print(f"📡 政策检索: {query}  （来源: {source}，{len(results)} 条，{time.time() - t0:.1f}s）")
     if not results:
-        print("  未检索到政策文件。可能原因：网络不可用 / 接口受限。")
+        print("  未检索到政策文件。可能原因：gov.cn 政策库接口未命中 / 网络不可用 / 接口受限。")
         print("  建议：直接访问 https://www.gov.cn/zhengce/ 手工检索。")
         return 1
     for i, it in enumerate(results, 1):

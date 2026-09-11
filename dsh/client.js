@@ -61,6 +61,8 @@ window.__ModuleLoader__.load({
 
     // 扁平字段表：path（嵌套数组）、label、placeholder、type（text|checkbox|select）
     // 与 dsh/index.js 的 settings schema 保持一一对应
+    // P2-31 精简：只保留高频 5 字段（默认类型 + 页边距）；字体/字号/行距等
+    // 低频排版参数走 CLI（config --set / --config-overrides）
     var FIELDS = [
       { path: ["default_doc_type"], label: "默认公文类型", placeholder: "notice", type: "select" },
 
@@ -68,46 +70,6 @@ window.__ModuleLoader__.load({
       { path: ["page_setup", "margins", "bottom"], label: "下边距", placeholder: "2.8cm", type: "text" },
       { path: ["page_setup", "margins", "left"], label: "左边距", placeholder: "2.7cm", type: "text" },
       { path: ["page_setup", "margins", "right"], label: "右边距", placeholder: "2.7cm", type: "text" },
-      { path: ["page_setup", "header_distance"], label: "页眉距", placeholder: "1.5cm", type: "text" },
-      { path: ["page_setup", "footer_distance"], label: "页脚距", placeholder: "2.3cm", type: "text" },
-
-      { path: ["body", "font"], label: "正文·字体", placeholder: "仿宋_GB2312", type: "text" },
-      { path: ["body", "font_fallback"], label: "正文·字体回退", placeholder: "FangSong", type: "text" },
-      { path: ["body", "size"], label: "正文·字号", placeholder: "16pt", type: "text" },
-      { path: ["body", "line_spacing"], label: "正文·行距", placeholder: "33pt", type: "text" },
-      { path: ["body", "first_line_indent"], label: "正文·首行缩进", placeholder: "2em", type: "text" },
-      { path: ["body", "align"], label: "正文·对齐", placeholder: "justify", type: "text" },
-
-      { path: ["doc_title", "font"], label: "标题·字体", placeholder: "方正小标宋简体", type: "text" },
-      { path: ["doc_title", "font_fallback"], label: "标题·字体回退", placeholder: "SimSun", type: "text" },
-      { path: ["doc_title", "size"], label: "标题·字号", placeholder: "22pt", type: "text" },
-      { path: ["doc_title", "align"], label: "标题·对齐", placeholder: "center", type: "text" },
-      { path: ["doc_title", "bold"], label: "标题·加粗", type: "checkbox" },
-      { path: ["doc_title", "line_spacing"], label: "标题·行距", placeholder: "33pt", type: "text" },
-
-      { path: ["heading_1", "font"], label: "一级标题·字体", placeholder: "黑体", type: "text" },
-      { path: ["heading_1", "font_fallback"], label: "一级标题·字体回退", placeholder: "SimHei", type: "text" },
-      { path: ["heading_1", "size"], label: "一级标题·字号", placeholder: "16pt", type: "text" },
-      { path: ["heading_1", "line_spacing"], label: "一级标题·行距", placeholder: "33pt", type: "text" },
-      { path: ["heading_1", "first_line_indent"], label: "一级标题·首行缩进", placeholder: "2em", type: "text" },
-
-      { path: ["heading_2", "font"], label: "二级标题·字体", placeholder: "楷体_GB2312", type: "text" },
-      { path: ["heading_2", "font_fallback"], label: "二级标题·字体回退", placeholder: "KaiTi", type: "text" },
-      { path: ["heading_2", "size"], label: "二级标题·字号", placeholder: "16pt", type: "text" },
-      { path: ["heading_2", "line_spacing"], label: "二级标题·行距", placeholder: "33pt", type: "text" },
-      { path: ["heading_2", "first_line_indent"], label: "二级标题·首行缩进", placeholder: "2em", type: "text" },
-
-      { path: ["heading_3", "font"], label: "三级标题·字体", placeholder: "仿宋_GB2312", type: "text" },
-      { path: ["heading_3", "font_fallback"], label: "三级标题·字体回退", placeholder: "FangSong", type: "text" },
-      { path: ["heading_3", "size"], label: "三级标题·字号", placeholder: "16pt", type: "text" },
-      { path: ["heading_3", "bold"], label: "三级标题·加粗", type: "checkbox" },
-      { path: ["heading_3", "line_spacing"], label: "三级标题·行距", placeholder: "33pt", type: "text" },
-      { path: ["heading_3", "first_line_indent"], label: "三级标题·首行缩进", placeholder: "2em", type: "text" },
-
-      { path: ["signature", "font"], label: "署名·字体", placeholder: "仿宋_GB2312", type: "text" },
-      { path: ["signature", "font_fallback"], label: "署名·字体回退", placeholder: "FangSong", type: "text" },
-      { path: ["signature", "size"], label: "署名·字号", placeholder: "18pt", type: "text" },
-      { path: ["signature", "align"], label: "署名·对齐", placeholder: "center", type: "text" },
     ];
 
     // 从嵌套 value 中取路径值
@@ -438,13 +400,7 @@ window.__ModuleLoader__.load({
         }, "设置服务不可用（当前部署未挂载 settings provider），排版参数区只读。"),
 
         renderGroup("基础设置", FIELDS.slice(0, 1)),
-        renderGroup("页面设置", FIELDS.slice(1, 7)),
-        renderGroup("正文格式", FIELDS.slice(7, 13)),
-        renderGroup("公文标题", FIELDS.slice(13, 19)),
-        renderGroup("一级标题", FIELDS.slice(19, 24)),
-        renderGroup("二级标题", FIELDS.slice(24, 29)),
-        renderGroup("三级标题", FIELDS.slice(29, 35)),
-        renderGroup("署名格式", FIELDS.slice(35, 39)),
+        renderGroup("页面设置", FIELDS.slice(1, 5)),
 
         h("div", { style: { display: "flex", gap: "10px", marginTop: "16px", alignItems: "center" } },
           h("button", {
