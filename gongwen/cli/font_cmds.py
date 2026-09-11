@@ -77,7 +77,7 @@ def _ensure_font_file(ttf_file: str, fonts_dir: Path) -> Path | None:
         return local
     # 本地缺失，尝试下载到用户缓存目录
     try:
-        from config import APP_DATA_DIR
+        from engine.config import APP_DATA_DIR
         cache_dir = APP_DATA_DIR / "fonts"
     except Exception:
         cache_dir = Path.home() / ".gongwen-skill" / "fonts"

@@ -84,7 +84,7 @@ def cmd_rule_import(args):
 
 def cmd_table_signs(args):
     """从名单批量生成双面桌签。"""
-    from table_sign_generator import parse_name_list, generate_table_signs, generate_table_signs_combined
+    from engine.table_sign_generator import parse_name_list, generate_table_signs, generate_table_signs_combined
 
     # 读取名单（FIX-B001 L1：utf-8-sig 自动剥离 BOM，避免首个名字长度 +1 导致字号降档）
     if args.input == "-":
@@ -200,7 +200,7 @@ def cmd_style_learn(args):
     生成 `~/.gongwen-skill/user_rules/{模板名}.yaml`，
     之后可用 `optimize -t {模板名}` 套用该模板。
     """
-    from style_profile import learn_style_profile, build_user_rule_yaml
+    from engine.style_profile import learn_style_profile, build_user_rule_yaml
 
     input_path = Path(args.input)
     template_name = args.name or f"自定义_{input_path.stem}"
@@ -219,7 +219,7 @@ def cmd_style_learn(args):
     # 生成 YAML 规则并注册到 user_rules
     yaml_text = build_user_rule_yaml(profile, template_name)
 
-    from config import USER_RULES_DIR
+    from engine.config import USER_RULES_DIR
     out_path = USER_RULES_DIR / f"{template_name}.yaml"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(yaml_text, encoding="utf-8")
@@ -242,7 +242,7 @@ def cmd_style_learn(args):
 
 def cmd_style_list(args):
     """列出所有自定义学习生成的样式模板。"""
-    from config import USER_RULES_DIR
+    from engine.config import USER_RULES_DIR
     files = sorted(USER_RULES_DIR.glob("*.yaml"))
     if not files:
         print("暂无自定义样式模板。用以下命令学习一份标准文档：")
@@ -255,7 +255,7 @@ def cmd_style_list(args):
 
 def cmd_review(args):
     """生成审稿流转单。"""
-    from review_generator import generate_review_template
+    from engine.review_generator import generate_review_template
     out = args.output or f"审稿流转单-{args.doc_type}.docx"
     scheme_label = "完整版（5角色）" if args.scheme == "full" else "精简版（3角色）"
     result = generate_review_template(

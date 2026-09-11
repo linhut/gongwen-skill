@@ -42,6 +42,7 @@ from gongwen.cli.update_cmds import cmd_check_update
 from gongwen.cli.font_cmds import cmd_font
 from gongwen.cli.doctor_cmds import cmd_doctor, cmd_repair
 from gongwen.cli.wizard_cmds import cmd_wizard
+from gongwen.cli.policy_cmds import cmd_policy_search
 
 
 def _lazy_command(module_name: str, func_name: str):
@@ -67,6 +68,7 @@ COMMAND_GROUPS = [
     ("🔧 格式", ["parse", "check", "optimize", "fix-common", "bold-first"]),
     ("✍️ 内容", ["optimize-content", "review", "handoff", "wizard"]),
     ("🔎 审校", ["full-review", "audit"]),
+    ("🔎 检索", ["policy-search"]),
     ("🎨 版式", ["header", "footer", "pagenum", "font", "table-signs"]),
     ("⚙️ 运维", ["rule-export", "rule-list", "rule-import", "check-update", "doctor", "repair"]),
 ]
@@ -353,6 +355,12 @@ def main():
     p = sub.add_parser("audit", help="审计文档处理链：检查删除线、加粗、AI声明等合规性问题")
     p.add_argument("input", help="输入 .docx 路径")
     p.set_defaults(func=cmd_audit)
+
+    # ---- 政策联网检索（公文撰写引用权威政策依据，只读） ----
+    p = sub.add_parser("policy-search", help="按主题检索权威政策依据（国务院政策文件库，只读）")
+    from gongwen.cli.policy_cmds import add_policy_args
+    add_policy_args(p)
+    p.set_defaults(func=cmd_policy_search)
 
     # ---- 审稿流转单生成 ----
     p = sub.add_parser("review", help="生成公文审稿流转单（五角色/三角色审核模板）")

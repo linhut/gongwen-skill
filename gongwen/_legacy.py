@@ -109,7 +109,7 @@ def cmd_template(args):
     """生成标准公文模板。"""
     from datetime import date as _dt
     from engine.core.document.generator import generate_docx
-    from template_builder import create_template_document
+    from engine.template_builder import create_template_document
 
     doc_type = args.type
     rules = _load_rules_with_overrides(doc_type, getattr(args, "config_overrides", ""))
@@ -302,7 +302,7 @@ def cmd_optimize(args):
 
     if getattr(args, "layout", None):
         layout = json.loads(Path(args.layout).read_text(encoding="utf-8"))
-        from inject import inject_header, inject_footer, inject_page_number
+        from engine.inject import inject_header, inject_footer, inject_page_number
         if layout.get("header"):
             inject_header(str(out), layout["header"])
             if not is_json:
@@ -808,7 +808,7 @@ def cmd_md2docx(args):
                 _pn["alignment"] = _pv.get("alignment", _pn["alignment"])
                 _pn["format"] = _pv.get("format", _pn["format"])
                 break
-        from inject import inject_page_number
+        from engine.inject import inject_page_number
         inject_page_number(str(out), {"enabled": True, **_pn})
     except Exception as e:
         print(f"  ⚠️ 页码注入失败（{e}），跳过", file=sys.stderr)
@@ -833,7 +833,7 @@ def cmd_md2docx(args):
 def cmd_header(args):
     """注入版头：发文机关标志 + 发文字号 + 签发人 + 红色反线。"""
     import shutil
-    from inject import inject_header
+    from engine.inject import inject_header
 
     out = Path(args.output) if args.output else Path(args.input)
     if out != Path(args.input):
@@ -854,7 +854,7 @@ def cmd_header(args):
 def cmd_footer(args):
     """注入版记：抄送 + 印发机关 + 印发日期 + 分隔线。"""
     import shutil
-    from inject import inject_footer
+    from engine.inject import inject_footer
 
     out = Path(args.output) if args.output else Path(args.input)
     if out != Path(args.input):
@@ -875,7 +875,7 @@ def cmd_footer(args):
 def cmd_pagenum(args):
     """注入页码：Word PAGE 域动态页码。"""
     import shutil
-    from inject import inject_page_number
+    from engine.inject import inject_page_number
 
     out = Path(args.output) if args.output else Path(args.input)
     if out != Path(args.input):

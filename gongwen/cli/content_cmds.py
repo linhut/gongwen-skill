@@ -255,7 +255,7 @@ def _run_tracked_mode(args, changes, style_name, style_prompt, content_rules, do
         _echo_progress(args, 3, 6, "修订+批注注入", f"{len(tc_changes)} 处修订 / {len(suggestions)} 条批注")
 
         # D5 修复：事实核验默认执行（不依赖 --background；背景资料仅用于增强基准）
-        from fact_check import run_fact_check
+        from engine.fact_check import run_fact_check
         bg_paths = getattr(args, 'background', None)
         _echo_progress(args, 5, 6, "事实核验",
                        f"{len(bg_paths)} 份背景资料" if bg_paths else "无背景资料，仅互联网核验")
@@ -265,7 +265,7 @@ def _run_tracked_mode(args, changes, style_name, style_prompt, content_rules, do
             try:
                 # P2-7 修复：顶层已导入 json，删除冗余 import json as _json
                 # 实体提取（不做互联网核验，交 Agent）
-                from fact_check import extract_entities_hybrid
+                from engine.fact_check import extract_entities_hybrid
                 from engine.core.document.parser import parse_docx as _fc_parse
                 _fc_model = _fc_parse(str(args.input))
                 _fc_paras = [p.text for p in _fc_model.paragraphs]
@@ -283,8 +283,8 @@ def _run_tracked_mode(args, changes, style_name, style_prompt, content_rules, do
                         "hint": "请核验此" + ("人员职务" if e.entity_type == "person" else "机构全称") + "是否正确，如不正确请提供正确值及权威来源",
                     })
                 # ====== 路径B v2：增强版 --output-tasks（复用已有检查能力，数据驱动） ======
-                from structure_checker import check_structure
-                from focus_checker import run_focus_checks
+                from engine.structure_checker import check_structure
+                from engine.focus_checker import run_focus_checks
 
                 # 段落角色推断（复用 _locate_section + _SECTION_KEYWORDS，不硬编码）
                 _fc_simple_paras = [_SimplePara(t) for t in _fc_paras]
@@ -460,8 +460,8 @@ def _run_tracked_mode(args, changes, style_name, style_prompt, content_rules, do
             except Exception as e:
                 _logger.warning(f"文档结构解析失败: {e}")
         try:
-            from structure_checker import check_structure
-            from focus_checker import run_focus_checks
+            from engine.structure_checker import check_structure
+            from engine.focus_checker import run_focus_checks
             # F1：结构完整性检查批注
             # E3 修复：跳过已被 Agent 风格建议修复的结构问题（fixes_issue_id 标记）
             _fixed_ids = getattr(args, '_fixed_issue_ids', set())
@@ -596,7 +596,7 @@ def cmd_optimize_content(args):
     加 --apply 才真正生成差异对比文档。
     加 --mode tracked 生成 Word 原生修订+批注（审阅面板逐条接受/拒绝）。
     """
-    from optimizer import load_changes_from_json, create_diff_document
+    from engine.optimizer import load_changes_from_json, create_diff_document
 
     # O6：--preset 预设组合映射（显式参数优先；full=完整默认无需映射）
     _preset = getattr(args, 'preset', '')
@@ -634,7 +634,7 @@ def cmd_optimize_content(args):
 
     # 改进 E：无 changes.json 时，基于内置规则 + 风格提示词自动生成优化建议
     if not getattr(args, 'changes', None) and getattr(args, 'auto_generate', False):
-        from auto_optimizer import auto_generate_changes, llm_configured
+        from engine.auto_optimizer import auto_generate_changes, llm_configured
         # P2-30 修复：auto_generate 分支内 changes 尚未赋值，先声明空列表，
         # 避免 _extract_dominant_style(changes) 引用未绑定变量（UnboundLocalError）
         changes: list = []
@@ -903,7 +903,7 @@ def cmd_optimize_content(args):
     # V3 修复：默认开启，--no-style-enhance 显式禁用
     if style_prompt and not getattr(args, 'no_style_enhance', False):
         try:
-            from auto_optimizer import style_enhance_changes, llm_configured
+            from engine.auto_optimizer import style_enhance_changes, llm_configured
             if llm_configured():
                 from engine.core.document.parser import parse_docx
                 _se_model = parse_docx(str(args.input))

@@ -314,7 +314,7 @@ class LiveEditSession:
             (clean_path, diff_path) 两个文件的路径
         """
         from datetime import date
-        from optimizer import create_diff_document
+        from engine.optimizer import create_diff_document
 
         today_str = date.today().strftime("%Y-%m-%d")
         stem = str(output_base).replace(".docx", "")

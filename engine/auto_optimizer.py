@@ -314,7 +314,7 @@ def auto_generate_changes(input_path: str, doc_type: str,
     if not changes:
         logger.info("LLM 未生成建议（可能未配置或返回空），尝试基于规则的结构建议")
         try:
-            from structure_checker import check_structure
+            from engine.structure_checker import check_structure
             issues = check_structure(model.paragraphs, content_rules.get("structure", []))
             for issue in issues:
                 changes.append({

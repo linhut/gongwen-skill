@@ -93,7 +93,7 @@ def _full_review_stage_fix_format(ctx):
 
 def _full_review_stage_load_changes(ctx):
     """O9 阶段2：路径 B —— 加载变更 + schema 校验 + 零修改过滤。"""
-    from optimizer import load_changes_from_json
+    from engine.optimizer import load_changes_from_json
 
     changes = load_changes_from_json(ctx.args.changes) if ctx.args.changes else []
     changes = _validate_changes_schema(changes, source=ctx.args.changes)
@@ -297,11 +297,11 @@ def cmd_handoff(args):
       gongwen.py handoff --latest --summary  读取最新交接文档（Markdown 摘要）
       gongwen.py handoff --write 交接.json   从 JSON 文件写入交接文档（P2-27）
     """
-    from handoff import read_latest_handoff, list_handoffs, summarize_handoff
+    from engine.handoff import read_latest_handoff, list_handoffs, summarize_handoff
 
     # P2-27 修复：handoff 子命令支持 --write，从 JSON 文件直接写入交接文档
     if getattr(args, 'write', None):
-        from handoff import write_handoff
+        from engine.handoff import write_handoff
         data = json.loads(Path(args.write).read_text(encoding="utf-8"))
         p = write_handoff(
             session_id=data.get("session_id", "未命名任务"),

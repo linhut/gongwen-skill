@@ -94,7 +94,7 @@ def _infer_paragraph_roles(doc_type: str, content_rules: dict, paragraphs: list)
     Returns:
         段落角色列表 [{"index", "role", "required_elements", "missing_elements"}, ...]
     """
-    from structure_checker import _locate_section, _check_elements
+    from engine.structure_checker import _locate_section, _check_elements
 
     structure = content_rules.get("structure", [])
     roles = []

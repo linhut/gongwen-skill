@@ -615,12 +615,20 @@ python -m gongwen optimize input.docx -o output.docx --apply \
 | 想让 DSH Agent 调用本技能，无需 Web UI | 方式一（Skill 文件系统） |
 | 想让 DSH Web UI 工具面板直接调用 | 方式二（npm 插件 bundle） |
 | 二开插件本身，本地反复编辑 | 方式三（link 模式） |
+| 通用 Agent 一行安装（Claude Code/Codex/Cursor 等） | `npx skills add linhut/gongwen-skill` |
 
 ## 🤖 通过 Agent 调用
 
 本 Skill 可直接被 AI Agent（如 WorkBuddy、CloudCode、Claude Code、AtomCode 等）加载并调用，无需手动操作。
 
 ### 安装方式
+
+**方式零：npx skills add 一行安装（最简）**
+```bash
+# 任意支持 Agent Skills 的 harness（Claude Code / Codex / Cursor 等）均可：
+# skills CLI 会自动把本技能路由到对应 harness 的 skills 目录
+npx skills add linhut/gongwen-skill
+```
 
 **方式一：克隆到 Skills 目录（推荐）**
 ```bash
