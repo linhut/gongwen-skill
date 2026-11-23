@@ -10,7 +10,7 @@ Licensed under the MIT License. See the LICENSE file for details.
   <img src="./logo/2026-08-19_11-17-43.png" alt="公文全流程处理专家" width="760">
 </p>
 
-> 中文公文全流程处理专家——基于 **GB/T 9704《党政机关公文格式》** 国家标准，支持 **格式检查与修复、内容优化（Word 原生修订+批注/差异对比版）、模板生成、Markdown 转公文、版头版记页码注入、事实核验、风格增强** 等完整能力。原生支持 **DeepSeek Harness (DSH)** 技能系统，打包为可被 AI Agent 直接调用的 Skill，完全自包含，克隆即用。
+> 中文公文**生成与优化一体化**专家——基于 **GB/T 9704《党政机关公文格式》** 国家标准，既可**生成公文**（模板生成、Markdown 转公文、草稿一键成文），也可**优化公文**（格式检查与修复、内容润色 Word 原生修订+批注/差异对比版、样式学习、事实核验、风格增强），并支持版头/版记/页码注入等完整版式能力。原生支持 **DeepSeek Harness (DSH)** 技能系统，打包为可被 AI Agent 直接调用的 Skill，完全自包含，克隆即用。
 
 [![CI](https://img.shields.io/badge/CI-Passing-brightgreen)](https://github.com/linhut/gongwen-skill/actions)
 [![PyPI](https://img.shields.io/pypi/v/gongwen-skill)](https://pypi.org/project/gongwen-skill/)
@@ -20,7 +20,7 @@ Licensed under the MIT License. See the LICENSE file for details.
 ![DSH](https://img.shields.io/badge/DSH-Compatible-brightgreen)
 ![Downloads](https://img.shields.io/pypi/dm/gongwen-skill)
 
-本 Skill 源自开源桌面项目 [AI 公文智能优化助手](https://github.com/linhut/document-ai-assistant)，将其核心格式引擎抽取、剥离桌面端/数据库依赖后独立发行，支持公文的**模板建立、解析、规则检查、自动修复、内容优化、Markdown 转公文**全流程能力。同时原生集成 **DeepSeek Harness (DSH)** 技能系统，支持 DSH Agent 自动发现与加载。
+本 Skill 源自开源桌面项目 [AI 公文智能优化助手](https://github.com/linhut/document-ai-assistant)，将其核心格式引擎抽取、剥离桌面端/数据库依赖后独立发行，支持公文的**模板建立、解析、规则检查、自动修复、内容优化、Markdown 转公文**全流程能力，覆盖从「内容生成」到「格式优化」的完整链路。同时原生集成 **DeepSeek Harness (DSH)** 技能系统，支持 DSH Agent 自动发现与加载。
 
 ---
 
@@ -381,7 +381,7 @@ DSH 采用 **Cordis 模块化微内核架构**：技能体系基于本地文件�
 git clone https://github.com/linhut/gongwen-skill.git
 cd gongwen-skill
 pip install -r requirements.txt   # 或 pip install gongwen-skill（已上 PyPI）
-python -m gongwen --version       # 检验：gongwen-skill v2.12.0
+python -m gongwen --version       # 检验：gongwen-skill v2.16.0
 ```
 
 ### 方式一：作为 DSH Skill 注册（基于本地文件系统）
@@ -437,7 +437,7 @@ pnpm add -w gongwen-skill
   "dependencies": {
     "@deepseek-ai/dsh-base": "...",
     "@deepseek-ai/dsh-web-app": "...",
-    "gongwen-skill": "^2.12.0"
+    "gongwen-skill": "^2.16.0"
   },
   "dsh": {
     "profile": {
@@ -455,7 +455,23 @@ pnpm add -w gongwen-skill
 
 > **DSH 版本要求**：**支持 DSH ≥ 0.1.2-rc.1**。插件按 DeepSeek Harness 0.1.2-rc.1 官方开发文档（Bluebook · Developer Guide）实现——`ctx.tools.register(defineTool(...))`（模型工具）、`ctx.settings.register` + `settings.section` 平级菜单（配置，设置侧边栏「文档样式配置」）、`ctx.systemPrompt.section`、`ctx.skills.register`。需要承载这些 API 的 DSH 组合（`@deepseek-ai/dsh-base` 等），peerDependencies 已声明 `@deepseek-ai/cordis`、`@deepseek-ai/dsh-tools`、`@deepseek-ai/schemastery` 与 `@deepseek-ai/dsh-client-ui-settings-plugins`。**旧版宿主（installSettingsSection 时代）不兼容**：DSH 0.1.2-rc.1 之前（无上述官方 API / 尚用 installSettingsSection 注入设置卡片的版本）上安装会得到 pnpm peer 缺失警告，插件可能无法加载，请升级 DSH 到 ≥ 0.1.2-rc.1 或改用方式一（Skill 文件系统）。
 
+### 🖋️ 公文写作模式（DSH Agent 预设，0.2.x）
+
+DSH 0.2.x 把「模式」做成 **Agent 预设**（输入框旁边那个「标准模式」下拉）。本插件安装后会注册一个
+**「公文写作模式」**，选中后新会话直接按公文写作者的方式工作：
+
+- **人设**：中文公文写作者，按 GB/T 9704-2012 定文种与格式，优先交付成稿（.docx）而不是描述怎么写；
+  本模式只改文档，不改代码。
+- **工具面**：文件读写 / 文件搜索 / 一个与平台匹配的 shell（Windows→`pwsh`，其他→`bash`）/
+  Office 文档 / 联网查规范 / 提问 / 产出卡片 / 上下文压缩。
+  刻意**不含** subagent、workflow、goal、plan-mode —— 工具越少越专注。
+- **兼容**：预设走运行时 `agentPresets.register()`，0.2 以下宿主没有该服务时自动跳过，其他能力不受影响。
+  `gongwen` 工具本身在 profile 作用域全局注册，因此**标准模式里同样可用**，写作模式只是更聚焦的入口。
+
+> 预设的子插件（persona、tool-fs、tool-office…）由宿主提供，本插件不新增依赖，因此不会把 DSH 的版本钉死。
+
 ### 方式三：本地源码链接（用于插件开发）
+
 
 如果你在本地开发 gongwen-skill 插件，可以用 link 方式让 DSH 直接加载仓库源码：
 
@@ -670,7 +686,7 @@ pip install -r requirements.txt
 用户：帮我优化这份会议通知的第二章节措辞
 
 Agent：📋 合规自检报告
-Skill 版本: v2.12.0（版本自检已确认最新）
+Skill 版本: v2.16.0（版本自检已确认最新）
 路径判定: B（内容优化）
 依据: 用户指定了已有文档，且要求"优化措辞"
 命令调用: 1. python -m gongwen optimize-content 会议通知.docx --changes changes.json --apply --paragraphs "5-8"

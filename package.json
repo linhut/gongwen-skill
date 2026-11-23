@@ -1,9 +1,13 @@
 {
   "name": "gongwen-skill",
-  "version": "2.15.0",
-  "description": "公文全流程处理专家 - GB/T 9704 格式检查/修复/内容优化/模板生成/版式注入",
+  "version": "2.16.0",
+  "description": "公文全流程处理专家 - GB/T 9704 公文内容生成（模板/Markdown转公文）/格式检查修复/内容优化/版式注入",
   "type": "module",
   "main": "dsh/index.js",
+  "engines": {
+    "node": ">=20.0.0",
+    "dsh": ">=0.1.2-0 <0.4.0"
+  },
   "exports": {
     ".": "./dsh/index.js",
     "./dsh": "./dsh/index.js",
@@ -45,10 +49,10 @@
     "url": "git+https://github.com/linhut/gongwen-skill.git"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": ">=4",
-    "@deepseek-ai/dsh-tools": ">=0.1.2-alpha.1 || >=0.1.5-alpha.1 || >=0.1.7-alpha.1 || >=0.2.0-0",
+    "@deepseek-ai/cordis": ">=4.0.0-rc.1 || >=4.1.0-0",
+    "@deepseek-ai/dsh-tools": ">=0.1.2-0 || >=0.1.5-0 || >=0.1.7-0 || >=0.2.0-0 || >=0.2.1-0 || >=0.2.2-0 || >=0.2.3-0",
     "@deepseek-ai/schemastery": ">=3.18.0",
-    "@deepseek-ai/dsh-client-ui-settings-plugins": ">=0.1.2-rc.1 || >=0.1.5-rc.1 || >=0.2.0-0"
+    "@deepseek-ai/dsh-client-ui-settings-plugins": ">=0.1.2-0 || >=0.1.5-0 || >=0.2.0-0 || >=0.2.3-0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/cordis": { "optional": true },

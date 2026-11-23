@@ -446,7 +446,7 @@ def _check_pycodestyle() -> dict:
         r = subprocess.run(
             [sys.executable, "-m", "pycodestyle",
              "--max-line-length=120",
-             "--exclude=__pycache__,.git,dist,build,tmp_*,*.pyc",
+             "--exclude=__pycache__,.git,dist,build,tmp_*,*.pyc,.workbuddy",
              str(_PROJECT_ROOT)],
             capture_output=True, text=True, timeout=30,
         )
@@ -467,7 +467,7 @@ def _check_pycodestyle() -> dict:
         hint = None if ok else (
             "运行: python -m pycodestyle"
             + " --max-line-length=120"
-            + " --exclude=__pycache__,.git,dist,build,tmp_*,*.pyc ."
+            + " --exclude=__pycache__,.git,dist,build,tmp_*,*.pyc,.workbuddy ."
         )
         return {
             "name": "代码风格 (pycodestyle)",

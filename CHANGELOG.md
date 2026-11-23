@@ -4,6 +4,37 @@
   Licensed under the MIT License. See the LICENSE file for details.
 -->
 
+## v2.16.0 (2026-11-23)
+
+### Added
+- **「公文写作模式」Agent 预设**：DSH 侧栏/输入框的「模式」下拉里新增一个由本插件提供的模式（`gongwen-writing`，名称「公文写作模式」，order 5）。预设 = 一份子插件清单，本模式只保留写作必需能力：人设为「中文公文写作者（GB/T 9704，产出成稿而非描述）」，工具面为 文件读写 / 文件搜索 / 一个平台匹配的 shell（win32→pwsh，其余→bash）/ Office 文档 / 联网查规范 / 提问 / 产出卡片 / 上下文压缩；刻意不含 subagent、workflow、goal、plan-mode，工具面越小越专注。
+  - 采用**运行时注册**（`ctx.inject(["agentPresets"])` → `agentPresets.register(def)`）而非在 bundle patch 里写 YAML：patch 里的子插件名按本包所在目录解析，而 `dsh-tool-fs` 等包在宿主安装目录下，写死会 `failed to import`；运行时注册由注册表用宿主 baseUrl 解析，跨版本更稳且不需要为本包新增依赖。
+  - 0.1.x 无 `agentPresets` 服务 → inject 不满足，静默跳过，不影响其他能力；`gongwen` 工具本身仍在 profile 作用域全局注册，所以标准模式里同样可用。
+
+### Fixed
+- **真实运行时报 `cannot get property "systemPrompt" without inject`**：Cordis 4.1 收紧注入规则后，`_install_prompt` 里 `ctx.get("systemPrompt")` 探测成功、随后在父 ctx 上读 `ctx.systemPrompt` 属性会直接抛错，插件 apply 中断（设置页能出现但工具注册失败）。改为只用 `ctx.inject(["systemPrompt"], c => ...)` 并在回调内 `c.systemPrompt`，不再探测父 ctx 属性；`dsh/client.js` 同类问题（`ctx.configForms` / `ctx.settingsScope` 属性兜底）一并移除。
+- **面板保存后 CLI 缓存不更新**：0.2.x 分支监听的 `loader/volatile-update` 在 0.2.3 上并不因设置文档变更而触发，导致「面板改成 3.5cm、CLI 仍读 2.8cm」。改为订阅官方信号 `settings/document-updated`（按 `ns` 过滤），并把镜像数据源从「启动快照 config」改为 `settings.describe()` 返回的**有效值**（`value`）——`configure({auto:false})` 不会把文档变更写回本插件的 config 对象，用快照会写回旧值。
+- **工具调用前存在竞态**：镜像走 300ms 去抖，而 Python 子进程紧接着就要读 `dsh-config.json`。工具 `execute` 入口改为先 `immediate` 同步落盘再启子进程。
+- **设置页在 0.2.x 整体不激活**：`dsh/client.js` 原 `inject: ["slots","settingsScope"]` 中的 `settingsScope` 在 0.2.x 已不存在，fiber 永久等待导致「文档样式配置」菜单消失且无报错。改为只声明 `inject: ["slots"]`，数据源按 `configForms` → `settingsScope` 顺序能力探测；槽位访问改为 `ctx.slots` 优先、`ctx.get("slots")` 兜底。
+- **设置命名空间在 0.2.x 写入失效**：`ctx.settings.register` 在 0.2.x 已移除（官方改为 `Config.volatile` + `configure/describe/update/mutate`）。Host 侧改为能力探测双路径：有 `configure` 走 Config 路径并导出 `Config`（`volatile()` 在不支持时自动降级为普通字段）；有 `register` 走 0.1.x 命名空间路径。
+- **CLI 缓存镜像丢字段**：settings → `~/.gongwen-skill/dsh-config.json` 原为浅合并，会冲掉 `page_setup.header_distance` / `body` / `heading_*` 等未管理字段。改为深合并，且仅在设置文档存在用户覆盖时才回写，避免默认值覆盖用户手改配置。
+- **`call()` 参数名错误**：camelCase 直拼成 `--docType`（CLI 无此参数），现统一 camelCase/snake_case → kebab-case。
+- **可选 peer 缺失时整插件加载失败**：`@deepseek-ai/dsh-tools` / `schemastery` 由顶层静态 import 改为 `createRequire` 惰性解析，缺失时降级（原生工具定义 / 无表单 schema），不再阻断插件加载。
+- **`engines` 缺失与 peer 范围不可达**：新增 `engines.node` / `engines.dsh`；`@deepseek-ai/cordis` 的 `>=4` 改为 `>=4.0.0-rc.1 || >=4.1.0-0`（原范围排除 `4.0.0-rc.12`）；`dsh-tools` peer 补齐 0.2.1/0.2.2/0.2.3 预发布线。`dsh.client.inject` 由 `-settings-plugins` 改为 `-settings`（`settings.section` 的声明方）。
+
+### Changed
+- **子进程健壮性**：Python 解释器探测（`GONGWEN_PYTHON` → `py -3` → `python3` → `python`）、默认 300s 超时（`GONGWEN_TIMEOUT_MS` 可调）、8MB 输出上限、Windows 进程树终止（`taskkill /T`）。
+- **预设同步幂等**：目录不存在不创建；版本戳相同跳过；覆盖前备份；`GONGWEN_KEEP_PRESET=1` 可跳过，避免每次启动覆盖用户修改。
+- **前端保存防覆盖**：保存时携带 revision，冲突时保留草稿并提示；「恢复默认」只对用户层真实覆盖的字段发 `unset`；新增未保存标记与数据源提示。
+- **测试隔离**：支持 `GONGWEN_CONFIG_DIR` 重定向配置目录。
+
+### Notes
+- 纯 CLI 用户、Claude Code / Codex / WorkBuddy 的 SKILL.md 路径均不受影响；本次只改 DSH 侧文件：`dsh/index.js`、`dsh/client.js`、`cordis.patch.yml`（仅加注释）、`package.json`（DSH 字段），以及 README / CHANGELOG 文档。
+- 已在真实 DSH **0.2.3-alpha.2** 上端到端验证：插件安装 → 工具注册（`gongwen`，11 参数）→ 设置分区渲染 → 面板保存回写 → 运行时调用工具；「公文写作模式」预设注册后 `broken: null`（子插件全部挂载）。验证环境隔离在项目内（`DSH_HOME=.workbuddy/dsh-home`），不触碰用户的 `~/.dsh`。
+- 本版起 Python 端（PyPI 包）无功能变更，版本号按项目发布规则同步递增。
+
+---
+
 ## v2.15.0 (2026-10-01)
 
 ### Fixed

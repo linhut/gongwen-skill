@@ -4,9 +4,9 @@
   Licensed under the MIT License. See the LICENSE file for details.
 -->
 
-# 公文格式优化助手 · 使用提示词
+# 公文生成与优化助手 · 使用提示词
 
-> 给 AI Agent 的指令模板，用于处理中文公文格式检查和优化任务。
+> 给 AI Agent 的指令模板，用于中文公文的**内容生成**与**格式检查和优化**任务。
 > 基于 GB/T 9704《党政机关公文格式》国家标准。
 
 ---
@@ -201,7 +201,7 @@ python -m gongwen optimize 文件.docx -o 优化版.docx
 **Agent 响应**：
 ```
 📋 合规自检报告
-Skill 版本: v2.15.0
+Skill 版本: v2.16.0
 路径判定: B（内容优化）
 依据: 用户提供纯文本+优化要求，无已有文档
 命令调用: 将原文保存为临时文件后执行 optimize-content --apply --paragraphs "1-3"

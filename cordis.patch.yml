@@ -3,6 +3,10 @@
 # Licensed under the MIT License. See the LICENSE file for details.
 
 # dsh bundle layer: 公文全流程处理专家 (gongwen-skill, host + client)
+# 「公文写作模式」这个 Agent 预设不在这里声明：它由 dsh/index.js 在运行时通过
+# agentPresets.register() 注册。原因是 bundle patch 里的子插件名按本包所在目录解析，
+# 而 dsh 自带的 tool/persona 等包在宿主安装目录下，写死会解析不到；运行时注册则由
+# 注册表用宿主 baseUrl 解析，跨版本更稳，也不需要为本包新增依赖。
 - insert:
     - id: gongwen-skill
       name: gongwen-skill

@@ -3,13 +3,16 @@
 // https://github.com/linhut/gongwen-skill
 // Licensed under the MIT License. See the LICENSE file for details.
 //
-// 官方依据：DeepSeek Harness Bluebook Developer Guide · Client UI & Slots
-//   - 只写纯 JavaScript：无 TS/JSX/import/require，React 用 React.createElement
-//   - 设置侧边栏平级菜单：注册 settings.section（id=gongwen-styles, order=20,
-//     label=文档样式配置），取代原 settings.plugin.item 插件配置卡片
-//   - 通过 ctx.settingsScope.bind({ namespace }) 读写官方 settings 命名空间（revision 设栅）
-//   - 样式使用 --dsw-alias-* 语义 token，不写死颜色
-//   - 打包格式 = loader 的 lazy-CJS factory 产物（window.__ModuleLoader__.load）
+// 兼容目标：DSH 0.1.2+ ~ 0.2.3+
+//   - 0.2.x：数据源 = ctx.configForms.get(entryId)（entryId === 命名空间）
+//   - 0.1.x：数据源 = ctx.settingsScope.bind({namespace})（降级路径）
+//   - 槽位访问：ctx.slots 优先，旧版退回 ctx.get("slots")
+//   - 只声明 inject = ['slots']：0.2.x 没有 settingsScope，写进 inject 会导致整页永不激活
+//
+// 官方依据：dsh-client-ui-settings / dsh-client-ui-settings-general
+//   - 设置页面注册进 settings.section；导航 label 由 resolveSlotLabel 解析
+//   - 样式只用 --dsw-alias-* 语义 token
+//   - 打包格式 = loader 的 lazy-CJS factory（window.__ModuleLoader__.load）
 
 window.__ModuleLoader__.load({
   id: "gongwen-skill",
@@ -22,15 +25,11 @@ window.__ModuleLoader__.load({
     var h = react.createElement;
     var useState = react.useState;
     var useEffect = react.useEffect;
-    var useCallback = react.useCallback;
 
-    // 与 Host 侧 ctx.settings.register 配对的命名空间
+    // 与 Host 侧 Config / settings.register 配对的命名空间
     var NS = "gongwen-skill";
 
     // 25 种公文类型（与 rules/official/*.yaml 及 list-types 输出一致）
-    // 用于「默认公文类型」下拉；value 为英文 id（配置存储值，与 CLI --doc-type 兼容），
-    // label 为中文名（取自各 rules/official/<id>.yaml 的 template_name）。
-    // 若 settings 中已有值不在列表内，会追加显示该值。
     var DOC_TYPES = [
       { value: "announcement", label: "通告" },
       { value: "bill", label: "议案" },
@@ -60,9 +59,7 @@ window.__ModuleLoader__.load({
     ];
 
     // 扁平字段表：path（嵌套数组）、label、placeholder、type（text|checkbox|select）
-    // 与 dsh/index.js 的 settings schema 保持一一对应
-    // P2-31 精简：只保留高频 5 字段（默认类型 + 页边距）；字体/字号/行距等
-    // 低频排版参数走 CLI（config --set / --config-overrides）
+    // 与 dsh/index.js 的 Config（0.2.x）/ settings schema（0.1.x）保持一一对应
     var FIELDS = [
       { path: ["default_doc_type"], label: "默认公文类型", placeholder: "notice", type: "select" },
 
@@ -82,19 +79,79 @@ window.__ModuleLoader__.load({
       return cur;
     }
 
-    // 深拷贝（JSON 安全数据）
-    function clone(v) {
-      return JSON.parse(JSON.stringify(v === undefined ? null : v));
+    // 快照归一化：configForms 与 settingsScope 的字段略有差异
+    function normalizeSnapshot(s) {
+      if (!s) return { status: "unavailable", value: null, base: null, user: null, writable: false };
+      return {
+        status: s.status || (s.value !== undefined ? "ready" : "loading"),
+        value: s.value,
+        base: s.base,
+        user: s.user,
+        writable: s.writable !== false,
+        revision: s.revision,
+      };
     }
 
-    // ---- 配置 controller：暂存编辑 → scope.mutate 一次性提交 ----
-    function makeCardController(scope) {
-      var snapshot = { status: "loading", value: null, writable: false, base: null, user: null };
-      var staged = {}; // pathKey -> { value, overridden }
+    // ---- 数据源绑定：0.2.x configForms 优先，0.1.x settingsScope 降级 ----
+    // 注意：Cordis 4.1 禁止未声明 inject 就访问 ctx.<service>，因此只用 ctx.get(name) 探测，
+    // 不做 ctx.configForms / ctx.settingsScope 属性兜底（会抛错并静默降级为只读）。
+    function createBinding(ctx) {
+      var forms = null;
+      var scopeApi = null;
+      try {
+        forms = ctx.get ? ctx.get("configForms") : null;
+      } catch (_) {}
+      if (forms && typeof forms.get === "function") {
+        try {
+          var form = forms.get(NS);
+          if (form) {
+            return {
+              kind: "configForms",
+              read: function () { return normalizeSnapshot(form.getSnapshot()); },
+              write: function (ops, revision) { return form.mutate(ops, revision); },
+              subscribe: function (cb) {
+                try { return form.subscribe(cb); } catch (_) { return function () {}; }
+              },
+            };
+          }
+        } catch (_) {
+          // 命名空间尚未被服务：落到降级路径
+        }
+      }
+
+      try {
+        scopeApi = ctx.get ? ctx.get("settingsScope") : null;
+      } catch (_) {}
+      if (scopeApi && typeof scopeApi.bind === "function") {
+        var scope = scopeApi.bind({ namespace: NS });
+        return {
+          kind: "settingsScope",
+          read: function () { return normalizeSnapshot(scope.getSnapshot()); },
+          write: function (ops) { return scope.mutate(ops); },
+          subscribe: function (cb) {
+            try { return scope.subscribe(cb); } catch (_) { return function () {}; }
+          },
+        };
+      }
+
+      return null;
+    }
+
+    // ---- 配置 controller：暂存编辑 → 一次性提交（带 revision 防覆盖）----
+    function makeController(ctx) {
+      var binding = null;
+      var snapshot = normalizeSnapshot(null);
+      var staged = {}; // pathKey -> { value, clear }
       var saving = false;
       var failed = false;
       var message = "";
       var listeners = [];
+
+      function resolve() {
+        if (binding) return binding;
+        binding = createBinding(ctx);
+        return binding;
+      }
 
       function emit() {
         for (var i = 0; i < listeners.length; i++) {
@@ -103,72 +160,111 @@ window.__ModuleLoader__.load({
       }
 
       function refresh() {
-        snapshot = scope.getSnapshot();
+        var b = resolve();
+        if (b) {
+          retries = 0;
+          try { snapshot = b.read(); } catch (_) { snapshot = normalizeSnapshot(null); }
+          ensureSubscribed();
+        } else {
+          snapshot = normalizeSnapshot(null);
+          scheduleRetry();
+        }
         emit();
       }
 
+      var retries = 0;
+      function scheduleRetry() {
+        if (retries >= 6) return;
+        retries++;
+        try {
+          var t = setTimeout(refresh, 500);
+          if (t && typeof t.unref === "function") t.unref();
+        } catch (_) {}
+      }
+
       var unsubscribe = null;
-      try {
-        unsubscribe = scope.subscribe(refresh);
-      } catch (_) {}
+      function ensureSubscribed() {
+        if (unsubscribe || !binding) return;
+        try {
+          unsubscribe = binding.subscribe(function () {
+            try { snapshot = binding.read(); } catch (_) {}
+            emit();
+          });
+        } catch (_) {}
+      }
+
       refresh();
 
-      // pathKey: "page_setup.margins.top"
       function pathKey(path) { return path.join("."); }
 
       function fieldValue(path) {
         var k = pathKey(path);
-        if (Object.prototype.hasOwnProperty.call(staged, k)) return staged[k].value;
+        if (Object.prototype.hasOwnProperty.call(staged, k)) return staged[k].clear ? undefined : staged[k].value;
         return getPath(snapshot.value, path);
       }
 
       function fieldOverridden(path) {
         var k = pathKey(path);
-        if (Object.prototype.hasOwnProperty.call(staged, k)) return staged[k].overridden;
+        if (Object.prototype.hasOwnProperty.call(staged, k)) return !staged[k].clear;
         // user 层中出现该字段即视为用户覆盖（官方语义：presence，不是值比较）
         return getPath(snapshot.user, path) !== undefined;
       }
 
       function setField(path, value) {
-        staged[pathKey(path)] = { value: value, overridden: true };
+        staged[pathKey(path)] = { value: value, clear: false };
         failed = false;
         message = "";
         emit();
       }
 
       function clearField(path) {
-        var k = pathKey(path);
-        if (Object.prototype.hasOwnProperty.call(staged, k)) delete staged[k];
-        // 无 staged 时直接 unset 立即生效由 save 统一处理；这里仅标记需要清除
-        staged[k] = { value: undefined, overridden: true, clear: true };
+        staged[pathKey(path)] = { value: undefined, clear: true };
         failed = false;
         message = "";
         emit();
       }
 
+      function dirty() {
+        for (var k in staged) {
+          if (Object.prototype.hasOwnProperty.call(staged, k)) return true;
+        }
+        return false;
+      }
+
+      // 只对"用户层真实存在覆盖"的字段发 unset，避免对继承值发无意义清除
       function resetAll() {
+        var b = resolve();
+        if (!b) return;
         staged = {};
+        var any = false;
         for (var i = 0; i < FIELDS.length; i++) {
           var f = FIELDS[i];
-          staged[pathKey(f.path)] = { value: getPath(snapshot.base, f.path), overridden: true, clear: true };
+          if (getPath(snapshot.user, f.path) !== undefined) {
+            staged[pathKey(f.path)] = { value: undefined, clear: true };
+            any = true;
+          }
         }
         failed = false;
-        message = "已恢复默认值（需点击保存生效）";
+        message = any ? "已恢复默认值（需点击保存生效）" : "当前没有自定义项，无需恢复";
         emit();
       }
 
       function save() {
         if (saving) return;
+        var b = resolve();
+        if (!b) {
+          failed = true;
+          message = "保存失败：设置服务不可用";
+          emit();
+          return;
+        }
         var ops = [];
         for (var k in staged) {
           if (!Object.prototype.hasOwnProperty.call(staged, k)) continue;
           var edit = staged[k];
           var path = k.split(".");
-          if (edit.clear) {
-            ops.push({ op: "unset", path: path });
-          } else {
-            ops.push({ op: "set", path: path, value: edit.value });
-          }
+          if (edit.clear) ops.push({ op: "unset", path: path });
+          else ops.push({ op: "set", path: path, value: edit.value });
         }
         if (ops.length === 0) {
           message = "没有待保存的修改";
@@ -179,22 +275,46 @@ window.__ModuleLoader__.load({
         failed = false;
         message = "";
         emit();
-        scope.mutate(ops)
+
+        var revision = snapshot.revision;
+        var pending;
+        try {
+          pending = b.write(ops, revision);
+        } catch (e) {
+          saving = false;
+          failed = true;
+          message = "保存失败：" + (e && e.message ? e.message : "未知错误");
+          emit();
+          return;
+        }
+
+        Promise.resolve(pending)
           .then(function () {
             saving = false;
             staged = {};
-            message = "✅ 配置已保存（已同步到 ~/.gongwen-skill/dsh-config.json）";
+            message = "✅ 配置已保存" + (b.kind === "configForms"
+              ? "（已写入插件设置文档）"
+              : "（已同步到 ~/.gongwen-skill/dsh-config.json）");
             emit();
+            refresh();
           })
           .catch(function (e) {
             saving = false;
             failed = true;
-            message = "保存失败：" + (e && e.message ? e.message : "未知错误");
+            var msg = e && e.message ? String(e.message) : "未知错误";
+            if (/conflict|revision|stale/i.test(msg)) {
+              message = "保存冲突：配置已被其他窗口修改。已为你刷新最新值，请核对后重试。";
+              staged = {};
+              refresh();
+            } else {
+              message = "保存失败：" + msg;
+            }
             emit();
           });
       }
 
       return {
+        kind: function () { return binding ? binding.kind : "none"; },
         getSnapshot: function () {
           return {
             status: snapshot.status,
@@ -202,6 +322,7 @@ window.__ModuleLoader__.load({
             saving: saving,
             failed: failed,
             message: message,
+            dirty: dirty(),
           };
         },
         fieldValue: fieldValue,
@@ -262,10 +383,7 @@ window.__ModuleLoader__.load({
           },
         },
           h("span", {
-            style: {
-              minWidth: "140px", flexShrink: 0,
-              color: "var(--dsw-alias-label-secondary)",
-            },
+            style: { minWidth: "140px", flexShrink: 0, color: "var(--dsw-alias-label-secondary)" },
           }, f.label),
           h("select", {
             value: cur,
@@ -287,9 +405,7 @@ window.__ModuleLoader__.load({
           h("span", {
             style: {
               flexShrink: 0, fontSize: "11px",
-              color: overridden
-                ? "var(--dsw-alias-label-secondary)"
-                : "var(--dsw-alias-label-tertiary)",
+              color: overridden ? "var(--dsw-alias-label-secondary)" : "var(--dsw-alias-label-tertiary)",
             },
           }, overridden ? "已自定义" : "默认"),
         );
@@ -303,10 +419,7 @@ window.__ModuleLoader__.load({
         },
       },
         h("span", {
-          style: {
-            minWidth: "140px", flexShrink: 0,
-            color: "var(--dsw-alias-label-secondary)",
-          },
+          style: { minWidth: "140px", flexShrink: 0, color: "var(--dsw-alias-label-secondary)" },
         }, f.label),
         h("input", {
           type: "text",
@@ -326,9 +439,7 @@ window.__ModuleLoader__.load({
         h("span", {
           style: {
             flexShrink: 0, fontSize: "11px",
-            color: overridden
-              ? "var(--dsw-alias-label-secondary)"
-              : "var(--dsw-alias-label-tertiary)",
+            color: overridden ? "var(--dsw-alias-label-secondary)" : "var(--dsw-alias-label-tertiary)",
           },
         }, overridden ? "已自定义" : "默认"),
       );
@@ -342,10 +453,7 @@ window.__ModuleLoader__.load({
         },
       },
         h("legend", {
-          style: {
-            fontSize: "13px", fontWeight: 600, padding: "0 8px",
-            color: "var(--dsw-alias-label-primary)",
-          },
+          style: { fontSize: "13px", fontWeight: 600, padding: "0 8px", color: "var(--dsw-alias-label-primary)" },
         }, props.title),
         props.children,
       );
@@ -354,7 +462,8 @@ window.__ModuleLoader__.load({
     // ---- 设置页「文档样式配置」主组件（settings.section 内容）----
     function GongwenStylesSection(props) {
       var face = props.face;
-      var [, force] = useState(0);
+      var state = useState(0);
+      var force = state[1];
 
       useEffect(function () {
         return face.subscribe(function () { force(function (n) { return n + 1; }); });
@@ -379,6 +488,12 @@ window.__ModuleLoader__.load({
         );
       }
 
+      var sourceLabel = face.kind() === "configForms"
+        ? "数据源：插件设置文档（configForms）"
+        : face.kind() === "settingsScope"
+          ? "数据源：旧版设置命名空间（settingsScope）"
+          : "数据源：不可用";
+
       return h("div", {
         style: {
           padding: "16px 4px", maxWidth: "760px",
@@ -397,7 +512,7 @@ window.__ModuleLoader__.load({
 
         unavailable && h("div", {
           style: { padding: "12px 0", color: "var(--dsw-alias-label-tertiary)" },
-        }, "设置服务不可用（当前部署未挂载 settings provider），排版参数区只读。"),
+        }, "设置服务不可用（当前宿主未提供 configForms / settingsScope），排版参数区只读。"),
 
         renderGroup("基础设置", FIELDS.slice(0, 1)),
         renderGroup("页面设置", FIELDS.slice(1, 5)),
@@ -431,26 +546,35 @@ window.__ModuleLoader__.load({
           h("span", {
             style: {
               fontSize: "12px", flex: 1, textAlign: "right",
-              color: "var(--dsw-alias-label-tertiary)",
+              color: meta.dirty ? "var(--dsw-alias-label-warning, #b26a00)" : "var(--dsw-alias-label-tertiary)",
             },
-          }, "同步文件: ~/.gongwen-skill/dsh-config.json"),
+          }, meta.dirty ? "有未保存修改" : "已同步"),
         ),
 
+        h("div", {
+          style: {
+            marginTop: "10px", fontSize: "11px", lineHeight: "1.5",
+            color: "var(--dsw-alias-label-tertiary)",
+          },
+        }, sourceLabel + "｜CLI 缓存: ~/.gongwen-skill/dsh-config.json"),
       );
     }
 
-    // 导出 apply + inject（官方 Client UI & Slots 注册方式：
-    // settings.section 在设置侧边栏出现独立平级菜单）
+    // 导出 apply + inject（官方 Client UI & Slots 注册方式）
     exports.apply = function (ctx) {
-      var slots = ctx.get("slots");
-      var settingsScope = ctx.get("settingsScope");
-      if (!slots || !settingsScope) return;
+      var slots = null;
+      try {
+        slots = ctx.slots || ctx.get("slots");
+      } catch (_) {}
+      if (!slots || typeof slots.register !== "function") {
+        try { ctx.logger && ctx.logger.warn && ctx.logger.warn("gongwen-skill: 无 slots 服务，跳过设置页注册"); } catch (_) {}
+        return;
+      }
 
-      var scope = settingsScope.bind({ namespace: NS });
-      var controller = makeCardController(scope);
+      var controller = makeController(ctx);
 
       // 注册设置侧边栏平级菜单「文档样式配置」
-      slots.inject("settings.section", function () {
+      var registerSection = function () {
         return slots.register({
           name: "settings.section",
           id: "gongwen-styles",
@@ -461,14 +585,23 @@ window.__ModuleLoader__.load({
             return { face: controller };
           },
         }, GongwenStylesSection);
-      });
+      };
+      if (typeof slots.inject === "function") {
+        slots.inject("settings.section", registerSection);
+      } else {
+        registerSection();
+      }
 
       // 插件卸载时释放订阅
-      ctx.effect(function () {
-        return function () { controller.dispose(); };
-      }, "gongwen-skill: client controller cleanup");
+      try {
+        ctx.effect(function () {
+          return function () { controller.dispose(); };
+        }, "gongwen-skill: client controller cleanup");
+      } catch (_) {
+        // 无 effect 服务时忽略（旧版）
+      }
     };
-    exports.inject = ["slots", "settingsScope"];
+    exports.inject = ["slots"];
 
     return module.exports;
   },
