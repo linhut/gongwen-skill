@@ -113,41 +113,39 @@ jobs:
         run: |
           npm install -g npm@^11.5.1
           npm --version
-      - name: Verify OIDC prerequisites
+      - name: Verify publish prerequisites
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          if [ -n "$NODE_AUTH_TOKEN" ]; then
+            echo "auth mode: NPM_TOKEN (granular token)"
+          else
+            echo "auth mode: Trusted Publishing / OIDC"
+          fi
           echo "OIDC id-token available: ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}"
-          echo "NODE_AUTH_TOKEN set: ${NODE_AUTH_TOKEN:+yes}"
           echo "npm version: $(npm --version)"
           echo "npm registry: $(npm config get registry)"
-      - name: Inspect OIDC identity claims
-        # 诊断用：打印 npm 侧 Trusted Publisher 校验依据的身份字段，不打印 token 本身
-        continue-on-error: true
-        run: |
-          ID_TOKEN=$(curl -fsS \
-            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm:registry.npmjs.org" \
-            | jq -r '.value' 2>/dev/null || true)
-          echo "id token acquired: ${ID_TOKEN:+yes}"
-          if [ -n "$ID_TOKEN" ]; then
-            P=$(printf '%s' "$ID_TOKEN" | cut -d. -f2 | tr '_-' '/+')
-            case $(( ${#P} % 4 )) in
-              2) P="${P}==" ;;
-              3) P="${P}=" ;;
-            esac
-            printf '%s' "$P" | base64 -d | \
-              jq '{sub, repository, repository_owner, job_workflow_ref, ref, event_name, aud, runner_environment}'
-          fi
       - name: Publish to npmjs
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          # 走 npm Trusted Publishing / OIDC：不再依赖长期 npm token，
-          # npm CLI 会用 GitHub Actions 的 OIDC ID token 自动换取短期发布凭证。
-          # 幂等：版本已存在于 npmjs 时跳过（如 workflow_dispatch 补发 GitHub Packages 场景）
+          # 双模式认证（幂等，可重复触发）：
+          #  1) 配置了 NPM_TOKEN（granular token + Bypass 2FA，2027-01 前有效的过渡方案）
+          #     → 写 .npmrc 引用该环境变量；token 不落盘、不进日志。
+          #  2) 未配置 NPM_TOKEN → 不写任何凭据，npm CLI 自动走 Trusted Publishing / OIDC。
+          # 注意：绝不能给 setup-node 配 registry-url，它会注入占位 token 并阻断 OIDC 交换。
           PKG_VERSION=$(node -p "require('./package.json').version")
           if npm view gongwen-skill@${PKG_VERSION} version >/dev/null 2>&1; then
             echo "gongwen-skill@${PKG_VERSION} 已存在于 npmjs，跳过"
-          else
-            npm publish --access public
+            exit 0
           fi
+          if [ -n "$NODE_AUTH_TOKEN" ]; then
+            echo "publishing via NPM_TOKEN (granular token)"
+            echo '//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}' >> .npmrc
+          else
+            echo "publishing via Trusted Publishing / OIDC"
+          fi
+          npm publish --access public
       - name: Publish to GitHub Packages
         run: |
           # GitHub Packages npm registry 只支持 scoped 包（官方规则）：
