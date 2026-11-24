@@ -117,8 +117,8 @@ jobs:
         run: |
           echo "OIDC id-token available: ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}"
           echo "NODE_AUTH_TOKEN set: ${NODE_AUTH_TOKEN:+yes}"
+          echo "npm version: $(npm --version)"
           echo "npm registry: $(npm config get registry)"
-          echo "npm authToken: [$(npm config get "//registry.npmjs.org/:_authToken")]"
       - name: Publish to npmjs
         run: |
           # 走 npm Trusted Publishing / OIDC：不再依赖长期 npm token，
