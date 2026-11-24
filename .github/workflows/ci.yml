@@ -105,12 +105,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-          registry-url: 'https://registry.npmjs.org/'
+          # 不要配 registry-url：它会向 .npmrc 写入 _authToken=${NODE_AUTH_TOKEN}
+          # 并注入占位值 XXXXX-XXXXX-XXXXX-XXXXX，npm 会把它当成真实 token，
+          # 从而跳过 OIDC 交换，最终以 E404 失败。npm 默认源即 registry.npmjs.org。
       - name: Upgrade npm CLI for Trusted Publishing
         # OIDC 凭证交换要求 npm CLI >= 11.5.1、Node >= 22.14.0
         run: |
           npm install -g npm@^11.5.1
           npm --version
+      - name: Verify OIDC prerequisites
+        run: |
+          echo "OIDC id-token available: ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}"
+          echo "NODE_AUTH_TOKEN set: ${NODE_AUTH_TOKEN:+yes}"
+          echo "npm registry: $(npm config get registry)"
+          echo "npm authToken: [$(npm config get "//registry.npmjs.org/:_authToken")]"
       - name: Publish to npmjs
         run: |
           # 走 npm Trusted Publishing / OIDC：不再依赖长期 npm token，
