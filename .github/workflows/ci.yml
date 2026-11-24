@@ -119,6 +119,24 @@ jobs:
           echo "NODE_AUTH_TOKEN set: ${NODE_AUTH_TOKEN:+yes}"
           echo "npm version: $(npm --version)"
           echo "npm registry: $(npm config get registry)"
+      - name: Inspect OIDC identity claims
+        # 诊断用：打印 npm 侧 Trusted Publisher 校验依据的身份字段，不打印 token 本身
+        continue-on-error: true
+        run: |
+          ID_TOKEN=$(curl -fsS \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm:registry.npmjs.org" \
+            | jq -r '.value' 2>/dev/null || true)
+          echo "id token acquired: ${ID_TOKEN:+yes}"
+          if [ -n "$ID_TOKEN" ]; then
+            P=$(printf '%s' "$ID_TOKEN" | cut -d. -f2 | tr '_-' '/+')
+            case $(( ${#P} % 4 )) in
+              2) P="${P}==" ;;
+              3) P="${P}=" ;;
+            esac
+            printf '%s' "$P" | base64 -d | \
+              jq '{sub, repository, repository_owner, job_workflow_ref, ref, event_name, aud, runner_environment}'
+          fi
       - name: Publish to npmjs
         run: |
           # 走 npm Trusted Publishing / OIDC：不再依赖长期 npm token，
