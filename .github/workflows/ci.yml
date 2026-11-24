@@ -99,14 +99,22 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write  # npm Trusted Publishing (OIDC) 必需
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org/'
+      - name: Upgrade npm CLI for Trusted Publishing
+        # OIDC 凭证交换要求 npm CLI >= 11.5.1、Node >= 22.14.0
+        run: |
+          npm install -g npm@^11.5.1
+          npm --version
       - name: Publish to npmjs
         run: |
+          # 走 npm Trusted Publishing / OIDC：不再依赖长期 npm token，
+          # npm CLI 会用 GitHub Actions 的 OIDC ID token 自动换取短期发布凭证。
           # 幂等：版本已存在于 npmjs 时跳过（如 workflow_dispatch 补发 GitHub Packages 场景）
           PKG_VERSION=$(node -p "require('./package.json').version")
           if npm view gongwen-skill@${PKG_VERSION} version >/dev/null 2>&1; then
@@ -114,8 +122,6 @@ jobs:
           else
             npm publish --access public
           fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Publish to GitHub Packages
         run: |
           # GitHub Packages npm registry 只支持 scoped 包（官方规则）：
