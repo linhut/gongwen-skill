@@ -7,7 +7,7 @@
 #
 # 公文全流程处理专家 - gongwen-skill Python package
 
-__version__ = "2.16.0"
+__version__ = "2.17.0"
 
 # 对外展示名（单一事实来源）：面向人与模型的运行时展示文案统一引用此常量，
 # 须与 SKILL.md frontmatter description 首句、.claude-plugin/plugin.json displayName、

@@ -4,6 +4,15 @@
   Licensed under the MIT License. See the LICENSE file for details.
 -->
 
+## v2.17.0 (2026-11-27)
+
+### Fixed
+- **中文弯引号 `“ ”` 被写成英文双引号 `"`（内容保真）**：用户反馈生成/优化的内容文档中，中文引号显示错误。根因在 `engine/core/document/tracked_annotator.py` 的 B22「修复」把「匹配兼容」与「输出内容」混为一谈——入口原地改写 `changes` 的 `original_text`/`optimized_text`，`inject_tracked_change_granular()` 即使 `old_text == full_text` 完全匹配也无条件把 `new_text` 的 U+201C/U+201D 降级为 U+0022，导致所有写入 `w:ins` 的优化文本都被写成英文双引号；同段多变更合并路径还会因引号编码不一致整条变更丢失。
+  - 改为「比较时折叠、输出时保真、只升级不降级」（GB/T 15834-2011）：删除 `_normalize_quotes()`；新增 `_fold_quotes()`（仅用于比较）、`_align_quotes_to_document()`（按引号出现序号把英文直引号升级为文档的中文弯引号；文档本身用直引号时保持中文弯引号不降级）、`_replace_once_quote_tolerant()`（折叠后按索引定位替换，折叠不改变字符长度）。
+  - diff 基准恒为文档实际 `full_text`，未变部分（keep/delete）天然保留中文弯引号；`changes` 原样透传，不再污染调用方持有的对象。
+  - 同时保留 B22 的原始诉求：Word `w:t` 与 changes.json 引号编码不一致时变更仍生效，不再整条跳过。
+- **验证**：新增本地回归测试 8 例（真实 docx + 修订注入，覆盖引号编码不一致、文档直引号升级、同段多变更、引号跨 run 分割等场景）；全量 `pytest tests/ -q` **97 passed**；pycodestyle 0 违规。新旧版本同输入对照实测：旧版输出 `"一岗双责"` 且 `w:ins` 含 `""`、changes 被污染；新版输出 `“一岗双责”`、`w:ins` 仅含真实变更文本、changes 保持原样。
+
 ## v2.16.0 (2026-11-23)
 
 ### Added

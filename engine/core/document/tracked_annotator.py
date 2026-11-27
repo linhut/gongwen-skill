@@ -210,28 +210,20 @@ def inject_tracked_change_granular(para_node, old_text: str, new_text: str,
 
     full_text = ''.join(r[3] for r in runs)
 
-    # B22 修复：优先使用 old_text 参数作为 diff 基准（确保与 changes 中的文本一致）
-    # 仅当 old_text 与 full_text 一致时使用 old_text；引号编码差异时标准化后判定
+    # B25 修复：引号只做「比较折叠」，输出必须保真。
+    # - diff 基准恒为文档实际文本 full_text：未变部分（keep/delete）天然保留
+    #   文档原有的中文弯引号“ ”，不会被降级为英文双引号；
+    # - new_text 仅在 old_text 与 full_text 内容一致（折叠后相等）时做「向
+    #   文档中文弯引号升级」的对齐，用于消除 changes.json 用英文直引号带来的
+    #   虚假引号修订；任何情况下都不把中文弯引号写成英文双引号。
     diff_base = full_text
-    new_text_norm = new_text
-    if old_text:
-        if old_text == full_text:
-            diff_base = full_text
-        else:
-            norm_old = _normalize_quotes(old_text)
-            norm_full = _normalize_quotes(full_text)
-            if norm_old == norm_full:
-                # 引号编码差异：以文档原始编码为基准，同步标准化 new_text
-                diff_base = full_text
-                new_text_norm = _normalize_quotes(new_text)
-            else:
-                diff_base = full_text
-    # 统一 new_text 引号为文档基准编码（避免 diff 产生虚假引号替换修订）
-    if new_text_norm is new_text:
-        new_text_norm = _normalize_quotes(new_text)
+    new_text_aligned = new_text
+    if old_text and _fold_quotes(old_text) == _fold_quotes(full_text):
+        new_text_aligned = _align_quotes_to_document(
+            old_text, full_text, new_text)
 
     # 片段级 diff ops（对原文整体做 diff，非分句对齐——分句仅用于合并启发）
-    ops = _build_diff_ops(diff_base, new_text_norm)
+    ops = _build_diff_ops(diff_base, new_text_aligned)
     if not ops:
         return True
 
@@ -454,15 +446,93 @@ def _collect_full_text_including_deleted(para_node) -> str:
     return ''.join(parts)
 
 
-def _normalize_quotes(text: str) -> str:
-    """B22 修复：标准化引号编码——将弯引号 U+201C/U+201D 转为直引号 U+0022。
+# ---------------------------------------------------------------------------
+#  引号编码：匹配容差 vs 输出保真（B22 → B25 修复）
+# ---------------------------------------------------------------------------
+# GB/T 15834-2011《标点符号用法》：中文横排文本中的引号用弯引号“ ” / ‘ ’，
+# 英文直引号 " 只用于外文、代码等场合。B22 曾把 changes.json 中的中文弯引号
+# 统一降级为英文直引号以求「与 Word w:t 匹配」，结果把优化后的正文内容写坏——
+# 用户反馈「文档中的中文“ ”双引号被写成了英文双引号」。
+#
+# 正确做法：
+#   1) 比较时折叠（_fold_quotes）：弯/直引号视为等价，避免匹配失败跳过变更；
+#   2) 输出时保真：以文档实际文本为 diff 基准，new_text 只做「向中文弯引号
+#      升级」的对齐（_align_quotes_to_document），绝不把“ ”改回英文双引号。
 
-    Word 文档 w:t 中通常为直引号，而 changes.json（LLM 生成）可能使用弯引号，
-    编码不一致会导致文本匹配/替换失败、整条变更被跳过（如XXX职务修正丢失）。
+_LQ = '\u201c'   # 左双引号 “
+_RQ = '\u201d'   # 右双引号 ”
+_DQ = '"'        # 英文直引号 "
+_QUOTE_CHARS = (_LQ, _RQ, _DQ)
+
+
+def _fold_quotes(text: str) -> str:
+    """【仅用于比较】把中文弯引号折叠为英文直引号。
+
+    严禁把本函数的返回值写入文档——它只用于判断两段文本是否「内容相同、
+    仅引号编码不同」。中文公文必须用中文弯引号（GB/T 15834-2011）。
     """
     if not text:
         return text
-    return text.replace('\u201c', '"').replace('\u201d', '"')
+    return text.replace(_LQ, _DQ).replace(_RQ, _DQ)
+
+
+def _quote_sequence(text: str) -> list[str]:
+    """按出现顺序提取文本中的引号字符（用于按序号对齐引号风格）。"""
+    return [ch for ch in text if ch in _QUOTE_CHARS]
+
+
+def _align_quotes_to_document(old_text: str, doc_text: str,
+                              new_text: str) -> str:
+    """把 new_text 的引号按序号对齐到文档现状，且只升级、不降级。
+
+    仅当 old_text 与 doc_text 折叠引号后完全一致（同一内容的不同编码）时
+    生效。按引号出现序号把 new_text 中的英文直引号升级为 doc_text 对应的
+    中文弯引号“ / ”，从而消除「仅编码差异」产生的虚假修订；当文档本身用
+    英文直引号时，new_text 中的中文弯引号保持不变（绝不降级）。
+
+    这样既保留 B22 的匹配容差收益，又保证中文弯引号不被写成英文双引号。
+    """
+    if not (old_text and doc_text and new_text):
+        return new_text
+    if _fold_quotes(old_text) != _fold_quotes(doc_text):
+        return new_text
+    doc_quotes = _quote_sequence(doc_text)
+    if not doc_quotes:
+        return new_text
+
+    result = []
+    k = 0
+    for ch in new_text:
+        if ch in _QUOTE_CHARS:
+            target = doc_quotes[k] if k < len(doc_quotes) else None
+            if target in (_LQ, _RQ) and ch != target:
+                result.append(target)   # 升级为文档的中文弯引号
+            else:
+                result.append(ch)       # 保真（中文弯引号 / 英文直引号）
+            k += 1
+        else:
+            result.append(ch)
+    return ''.join(result)
+
+
+def _replace_once_quote_tolerant(corpus: str, old: str, new: str) -> str:
+    """在 corpus 中替换一次 old→new，允许 old 与 corpus 引号编码不同。
+
+    精确匹配优先；不命中时按「折叠引号后」的索引定位（折叠不改变长度，
+    因为中文弯引号与英文直引号均为单字符），保留 corpus 原文编码并写入
+    保真的 new。用于同段多次变更合并时的目标文本计算，避免中文弯引号
+    段落里的变更因引号编码不一致而整条丢失。
+    """
+    if not old:
+        return corpus
+    if old in corpus:
+        return corpus.replace(old, new, 1)
+    folded_corpus = _fold_quotes(corpus)
+    folded_old = _fold_quotes(old)
+    idx = folded_corpus.find(folded_old)
+    if idx < 0:
+        return corpus
+    return corpus[:idx] + new + corpus[idx + len(folded_old):]
 
 
 def inject_tracked_with_comments(
@@ -493,13 +563,11 @@ def inject_tracked_with_comments(
     src = Path(input_path)
     out = Path(output_path)
 
-    # B22 修复：入口对 changes 的 original_text/optimized_text 做引号标准化
-    # （Word 文档 w:t 为直引号，changes.json 可能为弯引号——编码不一致导致匹配失败、整条变更被跳过）
-    for c in changes:
-        if c.get('original_text'):
-            c['original_text'] = _normalize_quotes(c['original_text'])
-        if c.get('optimized_text'):
-            c['optimized_text'] = _normalize_quotes(c['optimized_text'])
+    # B25 修复：禁止改写 changes 内容。B22 曾在此处把 original_text /
+    # optimized_text 的中文弯引号“ ”统一降级为英文双引号 "，直接导致优化后
+    # 文档中中文引号显示错误，且污染了调用方持有的 changes 对象。
+    # 现在 changes 原样透传：引号容差由 _fold_quotes（比较）与
+    # _align_quotes_to_document（输出对齐）在注入函数内部处理。
 
     with zipfile.ZipFile(src) as z:
         entries = {name: z.read(name) for name in z.namelist()}
@@ -546,8 +614,10 @@ def inject_tracked_with_comments(
                 for c in c_list:
                     orig = c.get('original_text', '')
                     opt = c.get('optimized_text', '')
-                    if orig and orig in target_text:
-                        target_text = target_text.replace(orig, opt, 1)
+                    if orig:
+                        # B25：允许引号编码不一致时仍能命中（比较折叠、输出保真）
+                        target_text = _replace_once_quote_tolerant(
+                            target_text, orig, opt)
                 if target_text == current_text:
                     continue
                 _accept_revisions_in_para(para)
@@ -578,8 +648,10 @@ def inject_tracked_with_comments(
                     for c in a_changes:
                         orig = c.get('original_text', '')
                         opt = c.get('optimized_text', '')
-                        if orig and orig in target_text:
-                            target_text = target_text.replace(orig, opt, 1)
+                        if orig:
+                            # B25：同段多作者合并同样走引号容差替换
+                            target_text = _replace_once_quote_tolerant(
+                                target_text, orig, opt)
 
                     if target_text == current_text:
                         continue
